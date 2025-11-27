@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/amm/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/factory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/mocks/mock_vault/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/tokens/principal_token/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/tokens/yield_token/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/yield/yield_manager/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/core/yield/yield_manager_interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vault/vault_interface/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/.soroban" />
+      <excludeFolder url="file://$MODULE_DIR$/.stellar" />
+      <excludeFolder url="file://$MODULE_DIR$/amm/test_snapshots" />
+      <excludeFolder url="file://$MODULE_DIR$/core/tokens/yield_token/test_snapshots" />
+      <excludeFolder url="file://$MODULE_DIR$/core/yield/yield_manager/test_snapshots" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
