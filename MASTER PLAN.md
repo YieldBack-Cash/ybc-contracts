@@ -1,12 +1,3 @@
-Make factory better
-
-The yield manager contract could maintain the high water mark system, and then the YT contract just calls the yield manager assuming no matter what the YM
-contract maintains it properly. This means the YM contract would store the exchange rate, and return the max of the two rates, and update the stored rate if its
-not the biggest rate.
-
-Also, make the YT contract support any scalar size based on the underlying vault. right now its hardcoded to 1e6 because of the mock vault, but it can be different
-scalar sizes for different vaults
-
 Defindex
 
 
