@@ -1,7 +1,7 @@
 use soroban_sdk::{token, Address, Env};
 use crate::storage;
 use vault_interface::VaultContractClient;
-use yield_manager_interface::YieldManagerTrait;
+use yield_manager_interface::{YieldManagerTrait, VaultType};
 use principal_token::PrincipalTokenClient;
 use yield_token::YieldTokenClient;
 
@@ -14,8 +14,25 @@ pub struct YieldManager;
 
 #[cfg(feature = "contract")]
 impl YieldManager {
-    // Helper function to update the exchange rate (only before maturity or once at maturity)
-    // Uses a high water mark system - rate can only increase, never decrease
+    // Helper function to get exchange rate from vault
+    fn get_vault_exchange_rate(env: &Env) -> i128 {
+        let vault_addr = storage::get_vault(env);
+        let vault_type = storage::get_vault_type(env);
+
+        match vault_type {
+            VaultType::Vault4626 => {
+                let client = VaultContractClient::new(env, &vault_addr);
+                client.exchange_rate()
+            }
+            VaultType::VaultDefindex => {
+                //TODO: DefIndex
+
+            }
+        }
+    }
+
+    // Update maturity before maturity (exchange rate for users locks after maturity)
+    // Rate can only increase, never decrease
     fn update_exchange_rate(env: &Env) {
         // If rate is already locked, don't update
         if storage::is_rate_locked(env) {
@@ -25,10 +42,8 @@ impl YieldManager {
         let maturity = storage::get_maturity(env);
         let current_time = env.ledger().timestamp();
 
-        // Get current vault rate
-        let vault_addr = storage::get_vault(env);
-        let vault_client = VaultContractClient::new(env, &vault_addr);
-        let new_rate = vault_client.exchange_rate();
+        // Get current vault rate using the helper function
+        let new_rate = YieldManager::get_vault_exchange_rate(env);
 
         // Get the currently stored rate (high water mark)
         let stored_rate = storage::get_exchange_rate(env);
@@ -52,15 +67,16 @@ impl YieldManagerTrait for YieldManager {
         env: Env,
         admin: Address,
         vault: Address,
+        vault_type: VaultType,
         maturity: u64,
     ) {
         storage::set_admin(&env, &admin);
         storage::set_vault(&env, &vault);
+        storage::set_vault_type(&env, vault_type);
         storage::set_maturity(&env, maturity);
 
-        // Fetch and store the initial exchange rate from the vault
-        let vault_client = VaultContractClient::new(&env, &vault);
-        let initial_rate = vault_client.exchange_rate();
+        // Fetch and store the initial exchange rate from the vault using the helper function
+        let initial_rate = YieldManager::get_vault_exchange_rate(&env);
         storage::set_exchange_rate(&env, initial_rate);
     }
 

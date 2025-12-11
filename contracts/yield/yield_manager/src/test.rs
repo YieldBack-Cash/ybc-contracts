@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{YieldManager, YieldManagerTrait};
+use crate::{YieldManager, VaultType};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token::{StellarAssetClient, TokenClient},
@@ -9,8 +9,8 @@ use soroban_sdk::{
 
 // Import contracts from the workspace
 use mock_vault::{MockVault, MockVaultClient};
-use principal_token::{PrincipalToken, PrincipalTokenTrait};
-use yield_token::{YieldToken, YieldTokenTrait};
+use principal_token::PrincipalToken;
+use yield_token::YieldToken;
 
 struct YieldManagerTest<'a> {
     env: Env,
@@ -48,7 +48,7 @@ impl<'a> YieldManagerTest<'a> {
         let maturity = current_time + 1000;
 
         // Deploy yield manager
-        let yield_manager_id = env.register(YieldManager, (&admin, &vault_id, maturity));
+        let yield_manager_id = env.register(YieldManager, (&admin, &vault_id, VaultType::Vault4626, maturity));
 
         // Deploy PT and YT tokens
         let pt_id = env.register(

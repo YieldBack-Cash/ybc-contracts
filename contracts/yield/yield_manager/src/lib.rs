@@ -7,4 +7,4 @@ mod contract;
 mod test;
 
 pub use contract::YieldManager;
-pub use yield_manager_interface::YieldManagerTrait;
+pub use yield_manager_interface::{YieldManagerTrait, VaultType};

@@ -11,6 +11,7 @@ use soroban_sdk::{
 use mock_vault::{MockVault, MockVaultClient};
 use principal_token::PrincipalToken;
 use yield_manager::YieldManager;
+use yield_manager_interface::VaultType;
 
 struct YieldTokenTest<'a> {
     env: Env,
@@ -46,7 +47,7 @@ impl<'a> YieldTokenTest<'a> {
         let maturity = current_time + 1000;
 
         // Deploy yield manager
-        let yield_manager_id = env.register(YieldManager, (&admin, &vault_id, maturity));
+        let yield_manager_id = env.register(YieldManager, (&admin, &vault_id, VaultType::Vault4626, maturity));
 
         // Mint vault shares to the yield manager for distributing yield
         // In real usage, these come from user deposits

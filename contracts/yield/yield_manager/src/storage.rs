@@ -1,8 +1,10 @@
 use soroban_sdk::{Address, Env};
+use yield_manager_interface::VaultType;
 
 // Storage keys
 const ADMIN_KEY: &str = "admin";
 const VAULT_KEY: &str = "vault";
+const VAULT_TYPE_KEY: &str = "vault_type";
 const PRINCIPAL_TOKEN_KEY: &str = "principal_token";
 const YIELD_TOKEN_KEY: &str = "yield_token";
 const MATURITY_KEY: &str = "maturity";
@@ -32,6 +34,15 @@ pub fn get_vault(env: &Env) -> Address {
         .instance()
         .get(&VAULT_KEY)
         .expect("Vault not set")
+}
+
+// Vault type (immutable after initialization)
+pub fn set_vault_type(env: &Env, vault_type: VaultType) {
+    env.storage().instance().set(&VAULT_TYPE_KEY, &vault_type);
+}
+
+pub fn get_vault_type(env: &Env) -> VaultType {
+    env.storage().instance().get(&VAULT_TYPE_KEY).expect("Vault type not set")
 }
 
 // Maturity timestamp (immutable after initialization)

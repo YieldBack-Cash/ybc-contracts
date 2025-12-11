@@ -1,6 +1,14 @@
 #![no_std]
 
-use soroban_sdk::{contractclient, Address, Env};
+use soroban_sdk::{contractclient, contracterror, Address, Env};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum VaultType {
+    Vault4626 = 0,
+    VaultDefindex = 1
+}
 
 /// Trait defining the interface for the Yield Manager contract.
 /// This trait is used to generate the YieldManagerClient for type-safe cross-contract calls.
@@ -10,6 +18,7 @@ pub trait YieldManagerTrait {
         env: Env,
         admin: Address,
         vault: Address,
+        vault_type: VaultType,
         maturity: u64,
     );
 

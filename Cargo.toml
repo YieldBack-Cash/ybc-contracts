@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-  "core/factory",
-  "core/tokens/principal_token",
-  "core/tokens/yield_token",
-  "core/yield/yield_manager",
-  "core/yield/yield_manager_interface",
+  "contracts/factory",
+  "contracts/tokens/principal_token",
+  "contracts/tokens/yield_token",
+  "contracts/yield/yield_manager",
+  "contracts/yield/yield_manager_interface",
   "vault/vault_interface",
-  "core/mocks/mock_vault",
+  "contracts/mocks/mock_vault",
   "amm",
 ]
 

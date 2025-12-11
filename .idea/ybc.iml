@@ -10,6 +10,12 @@
       <sourceFolder url="file://$MODULE_DIR$/core/yield/yield_manager/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/core/yield/yield_manager_interface/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/vault/vault_interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/factory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/mocks/mock_vault/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/tokens/principal_token/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/tokens/yield_token/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager_interface/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/.soroban" />
       <excludeFolder url="file://$MODULE_DIR$/.stellar" />
