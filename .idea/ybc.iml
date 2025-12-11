@@ -16,6 +16,7 @@
       <sourceFolder url="file://$MODULE_DIR$/contracts/tokens/yield_token/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager_interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vault/defindex_interface/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/.soroban" />
       <excludeFolder url="file://$MODULE_DIR$/.stellar" />

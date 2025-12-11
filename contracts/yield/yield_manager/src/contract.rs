@@ -1,6 +1,7 @@
 use soroban_sdk::{token, Address, Env};
 use crate::storage;
 use vault_interface::VaultContractClient;
+use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType};
 use principal_token::PrincipalTokenClient;
 use yield_token::YieldTokenClient;
@@ -25,8 +26,8 @@ impl YieldManager {
                 client.exchange_rate()
             }
             VaultType::VaultDefindex => {
-                //TODO: DefIndex
-
+                let client = DefindexVaultContractClient::new(env, &vault_addr);
+                client.exchange_rate()
             }
         }
     }

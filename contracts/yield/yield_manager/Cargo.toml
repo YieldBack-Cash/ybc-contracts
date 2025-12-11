@@ -14,6 +14,7 @@ contract = []
 principal_token = { path = "../../tokens/principal_token", default-features = false }
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
+defindex_interface = { path = "../../../vault/defindex_interface" }
 yield_manager_interface = { path = "../yield_manager_interface" }
 yield_token = { path = "../../tokens/yield_token", default-features = false }
 
