@@ -852,13 +852,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "mock_vault"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -973,6 +966,14 @@ dependencies = [
 
 [[package]]
 name = "principal_token"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "soroban-token-sdk",
+]
+
+[[package]]
+name = "principal_token_interface"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
@@ -1427,6 +1428,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "soroban-token-sdk"
+version = "23.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e1c8b03d3d9187c08d7e21ef2444a2e695e6339c7539af7230d0726cb945e39"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "soroban-wasmi"
 version = "0.31.1-soroban.20.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1752,12 +1762,13 @@ name = "yield_manager"
 version = "0.1.0"
 dependencies = [
  "defindex_interface",
- "mock_vault",
  "principal_token",
+ "principal_token_interface",
  "soroban-sdk",
  "vault_interface",
  "yield_manager_interface",
  "yield_token",
+ "yield_token_interface",
 ]
 
 [[package]]
@@ -1771,12 +1782,18 @@ dependencies = [
 name = "yield_token"
 version = "0.1.0"
 dependencies = [
- "mock_vault",
  "principal_token",
  "soroban-sdk",
  "vault_interface",
  "yield_manager",
  "yield_manager_interface",
+]
+
+[[package]]
+name = "yield_token_interface"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

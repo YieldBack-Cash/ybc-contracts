@@ -1,10 +1,9 @@
 #![no_std]
 
-use soroban_sdk::{contractclient, contracterror, Address, Env};
+use soroban_sdk::{contractclient, contracttype, Address, Env};
 
-#[contracterror]
+#[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
 pub enum VaultType {
     Vault4626 = 0,
     VaultDefindex = 1
@@ -23,7 +22,6 @@ pub trait YieldManagerTrait {
     );
 
     fn set_token_contracts(env: Env, pt_addr: Address, yt_addr: Address);
-
     fn get_vault(env: Env) -> Address;
     fn get_principal_token(env: Env) -> Address;
     fn get_yield_token(env: Env) -> Address;

@@ -3,8 +3,8 @@ use crate::storage;
 use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType};
-use principal_token::PrincipalTokenClient;
-use yield_token::YieldTokenClient;
+use principal_token_interface::PrincipalTokenClient;
+use yield_token_interface::YieldTokenClient;
 
 #[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl};
@@ -23,19 +23,19 @@ impl YieldManager {
         match vault_type {
             VaultType::Vault4626 => {
                 let client = VaultContractClient::new(env, &vault_addr);
-                client.exchange_rate()
+                client.convert_to_assets(&1i128)
             }
             VaultType::VaultDefindex => {
                 let client = DefindexVaultContractClient::new(env, &vault_addr);
-                client.exchange_rate()
+                let asset_amounts = client.get_asset_amounts_per_shares(&1i128);
+                asset_amounts.get(0).unwrap()
             }
         }
     }
 
     // Update maturity before maturity (exchange rate for users locks after maturity)
-    // Rate can only increase, never decrease
+    // Rate can only increase
     fn update_exchange_rate(env: &Env) {
-        // If rate is already locked, don't update
         if storage::is_rate_locked(env) {
             return;
         }
@@ -46,10 +46,10 @@ impl YieldManager {
         // Get current vault rate using the helper function
         let new_rate = YieldManager::get_vault_exchange_rate(env);
 
-        // Get the currently stored rate (high water mark)
+        // Get the currently stored rate
         let stored_rate = storage::get_exchange_rate(env);
 
-        // Only update if the new rate is higher (high water mark system)
+        // Only update if the new rate is higher
         if new_rate > stored_rate {
             storage::set_exchange_rate(env, new_rate);
         }

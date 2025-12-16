@@ -12,7 +12,7 @@ The vault shares are fully compatible with the YBC protocol. When users deposit 
 
 ## Features
 
-- **ERC-4626 Compliant**: Implements standard deposit/mint/withdraw/redeem operations
+- **ERC-4626 Compliant**: Implements standard 4626 operations
 - **Strategies**: Assets are managed by strategies to lend reserves to protocols such as Blend
 - **YBC Compatible**: Vault shares integrate with the YBC protocol
 

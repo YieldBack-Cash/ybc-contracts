@@ -7,12 +7,12 @@ members = [
   "contracts/yield/yield_manager",
   "contracts/yield/yield_manager_interface",
   "vault/vault_interface",
-  "contracts/mocks/mock_vault",
   "amm",
 ]
 
 [workspace.dependencies]
 soroban-sdk = "23.0.2"
+soroban-token-sdk = "23.0.2"
 
 [profile.release]
 opt-level = "z"
