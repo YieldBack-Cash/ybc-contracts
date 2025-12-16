@@ -7,5 +7,5 @@ use soroban_sdk::{contractclient, Address, Env};
 #[contractclient(name = "VaultContractClient")]
 pub trait VaultTrait {
     fn __constructor(e: Env, asset: Address, decimals_offset: u32, strategy: Address);
-    fn exchange_rate(e: Env) -> i128;
+    fn convert_to_assets(e: &Env, shares: i128) -> i128;
 }
