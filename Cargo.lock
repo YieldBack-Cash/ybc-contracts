@@ -977,6 +977,7 @@ name = "principal_token_interface"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "soroban-token-sdk",
 ]
 
 [[package]]
@@ -1344,9 +1345,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-ledger-snapshot"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "004e0cdfd01c073e23d28813625bd77b9a6a0dc35c65920323e75450f1bfe400"
+checksum = "1f778688aade32f689dd386878e7ff553ccd31f7de194da52db972a2a667baa8"
 dependencies = [
  "serde",
  "serde_json",
@@ -1358,9 +1359,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-sdk"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d605064e7c7c08474a750496b256d051ac568aa072254e3b77e080fab99e3fb7"
+checksum = "64ddf4cb462f95404af5f38bacd41f61285ca8af8099b0875ad2cdbb133690e4"
 dependencies = [
  "arbitrary",
  "bytes-lit",
@@ -1377,13 +1378,14 @@ dependencies = [
  "soroban-ledger-snapshot",
  "soroban-sdk-macros",
  "stellar-strkey",
+ "visibility",
 ]
 
 [[package]]
 name = "soroban-sdk-macros"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "611c1b3118d118852cb0b7c0e702b63dbb54de213d0ef9da354650786656b499"
+checksum = "632bdcd72882afa0f2490616944d63610e0d40e186aec74170cc5dd21f75df44"
 dependencies = [
  "darling 0.20.11",
  "heck",
@@ -1401,9 +1403,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-spec"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "829e617c2a6e7293f31a9d8f74f543f102f57510fe13a1da38e37a0481fc2e88"
+checksum = "83e23eb9e61eb7831a169132982f18cd4664d0b109f72871ef25645cfe6a0a91"
 dependencies = [
  "base64",
  "stellar-xdr",
@@ -1413,9 +1415,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-spec-rust"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23a7f15c7e8fc5216df7e431d134e5298886d125b842fb0861b8f42095992a5c"
+checksum = "44a20e878c4f6c995541dce4269c52170f2655decc4e794ab70624b936adc1c7"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -1429,9 +1431,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-token-sdk"
-version = "23.1.0"
+version = "23.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e1c8b03d3d9187c08d7e21ef2444a2e695e6339c7539af7230d0726cb945e39"
+checksum = "e834514f9d773a6ccc92c0e622ca2ee98b15ab18503e3c090b7d71783db2bf25"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1611,6 +1613,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "visibility"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d674d135b4a8c1d7e813e2f8d1c9a58308aee4a680323066025e53132218bd91"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.108",
+]
+
+[[package]]
 name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1787,6 +1800,7 @@ dependencies = [
  "vault_interface",
  "yield_manager",
  "yield_manager_interface",
+ "yield_token_interface",
 ]
 
 [[package]]

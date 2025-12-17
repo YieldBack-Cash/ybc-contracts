@@ -5,6 +5,7 @@ use soroban_sdk::{contracttype, Address, Env, String};
 pub struct TokenMetadata {
     pub name: String,
     pub symbol: String,
+    pub decimal: u32,
 }
 
 #[contracttype]
@@ -33,8 +34,8 @@ pub fn get_admin(env: &Env) -> Address {
 }
 
 // Token metadata
-pub fn set_metadata(env: &Env, name: String, symbol: String) {
-    let metadata = TokenMetadata { name, symbol };
+pub fn set_metadata(env: &Env, name: String, symbol: String, decimal: u32) {
+    let metadata = TokenMetadata { name, symbol, decimal };
     env.storage().instance().set(&METADATA_KEY, &metadata);
 }
 

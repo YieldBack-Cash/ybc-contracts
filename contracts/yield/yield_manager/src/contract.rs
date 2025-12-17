@@ -4,7 +4,7 @@ use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType};
 use principal_token_interface::PrincipalTokenClient;
-use yield_token_interface::YieldTokenClient;
+use yield_token_interface::YieldTokenCustomClient;
 
 #[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl};
@@ -147,7 +147,7 @@ impl YieldManagerTrait for YieldManager {
         pt_client.mint(&from, &mint_amount);
 
         // Mint YT tokens to user (shares * exchange_rate) using type-safe client
-        let yt_client = YieldTokenClient::new(&env, &yt_addr);
+        let yt_client = YieldTokenCustomClient::new(&env, &yt_addr);
         yt_client.mint(&from, &mint_amount, &exchange_rate);
     }
 
@@ -194,9 +194,9 @@ impl YieldManagerTrait for YieldManager {
         let exchange_rate = storage::get_exchange_rate(&env);
         let shares_to_return = pt_amount / exchange_rate;
 
-        // Burn PT tokens from user using type-safe client
-        let pt_client = PrincipalTokenClient::new(&env, &pt_addr);
-        pt_client.burn(&from, &pt_amount);
+        // Burn PT tokens from user
+        let pt_token_client = token::Client::new(&env, &pt_addr);
+        pt_token_client.burn(&from, &pt_amount);
 
         // Transfer vault shares back to user
         let vault_token_client = token::Client::new(&env, &vault_addr);

@@ -9,7 +9,4 @@ mod storage;
 mod test;
 
 #[cfg(feature = "contract")]
-pub use contract::{YieldToken, YieldTokenTrait};
-
-#[cfg(feature = "contract")]
-pub use contract::YieldTokenClient;
+pub use contract::YieldToken;

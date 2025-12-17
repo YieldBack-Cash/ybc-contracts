@@ -1,8 +1,6 @@
 #![no_std]
 use soroban_sdk::{contractclient, Address, Env, String};
 use soroban_sdk::token::TokenInterface;
-// Re-export the SEP-41 token interface
-pub use soroban_token_sdk::TokenInterface;
 
 #[contractclient(name = "PrincipalTokenClient")]
 pub trait PrincipalTokenTrait: TokenInterface {

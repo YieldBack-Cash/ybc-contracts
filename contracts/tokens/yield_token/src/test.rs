@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{YieldToken};
+use crate::YieldToken;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token::{StellarAssetClient, TokenClient},
@@ -8,19 +8,24 @@ use soroban_sdk::{
 };
 
 // Import contracts from the workspace
-use mock_vault::{MockVault, MockVaultClient};
 use principal_token::PrincipalToken;
 use yield_manager::YieldManager;
 use yield_manager_interface::VaultType;
+use vault_interface::VaultContractClient;
+
+const VAULT_WASM: &[u8] = include_bytes!("../../../../wasms/vault.wasm");
+const HOLD_STRATEGY_WASM: &[u8] = include_bytes!("../../../../wasms/hold_strategy.wasm");
 
 struct YieldTokenTest<'a> {
     env: Env,
     user1: Address,
     user2: Address,
-    vault: MockVaultClient<'a>,
+    vault_client: TokenClient<'a>,
+    vault_address: Address,
     yield_manager: Address,
     yield_token: Address,
     pt: Address,
+    underlying_asset: TokenClient<'a>,
     maturity: u64,
 }
 
@@ -38,39 +43,57 @@ impl<'a> YieldTokenTest<'a> {
         let underlying_asset_addr = env.register_stellar_asset_contract_v2(underlying_admin.clone());
         let underlying_asset = TokenClient::new(&env, &underlying_asset_addr.address());
 
-        // Deploy mock vault with 1 basis point per second yield rate (0.01% per second)
-        let vault_id = env.register(MockVault, (&underlying_asset.address, 1i128));
-        let vault = MockVaultClient::new(&env, &vault_id);
+        // Deploy hold strategy from WASM (no constructor parameters)
+        let strategy_id = env.register(HOLD_STRATEGY_WASM, ());
+
+        // Deploy vault from WASM with constructor parameters (asset, decimals_offset, strategy)
+        let vault_address = env.register(VAULT_WASM, (&underlying_asset.address, 0u32, &strategy_id));
+        let vault_client = TokenClient::new(&env, &vault_address);
 
         // Set maturity to 1000 seconds from now
         let current_time = env.ledger().timestamp();
         let maturity = current_time + 1000;
 
         // Deploy yield manager
-        let yield_manager_id = env.register(YieldManager, (&admin, &vault_id, VaultType::Vault4626, maturity));
+        let yield_manager_id = env.register(
+            YieldManager,
+            (&admin, &vault_address, VaultType::Vault4626, maturity),
+        );
 
-        // Mint vault shares to the yield manager for distributing yield
-        // In real usage, these come from user deposits
+        // Mint underlying assets to test depositor
         let test_depositor = Address::generate(&env);
         let underlying_admin_client = StellarAssetClient::new(&env, &underlying_asset.address);
         underlying_admin_client.mint(&test_depositor, &1_000_000_0000000i128);
-        let shares = vault.deposit(&test_depositor, &1_000_000_0000000i128);
-        vault.transfer(&test_depositor, &yield_manager_id, &shares);
 
-        // Deploy PT and YT tokens
+        // Deposit to vault to get shares using VaultContractClient
+        let vault_contract_client = VaultContractClient::new(&env, &vault_address);
+        vault_contract_client.deposit(
+            &1_000_000_0000000i128,
+            &test_depositor,
+            &test_depositor,
+            &test_depositor,
+        );
+
+        // Transfer vault shares to yield manager for distributing yield
+        vault_client.transfer(&test_depositor, &yield_manager_id, &1_000_000_0000000i128);
+
+        // Deploy PT token
         let pt_id = env.register(
             PrincipalToken,
             (
                 yield_manager_id.clone(),
                 String::from_str(&env, "Principal Token"),
                 String::from_str(&env, "PT"),
+                7u32, // decimals for 1e7
             ),
         );
 
+        // Deploy YT token with decimal parameter
         let yt_id = env.register(
             YieldToken,
             (
                 yield_manager_id.clone(),
+                7u32, // decimals - standard for Stellar
                 String::from_str(&env, "Yield Token"),
                 String::from_str(&env, "YT"),
             ),
@@ -87,10 +110,12 @@ impl<'a> YieldTokenTest<'a> {
             env,
             user1,
             user2,
-            vault,
+            vault_client,
+            vault_address,
             yield_manager: yield_manager_id,
             yield_token: yt_id,
             pt: pt_id,
+            underlying_asset,
             maturity,
         }
     }
@@ -156,25 +181,52 @@ impl<'a> YieldTokenTest<'a> {
             (from, to, amount).into_val(&self.env),
         );
     }
+
+    fn get_total_supply(&self) -> i128 {
+        self.env.invoke_contract::<i128>(
+            &self.yield_token,
+            &Symbol::new(&self.env, "total_supply"),
+            ().into_val(&self.env),
+        )
+    }
+
+    fn get_decimals(&self) -> u32 {
+        self.env.invoke_contract::<u32>(
+            &self.yield_token,
+            &Symbol::new(&self.env, "decimals"),
+            ().into_val(&self.env),
+        )
+    }
+
+    fn get_name(&self) -> String {
+        self.env.invoke_contract::<String>(
+            &self.yield_token,
+            &Symbol::new(&self.env, "name"),
+            ().into_val(&self.env),
+        )
+    }
+
+    fn get_symbol(&self) -> String {
+        self.env.invoke_contract::<String>(
+            &self.yield_token,
+            &Symbol::new(&self.env, "symbol"),
+            ().into_val(&self.env),
+        )
+    }
 }
 
 #[test]
 fn test_initialization() {
     let test = YieldTokenTest::setup();
 
-    let name: String = test.env.invoke_contract(
-        &test.yield_token,
-        &Symbol::new(&test.env, "name"),
-        ().into_val(&test.env),
-    );
+    let name = test.get_name();
     assert_eq!(name, String::from_str(&test.env, "Yield Token"));
 
-    let symbol: String = test.env.invoke_contract(
-        &test.yield_token,
-        &Symbol::new(&test.env, "symbol"),
-        ().into_val(&test.env),
-    );
+    let symbol = test.get_symbol();
     assert_eq!(symbol, String::from_str(&test.env, "YT"));
+
+    let decimals = test.get_decimals();
+    assert_eq!(decimals, 7u32);
 }
 
 #[test]
@@ -206,22 +258,22 @@ fn test_yield_accrues_when_exchange_rate_increases() {
     let initial_accrued = test.get_accrued_yield(&test.user1);
     assert_eq!(initial_accrued, 0);
 
-    // Advance time by 100 seconds to increase exchange rate
-    // At 1 basis point per second (0.01%), 100 seconds = 1% increase
+    // Advance time to increase exchange rate
+    // The exact time depends on your vault's yield rate
     test.advance_time(100);
 
     // Verify exchange rate increased
     let new_rate = test.get_exchange_rate();
-    assert!(new_rate > initial_rate);
+    assert!(new_rate > initial_rate, "Exchange rate should increase");
 
     // Trigger yield accrual by claiming
     let claimed = test.claim_yield(&test.user1);
 
     // User should have received some yield
-    assert!(claimed > 0);
+    assert!(claimed > 0, "Should have claimed some yield");
 
     // User should have vault shares now
-    let vault_balance = test.vault.balance(&test.user1);
+    let vault_balance = test.vault_client.balance(&test.user1);
     assert_eq!(vault_balance, claimed);
 }
 
@@ -267,7 +319,7 @@ fn test_multiple_claims_accumulate_yield() {
     assert!(claimed2 > 0);
 
     // Total vault shares received
-    let total_vault_balance = test.vault.balance(&test.user1);
+    let total_vault_balance = test.vault_client.balance(&test.user1);
     assert_eq!(total_vault_balance, claimed1 + claimed2);
 }
 
@@ -360,11 +412,7 @@ fn test_burn_accrues_yield_before_burning() {
     assert_eq!(balance, mint_amount - burn_amount);
 
     // Total supply should be reduced
-    let total_supply: i128 = test.env.invoke_contract(
-        &test.yield_token,
-        &Symbol::new(&test.env, "total_supply"),
-        ().into_val(&test.env),
-    );
+    let total_supply = test.get_total_supply();
     assert_eq!(total_supply, mint_amount - burn_amount);
 }
 
@@ -382,7 +430,7 @@ fn test_no_yield_if_rate_unchanged() {
     // Should be zero
     assert_eq!(claimed, 0);
 
-    let vault_balance = test.vault.balance(&test.user1);
+    let vault_balance = test.vault_client.balance(&test.user1);
     assert_eq!(vault_balance, 0);
 }
 
@@ -409,7 +457,7 @@ fn test_proportional_yield_distribution() {
 
     // Allow 1% tolerance for rounding
     let ratio = claimed1 * 100 / claimed2;
-    assert!(ratio >= 190 && ratio <= 210); // Should be ~200
+    assert!(ratio >= 190 && ratio <= 210, "Ratio should be ~200, got {}", ratio);
 }
 
 #[test]
@@ -435,4 +483,74 @@ fn test_mint_to_existing_user_preserves_high_water_mark() {
     // Should have accrued yield from the first mint
     let accrued = test.get_accrued_yield(&test.user1);
     assert!(accrued > 0);
+}
+
+#[test]
+fn test_sep41_balance_function() {
+    let test = YieldTokenTest::setup();
+
+    let mint_amount = 1_000_000i128;
+    let exchange_rate = 1_000_000i128;
+
+    test.mint_yt(&test.user1, mint_amount, exchange_rate);
+
+    // Test that balance function works (SEP-41 standard)
+    let balance = test.get_balance(&test.user1);
+    assert_eq!(balance, mint_amount);
+}
+
+#[test]
+fn test_total_supply_tracking() {
+    let test = YieldTokenTest::setup();
+
+    let initial_supply = test.get_total_supply();
+    assert_eq!(initial_supply, 0);
+
+    let mint_amount = 1_000_000i128;
+    let exchange_rate = 1_000_000i128;
+
+    test.mint_yt(&test.user1, mint_amount, exchange_rate);
+    assert_eq!(test.get_total_supply(), mint_amount);
+
+    test.mint_yt(&test.user2, mint_amount, exchange_rate);
+    assert_eq!(test.get_total_supply(), mint_amount * 2);
+}
+
+#[test]
+#[should_panic(expected = "Insufficient balance")]
+fn test_transfer_insufficient_balance() {
+    let test = YieldTokenTest::setup();
+
+    let mint_amount = 1_000i128;
+    let exchange_rate = 1_000_000i128;
+    test.mint_yt(&test.user1, mint_amount, exchange_rate);
+
+    // Try to transfer more than balance
+    test.transfer(&test.user1, &test.user2, mint_amount + 1);
+}
+
+#[test]
+#[should_panic(expected = "Insufficient balance")]
+fn test_burn_insufficient_balance() {
+    let test = YieldTokenTest::setup();
+
+    let mint_amount = 1_000i128;
+    let exchange_rate = 1_000_000i128;
+    test.mint_yt(&test.user1, mint_amount, exchange_rate);
+
+    // Try to burn more than balance
+    test.env.invoke_contract::<()>(
+        &test.yield_token,
+        &Symbol::new(&test.env, "burn"),
+        (&test.user1, mint_amount + 1).into_val(&test.env),
+    );
+}
+
+#[test]
+fn test_zero_balance_user_can_claim() {
+    let test = YieldTokenTest::setup();
+
+    // User with no balance should be able to call claim_yield without panic
+    let claimed = test.claim_yield(&test.user1);
+    assert_eq!(claimed, 0);
 }
