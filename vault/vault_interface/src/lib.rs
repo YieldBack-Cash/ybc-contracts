@@ -8,4 +8,11 @@ use soroban_sdk::{contractclient, Address, Env};
 pub trait VaultTrait {
     fn __constructor(e: Env, asset: Address, decimals_offset: u32, strategy: Address);
     fn convert_to_assets(e: &Env, shares: i128) -> i128;
+    fn deposit(
+        e: &Env,
+        assets: i128,
+        receiver: Address,
+        from: Address,
+        operator: Address,
+    ) -> i128;
 }

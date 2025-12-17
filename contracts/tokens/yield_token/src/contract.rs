@@ -1,19 +1,21 @@
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, token::TokenInterface, Address, Env, MuxedAddress, String,
+};
 use yield_manager_interface::YieldManagerClient;
 use crate::storage;
 
-pub trait YieldTokenTrait {
-    fn __constructor(env: Env, admin: Address, name: String, symbol: String);
+pub trait YieldTokenCustomTrait {
+    fn __constructor(env: Env, admin: Address, decimal: u32, name: String, symbol: String);
     fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128);
-    fn transfer(env: Env, from: Address, to: Address, amount: i128);
-    fn burn(env: Env, from: Address, amount: i128);
-    fn balance(env: Env, address: Address) -> i128;
     fn user_index(env: Env, address: Address) -> i128;
     fn accrued_yield(env: Env, address: Address) -> i128;
-    fn total_supply(env: Env) -> i128;
-    fn name(env: Env) -> String;
-    fn symbol(env: Env) -> String;
     fn claim_yield(env: Env, user: Address) -> i128;
+}
+
+fn check_nonnegative_amount(amount: i128) {
+    if amount < 0 {
+        panic!("negative amount is not allowed: {}", amount)
+    }
 }
 
 #[contract]
@@ -52,8 +54,8 @@ impl YieldToken {
         // This contract only update if rate increased to avoid unnecessary storage writes
         if current_rate > old_index {
             // Calculate pending yield in vault shares
-            // balance and rates are scaled by 1e6
-            let pending_yield = (balance * (current_rate - old_index)) / old_index / 1_000_000;
+            // balance and rates are scaled by 1e7
+            let pending_yield = (balance * (current_rate - old_index)) / old_index / 10_000_000;
             let current_accrued = storage::get_accrued_yield(env, user);
             storage::set_accrued_yield(env, user, current_accrued + pending_yield);
             storage::set_user_index(env, user, current_rate);
@@ -64,33 +66,34 @@ impl YieldToken {
     }
 }
 
+// SEP-41 TokenInterface implementation
 #[contractimpl]
-impl YieldTokenTrait for YieldToken {
-    fn __constructor(
-        env: Env,
-        admin: Address,
-        name: String,
-        symbol: String,
+impl TokenInterface for YieldToken {
+    fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
+        // Placeholder: YieldToken doesn't support allowances
+        0
+    }
+
+    fn approve(
+        _env: Env,
+        _from: Address,
+        _spender: Address,
+        _amount: i128,
+        _expiration_ledger: u32,
     ) {
-        storage::set_admin(&env, &admin);
-        storage::set_metadata(&env, name, symbol);
+        // Placeholder: YieldToken doesn't support approvals
+        panic!("approve not supported for YieldToken");
     }
 
-    fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128) {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
-
-        Self::accrue_yield(&env, &to, Some(exchange_rate));
-
-        let balance = storage::get_balance(&env, &to);
-        storage::set_balance(&env, &to, balance + amount);
-
-        let total_supply = storage::get_total_supply(&env);
-        storage::set_total_supply(&env, total_supply + amount);
+    fn balance(env: Env, id: Address) -> i128 {
+        storage::get_balance(&env, &id)
     }
 
-    fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+    fn transfer(env: Env, from: Address, to_muxed: MuxedAddress, amount: i128) {
         from.require_auth();
+        check_nonnegative_amount(amount);
+
+        let to: Address = to_muxed.address();
 
         let from_balance = storage::get_balance(&env, &from);
         if from_balance < amount {
@@ -106,8 +109,20 @@ impl YieldTokenTrait for YieldToken {
         storage::set_balance(&env, &to, to_balance + amount);
     }
 
+    fn transfer_from(
+        _env: Env,
+        _spender: Address,
+        _from: Address,
+        _to: Address,
+        _amount: i128,
+    ) {
+        // Placeholder: YieldToken doesn't support allowance-based transfers
+        panic!("transfer_from not supported for YieldToken");
+    }
+
     fn burn(env: Env, from: Address, amount: i128) {
         from.require_auth();
+        check_nonnegative_amount(amount);
 
         let balance = storage::get_balance(&env, &from);
         if balance < amount {
@@ -122,20 +137,13 @@ impl YieldTokenTrait for YieldToken {
         storage::set_total_supply(&env, total_supply - amount);
     }
 
-    fn balance(env: Env, address: Address) -> i128 {
-        storage::get_balance(&env, &address)
+    fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
+        // Placeholder: YieldToken doesn't support allowance-based burns
+        panic!("burn_from not supported for YieldToken");
     }
 
-    fn user_index(env: Env, address: Address) -> i128 {
-        storage::get_user_index(&env, &address)
-    }
-
-    fn accrued_yield(env: Env, address: Address) -> i128 {
-        storage::get_accrued_yield(&env, &address)
-    }
-
-    fn total_supply(env: Env) -> i128 {
-        storage::get_total_supply(&env)
+    fn decimals(env: Env) -> u32 {
+        storage::get_metadata(&env).decimal
     }
 
     fn name(env: Env) -> String {
@@ -144,6 +152,46 @@ impl YieldTokenTrait for YieldToken {
 
     fn symbol(env: Env) -> String {
         storage::get_metadata(&env).symbol
+    }
+}
+
+// Custom yield-specific functions
+#[contractimpl]
+impl YieldTokenCustomTrait for YieldToken {
+    fn __constructor(
+        env: Env,
+        admin: Address,
+        decimal: u32,
+        name: String,
+        symbol: String,
+    ) {
+        if decimal > 18 {
+            panic!("Decimal must not be greater than 18");
+        }
+        storage::set_admin(&env, &admin);
+        storage::set_metadata(&env, name, symbol, decimal);
+    }
+
+    fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128) {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+        check_nonnegative_amount(amount);
+
+        Self::accrue_yield(&env, &to, Some(exchange_rate));
+
+        let balance = storage::get_balance(&env, &to);
+        storage::set_balance(&env, &to, balance + amount);
+
+        let total_supply = storage::get_total_supply(&env);
+        storage::set_total_supply(&env, total_supply + amount);
+    }
+
+    fn user_index(env: Env, address: Address) -> i128 {
+        storage::get_user_index(&env, &address)
+    }
+
+    fn accrued_yield(env: Env, address: Address) -> i128 {
+        storage::get_accrued_yield(&env, &address)
     }
 
     fn claim_yield(env: Env, user: Address) -> i128 {
