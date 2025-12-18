@@ -4,14 +4,6 @@ use soroban_sdk::{
 use yield_manager_interface::YieldManagerClient;
 use crate::storage;
 
-pub trait YieldTokenCustomTrait {
-    fn __constructor(env: Env, admin: Address, decimal: u32, name: String, symbol: String);
-    fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128);
-    fn user_index(env: Env, address: Address) -> i128;
-    fn accrued_yield(env: Env, address: Address) -> i128;
-    fn claim_yield(env: Env, user: Address) -> i128;
-}
-
 fn check_nonnegative_amount(amount: i128) {
     if amount < 0 {
         panic!("negative amount is not allowed: {}", amount)
@@ -155,21 +147,24 @@ impl TokenInterface for YieldToken {
     }
 }
 
-// Custom yield-specific functions
+// Import the unified trait
+use yield_token_interface::YieldTokenTrait;
+
+// Custom yield-specific functions - now part of the unified trait
 #[contractimpl]
-impl YieldTokenCustomTrait for YieldToken {
+impl YieldTokenTrait for YieldToken {
     fn __constructor(
         env: Env,
         admin: Address,
-        decimal: u32,
+        decimals: u32,
         name: String,
         symbol: String,
     ) {
-        if decimal > 18 {
+        if decimals > 18 {
             panic!("Decimal must not be greater than 18");
         }
         storage::set_admin(&env, &admin);
-        storage::set_metadata(&env, name, symbol, decimal);
+        storage::set_metadata(&env, name, symbol, decimals);
     }
 
     fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128) {

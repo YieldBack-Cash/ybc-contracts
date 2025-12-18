@@ -53,7 +53,7 @@ impl YieldManagerTest {
         // Deploy yield manager
         let yield_manager_id = env.register(YieldManager, (&admin, &vault_addr, VaultType::Vault4626, maturity));
 
-        // Deploy PT and YT tokens
+        // Deploy PT and YT tokens TODO: Check the arguments with the actual constructors to make sure it's correct
         let pt_id = env.register(
             PrincipalToken,
             (

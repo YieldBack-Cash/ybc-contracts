@@ -4,7 +4,7 @@ use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType};
 use principal_token_interface::PrincipalTokenClient;
-use yield_token_interface::YieldTokenCustomClient;
+use yield_token_interface::YieldTokenClient;  // ← Now using the unified client
 
 #[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl};
@@ -146,8 +146,8 @@ impl YieldManagerTrait for YieldManager {
         let pt_client = PrincipalTokenClient::new(&env, &pt_addr);
         pt_client.mint(&from, &mint_amount);
 
-        // Mint YT tokens to user (shares * exchange_rate) using type-safe client
-        let yt_client = YieldTokenCustomClient::new(&env, &yt_addr);
+        // Mint YT tokens to user (shares * exchange_rate) using unified client
+        let yt_client = YieldTokenClient::new(&env, &yt_addr);
         yt_client.mint(&from, &mint_amount, &exchange_rate);
     }
 
