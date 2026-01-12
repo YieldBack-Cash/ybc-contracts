@@ -6,6 +6,7 @@ members = [
   "contracts/tokens/yield_token",
   "contracts/yield/yield_manager",
   "contracts/yield/yield_manager_interface",
+  "contracts/mocks/mock_vault",
   "vault/vault_interface",
   "amm",
 ]
