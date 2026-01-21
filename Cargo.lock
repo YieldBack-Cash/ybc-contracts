@@ -852,6 +852,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
+name = "mock_vault"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stellar-tokens",
+ "vault_interface",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1345,9 +1354,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-ledger-snapshot"
-version = "23.3.0"
+version = "23.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f778688aade32f689dd386878e7ff553ccd31f7de194da52db972a2a667baa8"
+checksum = "ba2424e0acf73a465a2a178ffbc70166fc65afdcd8318537ddd89c8d70e8e281"
 dependencies = [
  "serde",
  "serde_json",
@@ -1359,9 +1368,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-sdk"
-version = "23.3.0"
+version = "23.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ddf4cb462f95404af5f38bacd41f61285ca8af8099b0875ad2cdbb133690e4"
+checksum = "c98b52fc08da8e0edf29233f8c195c5500404139ba68026d4e717931bd354987"
 dependencies = [
  "arbitrary",
  "bytes-lit",
@@ -1383,9 +1392,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-sdk-macros"
-version = "23.3.0"
+version = "23.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632bdcd72882afa0f2490616944d63610e0d40e186aec74170cc5dd21f75df44"
+checksum = "6534066bc1a4cac83e536456d66def2299594879dacc1b71f0133dde3fa742bf"
 dependencies = [
  "darling 0.20.11",
  "heck",
@@ -1403,9 +1412,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-spec"
-version = "23.3.0"
+version = "23.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83e23eb9e61eb7831a169132982f18cd4664d0b109f72871ef25645cfe6a0a91"
+checksum = "12864bda598c4941907cf24efe33c361e712a333749a4afd5b37b56fbf2e3a30"
 dependencies = [
  "base64",
  "stellar-xdr",
@@ -1415,9 +1424,9 @@ dependencies = [
 
 [[package]]
 name = "soroban-spec-rust"
-version = "23.3.0"
+version = "23.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44a20e878c4f6c995541dce4269c52170f2655decc4e794ab70624b936adc1c7"
+checksum = "cef78773373ade35a667ea1e36df634de674e97c0ec5f2cd7e94c3fc524ee0de"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -1474,6 +1483,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stellar-contract-utils"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a918daa29a4cfc0fe97118a2425893a0336a33b436e8f70ca4b4f5c739f23e4"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "stellar-strkey"
 version = "0.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1481,6 +1499,16 @@ checksum = "ee1832fb50c651ad10f734aaf5d31ca5acdfb197a6ecda64d93fcdb8885af913"
 dependencies = [
  "crate-git-revision",
  "data-encoding",
+]
+
+[[package]]
+name = "stellar-tokens"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbc8be39a374a3520726017623d7c79d7d0530e626778619ba8f9462037e37aa"
+dependencies = [
+ "soroban-sdk",
+ "stellar-contract-utils",
 ]
 
 [[package]]
@@ -1775,6 +1803,7 @@ name = "yield_manager"
 version = "0.1.0"
 dependencies = [
  "defindex_interface",
+ "mock_vault",
  "principal_token",
  "principal_token_interface",
  "soroban-sdk",

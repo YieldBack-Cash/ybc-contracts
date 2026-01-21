@@ -1,5 +1,5 @@
 [package]
-name = "yield_manager"
+name = "mock_vault"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,18 +11,12 @@ default = ["contract"]
 contract = []
 
 [dependencies]
-principal_token_interface = { path = "../../tokens/principal_token_interface" }
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
-defindex_interface = { path = "../../../vault/defindex_interface" }
-yield_manager_interface = { path = "../yield_manager_interface" }
-yield_token_interface = { path = "../../tokens/yield_token_interface" }
+stellar-tokens = "0.6.0"
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-principal_token = { path = "../../tokens/principal_token" }
-yield_token = { path = "../../tokens/yield_token" }
-mock_vault = { path = "../../mocks/mock_vault" }
 
 [profile.release]
 opt-level = "z"
