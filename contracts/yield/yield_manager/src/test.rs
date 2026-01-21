@@ -2,23 +2,20 @@
 use crate::{YieldManager, VaultType};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token::{StellarAssetClient, TokenClient},
+    token::TokenClient,
     Address, Env, IntoVal, String, Symbol,
 };
 
 // Import contracts from the workspace
 use principal_token::PrincipalToken;
 use yield_token::YieldToken;
-
-const VAULT_WASM: &[u8] = include_bytes!("../../../../wasms/vault.wasm");
-const HOLD_STRATEGY_WASM: &[u8] = include_bytes!("../../../../wasms/hold_strategy.wasm");
+use mock_vault::MockVault;
 
 struct YieldManagerTest {
     env: Env,
     admin: Address,
     user1: Address,
     user2: Address,
-    underlying_asset_addr: Address,
     vault_addr: Address,
     yield_manager: Address,
     pt: Address,
@@ -35,16 +32,8 @@ impl YieldManagerTest {
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
 
-        // Create underlying asset
-        let underlying_admin = Address::generate(&env);
-        let underlying_asset_addr = env.register_stellar_asset_contract_v2(underlying_admin.clone());
-        let underlying_asset_addr = underlying_asset_addr.address();
-
-        // Deploy hold strategy from WASM (no constructor parameters)
-        let strategy_id = env.register(HOLD_STRATEGY_WASM, ());
-
-        // Deploy vault from WASM with constructor parameters (asset, decimals_offset, strategy)
-        let vault_addr = env.register(VAULT_WASM, (&underlying_asset_addr, 0u32, &strategy_id));
+        // Deploy mock vault
+        let vault_addr = env.register(MockVault, (&admin,));
 
         // Set maturity to 1000 seconds from now
         let current_time = env.ledger().timestamp();
@@ -84,7 +73,6 @@ impl YieldManagerTest {
             admin,
             user1,
             user2,
-            underlying_asset_addr,
             vault_addr,
             yield_manager: yield_manager_id,
             pt: pt_id,
@@ -93,17 +81,18 @@ impl YieldManagerTest {
         }
     }
 
-    fn mint_underlying(&self, to: &Address, amount: i128) {
-        let admin = StellarAssetClient::new(&self.env, &self.underlying_asset_addr);
-        admin.mint(to, &amount);
+    fn mint_vault_shares(&self, to: &Address, amount: i128) {
+        // Mint vault shares directly to the user (mock vault is also a token)
+        let vault_token = TokenClient::new(&self.env, &self.vault_addr);
+        vault_token.mint(to, &amount);
     }
 
-    fn vault_deposit(&self, user: &Address, assets: i128) -> i128 {
-        self.env.invoke_contract(
+    fn set_vault_exchange_rate(&self, rate: i128) {
+        self.env.invoke_contract::<()>(
             &self.vault_addr,
-            &Symbol::new(&self.env, "deposit"),
-            (assets, user, user, user).into_val(&self.env),
-        )
+            &Symbol::new(&self.env, "set_exchange_rate"),
+            (rate,).into_val(&self.env),
+        );
     }
 
     fn vault_balance(&self, user: &Address) -> i128 {
@@ -158,10 +147,9 @@ fn test_initialization() {
 fn test_deposit_mints_pt_and_yt() {
     let test = YieldManagerTest::setup();
 
-    // User deposits underlying to vault
-    let deposit_amount = 1_000_0000i128; // 1000 units with 7 decimals
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    // Mint vault shares to user
+    let shares = 1_000_0000i128; // 1000 shares with 7 decimals
+    test.mint_vault_shares(&test.user1, shares);
 
     // User deposits vault shares to yield manager
     test.env.invoke_contract::<()>(
@@ -196,10 +184,10 @@ fn test_exchange_rate_increases_over_time() {
         ().into_val(&test.env),
     );
 
-    // Advance time by 100 seconds
-    test.advance_time(100);
+    // Simulate yield by increasing vault exchange rate
+    test.set_vault_exchange_rate(1_200_0000); // Increase from 1.0 to 1.2
 
-    // Exchange rate should increase (vault accrues yield over time)
+    // Exchange rate should increase
     let new_rate: i128 = test.env.invoke_contract(
         &test.yield_manager,
         &Symbol::new(&test.env, "get_exchange_rate"),
@@ -214,9 +202,8 @@ fn test_yt_accrues_yield_over_time() {
     let test = YieldManagerTest::setup();
 
     // User deposits
-    let deposit_amount = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    let shares = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -231,8 +218,8 @@ fn test_yt_accrues_yield_over_time() {
     );
     assert_eq!(initial_accrued, 0);
 
-    // Advance time to accrue yield
-    test.advance_time(100);
+    // Simulate yield by increasing vault exchange rate
+    test.set_vault_exchange_rate(1_200_0000); // Increase from 1.0 to 1.2
 
     // Trigger yield accrual by calling claim_yield
     let claimed: i128 = test.env.invoke_contract(
@@ -286,23 +273,19 @@ fn test_exchange_rate_locks_at_maturity() {
     assert_eq!(rate_after_maturity, rate_at_maturity);
 }
 
-// Note: This test is disabled because the real vault (with hold strategy) doesn't have
-// a way to simulate decreasing exchange rates like the mock vault did.
-// The high water mark feature can be tested with a different vault implementation.
 #[test]
-#[ignore]
 fn test_exchange_rate_high_water_mark() {
     let test = YieldManagerTest::setup();
 
-    // Get initial exchange rate
+    // Get initial exchange rate (1.0)
     let initial_rate: i128 = test.env.invoke_contract(
         &test.yield_manager,
         &Symbol::new(&test.env, "get_exchange_rate"),
         ().into_val(&test.env),
     );
 
-    // Advance time to increase the vault's exchange rate
-    test.advance_time(100);
+    // Increase vault exchange rate to 1.5
+    test.set_vault_exchange_rate(1_500_0000);
 
     // Get the higher rate
     let higher_rate: i128 = test.env.invoke_contract(
@@ -312,6 +295,20 @@ fn test_exchange_rate_high_water_mark() {
     );
 
     assert!(higher_rate > initial_rate);
+
+    // Now decrease vault exchange rate to 1.2 (simulating a loss)
+    test.set_vault_exchange_rate(1_200_0000);
+
+    // Get rate - should still be the high water mark (1.5), not the decreased rate (1.2)
+    let rate_after_decrease: i128 = test.env.invoke_contract(
+        &test.yield_manager,
+        &Symbol::new(&test.env, "get_exchange_rate"),
+        ().into_val(&test.env),
+    );
+
+    // The rate should be locked at the higher value (high water mark)
+    assert_eq!(rate_after_decrease, higher_rate);
+    assert!(rate_after_decrease > 1_200_0000);
 }
 
 #[test]
@@ -320,9 +317,8 @@ fn test_cannot_redeem_principal_before_maturity() {
     let test = YieldManagerTest::setup();
 
     // User deposits
-    let deposit_amount = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    let shares = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -344,9 +340,8 @@ fn test_redeem_principal_after_maturity() {
     let test = YieldManagerTest::setup();
 
     // User deposits
-    let deposit_amount = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    let shares = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -379,9 +374,8 @@ fn test_multiple_users_deposit() {
     let test = YieldManagerTest::setup();
 
     // User1 deposits
-    let deposit1 = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit1);
-    let shares1 = test.vault_deposit(&test.user1, deposit1);
+    let shares1 = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares1);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -389,9 +383,8 @@ fn test_multiple_users_deposit() {
     );
 
     // User2 deposits
-    let deposit2 = 2_000_0000i128;
-    test.mint_underlying(&test.user2, deposit2);
-    let shares2 = test.vault_deposit(&test.user2, deposit2);
+    let shares2 = 2_000_0000i128;
+    test.mint_vault_shares(&test.user2, shares2);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -412,26 +405,24 @@ fn test_yield_distribution_proportional() {
     let test = YieldManagerTest::setup();
 
     // Both users deposit equal amounts
-    let deposit_amount = 1_000_0000i128;
+    let shares = 1_000_0000i128;
 
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares1 = test.vault_deposit(&test.user1, deposit_amount);
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
-        (&test.user1, shares1).into_val(&test.env),
+        (&test.user1, shares).into_val(&test.env),
     );
 
-    test.mint_underlying(&test.user2, deposit_amount);
-    let shares2 = test.vault_deposit(&test.user2, deposit_amount);
+    test.mint_vault_shares(&test.user2, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
-        (&test.user2, shares2).into_val(&test.env),
+        (&test.user2, shares).into_val(&test.env),
     );
 
-    // Advance time to accrue yield
-    test.advance_time(200);
+    // Simulate yield by increasing vault exchange rate
+    test.set_vault_exchange_rate(1_200_0000);
 
     // Both claim yield
     let claimed1: i128 = test.env.invoke_contract(
@@ -460,9 +451,8 @@ fn test_pt_transferable() {
     let test = YieldManagerTest::setup();
 
     // User1 deposits
-    let deposit_amount = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    let shares = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),
@@ -492,9 +482,8 @@ fn test_yt_transferable() {
     let test = YieldManagerTest::setup();
 
     // User1 deposits
-    let deposit_amount = 1_000_0000i128;
-    test.mint_underlying(&test.user1, deposit_amount);
-    let shares = test.vault_deposit(&test.user1, deposit_amount);
+    let shares = 1_000_0000i128;
+    test.mint_vault_shares(&test.user1, shares);
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "deposit"),

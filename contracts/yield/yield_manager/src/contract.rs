@@ -4,7 +4,7 @@ use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType};
 use principal_token_interface::PrincipalTokenClient;
-use yield_token_interface::YieldTokenClient;  // ← Now using the unified client
+use yield_token_interface::YieldTokenClient;
 
 #[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl};
