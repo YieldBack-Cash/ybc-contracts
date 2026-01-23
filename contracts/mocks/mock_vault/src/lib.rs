@@ -3,4 +3,4 @@
 mod storage;
 mod contract;
 
-pub use contract::{MockVault, MockVaultTrait};
+pub use contract::{MockVault, MockVaultTrait, MockVaultClient};

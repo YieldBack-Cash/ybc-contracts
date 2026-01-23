@@ -9,7 +9,7 @@ use soroban_sdk::{
 // Import contracts from the workspace
 use principal_token::PrincipalToken;
 use yield_token::YieldToken;
-use mock_vault::MockVault;
+use mock_vault::{MockVault, MockVaultClient};
 
 struct YieldManagerTest {
     env: Env,
@@ -33,7 +33,15 @@ impl YieldManagerTest {
         let user2 = Address::generate(&env);
 
         // Deploy mock vault
-        let vault_addr = env.register(MockVault, (&admin,));
+        let vault_addr = env.register(
+            MockVault,
+            (
+                &admin,
+                String::from_str(&env, "Mock Vault Token"),
+                String::from_str(&env, "MVT"),
+                7u32,
+            ),
+        );
 
         // Set maturity to 1000 seconds from now
         let current_time = env.ledger().timestamp();
@@ -42,13 +50,14 @@ impl YieldManagerTest {
         // Deploy yield manager
         let yield_manager_id = env.register(YieldManager, (&admin, &vault_addr, VaultType::Vault4626, maturity));
 
-        // Deploy PT and YT tokens TODO: Check the arguments with the actual constructors to make sure it's correct
+        // Deploy PT and YT tokens
         let pt_id = env.register(
             PrincipalToken,
             (
                 &yield_manager_id,
                 String::from_str(&env, "Principal Token"),
                 String::from_str(&env, "PT"),
+                7u32,
             ),
         );
 
@@ -56,6 +65,7 @@ impl YieldManagerTest {
             YieldToken,
             (
                 &yield_manager_id,
+                7u32,
                 String::from_str(&env, "Yield Token"),
                 String::from_str(&env, "YT"),
             ),
@@ -82,17 +92,14 @@ impl YieldManagerTest {
     }
 
     fn mint_vault_shares(&self, to: &Address, amount: i128) {
-        // Mint vault shares directly to the user (mock vault is also a token)
-        let vault_token = TokenClient::new(&self.env, &self.vault_addr);
-        vault_token.mint(to, &amount);
+        // Mint vault shares using the mock vault client
+        let vault_client = MockVaultClient::new(&self.env, &self.vault_addr);
+        vault_client.mint(to, &amount);
     }
 
     fn set_vault_exchange_rate(&self, rate: i128) {
-        self.env.invoke_contract::<()>(
-            &self.vault_addr,
-            &Symbol::new(&self.env, "set_exchange_rate"),
-            (rate,).into_val(&self.env),
-        );
+        let vault_client = MockVaultClient::new(&self.env, &self.vault_addr);
+        vault_client.set_exchange_rate(&rate);
     }
 
     fn vault_balance(&self, user: &Address) -> i128 {
