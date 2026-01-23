@@ -856,6 +856,7 @@ name = "mock_vault"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "stellar-macros",
  "stellar-tokens",
  "vault_interface",
 ]
@@ -1489,6 +1490,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a918daa29a4cfc0fe97118a2425893a0336a33b436e8f70ca4b4f5c739f23e4"
 dependencies = [
  "soroban-sdk",
+]
+
+[[package]]
+name = "stellar-macros"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bb4b3dd8f599646dab3e949ba2febc3a060a194bc1a3711ddd5e7c275acfe5e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.108",
 ]
 
 [[package]]
