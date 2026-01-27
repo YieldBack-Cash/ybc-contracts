@@ -11,4 +11,5 @@ pub trait YieldTokenTrait: TokenInterface {
     fn user_index(env: Env, address: Address) -> i128;
     fn accrued_yield(env: Env, address: Address) -> i128;
     fn claim_yield(env: Env, user: Address) -> i128;
+    fn total_supply(env: Env) -> i128;
 }

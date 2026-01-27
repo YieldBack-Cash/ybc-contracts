@@ -170,8 +170,8 @@ fn test_deposit_mints_pt_and_yt() {
     let yt_balance = test.get_yt_balance(&test.user1);
 
     // Both should equal shares * exchange_rate
-    // exchange_rate is 1_000_000 (1.0 scaled by 1e6) initially
-    let expected_balance = shares * 1_000_000;
+    // exchange_rate from convert_to_assets(1) is 1_000_0000 (1.0 scaled by 1e7)
+    let expected_balance = shares * 1_000_0000;
     assert_eq!(pt_balance, expected_balance);
     assert_eq!(yt_balance, expected_balance);
 
@@ -247,8 +247,12 @@ fn test_yt_accrues_yield_over_time() {
 fn test_exchange_rate_locks_at_maturity() {
     let test = YieldManagerTest::setup();
 
-    // Get exchange rate before maturity
+    // Simulate yield accumulation before maturity
+    test.set_vault_exchange_rate(1_200_0000); // 1.2x
+
+    // Advance time but stay before maturity
     test.advance_time(500); // Halfway to maturity
+
     let rate_before_maturity: i128 = test.env.invoke_contract(
         &test.yield_manager,
         &Symbol::new(&test.env, "get_exchange_rate"),
@@ -258,25 +262,29 @@ fn test_exchange_rate_locks_at_maturity() {
     // Advance past maturity
     test.advance_time(600); // Now past maturity (500 + 600 > 1000)
 
-    // Get exchange rate at maturity (should be locked)
+    // Get exchange rate right after crossing maturity (should be locked at 1.2x)
     let rate_at_maturity: i128 = test.env.invoke_contract(
         &test.yield_manager,
         &Symbol::new(&test.env, "get_exchange_rate"),
         ().into_val(&test.env),
     );
 
-    // Rate should be higher than before maturity
-    assert!(rate_at_maturity > rate_before_maturity);
+    // Rates should be equal (no change occurred to vault rate yet)
+    assert_eq!(rate_at_maturity, rate_before_maturity);
+
+    // Now simulate additional yield AFTER maturity
+    test.set_vault_exchange_rate(1_500_0000); // 1.5x
 
     // Advance time further
     test.advance_time(1000);
 
-    // Rate should still be the same (locked at maturity)
+    // Rate should still be locked at 1.2x, not updated to 1.5x
     let rate_after_maturity: i128 = test.env.invoke_contract(
         &test.yield_manager,
         &Symbol::new(&test.env, "get_exchange_rate"),
         ().into_val(&test.env),
     );
+
     assert_eq!(rate_after_maturity, rate_at_maturity);
 }
 

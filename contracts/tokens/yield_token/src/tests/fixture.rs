@@ -1,17 +1,15 @@
 use crate::YieldToken;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token::{StellarAssetClient, TokenClient},
+    token::TokenClient,
     Address, Env, IntoVal, String, Symbol,
 };
 
 // Import contracts from the workspace
+use mock_vault::{MockVault, MockVaultClient};
 use principal_token::PrincipalToken;
 use yield_manager::YieldManager;
 use yield_manager_interface::VaultType;
-use vault_interface::VaultContractClient;
-
-const VAULT_WASM: &[u8] = include_bytes!("../../../../../wasms/vault.wasm");
 
 /// Shared test fixture for YieldToken tests
 pub struct YieldTokenTest<'a> {
@@ -23,7 +21,6 @@ pub struct YieldTokenTest<'a> {
     pub yield_manager: Address,
     pub yield_token: Address,
     pub pt: Address,
-    pub underlying_asset: TokenClient<'a>,
     pub maturity: u64,
 }
 
@@ -36,14 +33,18 @@ impl<'a> YieldTokenTest<'a> {
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
 
-        // Create underlying asset
-        let underlying_admin = Address::generate(&env);
-        let underlying_asset_addr = env.register_stellar_asset_contract_v2(underlying_admin.clone());
-        let underlying_asset = TokenClient::new(&env, &underlying_asset_addr.address());
-
-        // Deploy vault from WASM with constructor parameters (asset, decimals_offset)
-        let vault_address = env.register(VAULT_WASM, (&underlying_asset.address, &0u32));
+        // Deploy mock vault
+        let vault_address = env.register(
+            MockVault,
+            (
+                &admin,
+                &String::from_str(&env, "Mock Vault"),
+                &String::from_str(&env, "mVAULT"),
+                &7u32,
+            ),
+        );
         let vault_client = TokenClient::new(&env, &vault_address);
+        let mock_vault_client = MockVaultClient::new(&env, &vault_address);
 
         // Set maturity to 1000 seconds from now
         let current_time = env.ledger().timestamp();
@@ -55,22 +56,8 @@ impl<'a> YieldTokenTest<'a> {
             (&admin, &vault_address, &VaultType::Vault4626, &maturity),
         );
 
-        // Mint underlying assets to test depositor
-        let test_depositor = Address::generate(&env);
-        let underlying_admin_client = StellarAssetClient::new(&env, &underlying_asset.address);
-        underlying_admin_client.mint(&test_depositor, &1_000_000_0000000i128);
-
-        // Deposit to vault to get shares using VaultContractClient
-        let vault_contract_client = VaultContractClient::new(&env, &vault_address);
-        vault_contract_client.deposit(
-            &1_000_000_0000000i128,
-            &test_depositor,
-            &test_depositor,
-            &test_depositor,
-        );
-
-        // Transfer vault shares to yield manager for distributing yield
-        vault_client.transfer(&test_depositor, &yield_manager_id, &1_000_000_0000000i128);
+        // Mint vault shares directly to yield manager for distributing yield
+        mock_vault_client.mint(&yield_manager_id, &1_000_000_0000000i128);
 
         // Deploy PT token
         let pt_id = env.register(
@@ -110,7 +97,6 @@ impl<'a> YieldTokenTest<'a> {
             yield_manager: yield_manager_id,
             yield_token: yt_id,
             pt: pt_id,
-            underlying_asset,
             maturity,
         }
     }
@@ -215,5 +201,10 @@ impl<'a> YieldTokenTest<'a> {
             &Symbol::new(&self.env, "symbol"),
             ().into_val(&self.env),
         )
+    }
+
+    pub fn set_vault_exchange_rate(&self, rate: i128) {
+        let mock_vault_client = MockVaultClient::new(&self.env, &self.vault_address);
+        mock_vault_client.set_exchange_rate(&rate);
     }
 }
