@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env};
+use crate::contract::WasmHashes;
 
 // Storage keys
 const ADMIN_KEY: &str = "admin";
@@ -7,6 +8,7 @@ const CURRENT_PT_TOKEN_KEY: &str = "cur_pt";
 const CURRENT_YT_TOKEN_KEY: &str = "cur_yt";
 const CURRENT_PT_POOL_KEY: &str = "cur_pt_pool";
 const CURRENT_YT_POOL_KEY: &str = "cur_yt_pool";
+const WASM_HASHES_KEY: &str = "wasm_h";
 
 // Admin functions
 pub fn set_admin(env: &Env, admin: &Address) {
@@ -63,4 +65,13 @@ pub fn set_current_yt_pool(env: &Env, yt_pool: &Address) {
 
 pub fn get_current_yt_pool(env: &Env) -> Option<Address> {
     env.storage().instance().get(&CURRENT_YT_POOL_KEY)
+}
+
+// WASM hashes
+pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
+    env.storage().instance().set(&WASM_HASHES_KEY, hashes);
+}
+
+pub fn get_wasm_hashes(env: &Env) -> WasmHashes {
+    env.storage().instance().get(&WASM_HASHES_KEY).expect("WASM hashes not set")
 }

@@ -3,9 +3,8 @@ use soroban_sdk::{contractclient, Address, Env, String};
 use soroban_sdk::token::TokenInterface;
 
 #[contractclient(name = "PrincipalTokenClient")]
-pub trait PrincipalTokenTrait: TokenInterface {
+pub trait PrincipalTokenTrait: TokenInterface { //TODO: PT token is not implementing the correct trait
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
-    // Custom mint function for yield manager control
     fn mint(env: Env, to: Address, amount: i128);
 }

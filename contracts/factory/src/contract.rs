@@ -1,17 +1,21 @@
-use soroban_sdk::{Address, BytesN, Env, String};
+use soroban_sdk::{contracttype, Address, BytesN, Env, String};
 use crate::storage;
 use yield_manager_interface::YieldManagerClient;
 
 #[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl};
 
-const PT_WASM_HASH: [u8; 32] = [0u8; 32];
-const YT_WASM_HASH: [u8; 32] = [0u8; 32];
-const YM_WASM_HASH: [u8; 32] = [0u8; 32];
-const AMM_WASM_HASH: [u8; 32] = [0u8; 32];
+#[contracttype]
+#[derive(Clone)]
+pub struct WasmHashes {
+    pub pt: BytesN<32>,
+    pub yt: BytesN<32>,
+    pub ym: BytesN<32>,
+    pub amm: BytesN<32>,
+}
 
 pub trait FactoryTrait {
-    fn __constructor(env: Env, admin: Address);
+    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes);
 
     fn deploy_yield_manager(
         env: Env,
@@ -44,8 +48,9 @@ pub struct Factory;
 #[cfg(feature = "contract")]
 #[contractimpl]
 impl FactoryTrait for Factory {
-    fn __constructor(env: Env, admin: Address) {
+    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes) {
         storage::set_admin(&env, &admin);
+        storage::set_wasm_hashes(&env, &wasm_hashes);
     }
 
     fn deploy_yield_manager(
@@ -56,10 +61,10 @@ impl FactoryTrait for Factory {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        // Create WASM hash BytesN from constants
-        let pt_wasm_hash = BytesN::from_array(&env, &PT_WASM_HASH);
-        let yt_wasm_hash = BytesN::from_array(&env, &YT_WASM_HASH);
-        let ym_wasm_hash = BytesN::from_array(&env, &YM_WASM_HASH);
+        let wasm_hashes = storage::get_wasm_hashes(&env);
+        let pt_wasm_hash = wasm_hashes.pt;
+        let yt_wasm_hash = wasm_hashes.yt;
+        let ym_wasm_hash = wasm_hashes.ym;
 
         // Deploy yield manager first
         // Use a unique salt based on vault address and maturity
@@ -128,7 +133,7 @@ impl FactoryTrait for Factory {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        let amm_wasm_hash = BytesN::from_array(&env, &AMM_WASM_HASH);
+        let amm_wasm_hash = storage::get_wasm_hashes(&env).amm;
 
         // Deploy PT/Vault Share AMM pool
         let pt_pool_salt = BytesN::from_array(&env, &[2u8; 32]);

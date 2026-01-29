@@ -3,4 +3,4 @@
 mod storage;
 mod contract;
 
-pub use contract::{Factory, FactoryTrait};
+pub use contract::{Factory, FactoryTrait, WasmHashes};
