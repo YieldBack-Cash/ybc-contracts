@@ -62,7 +62,7 @@ impl YieldToken {
 #[contractimpl]
 impl TokenInterface for YieldToken {
     fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
-        // Placeholder: YieldToken doesn't support allowances
+        // YieldToken doesn't support this function
         0
     }
 
@@ -73,7 +73,7 @@ impl TokenInterface for YieldToken {
         _amount: i128,
         _expiration_ledger: u32,
     ) {
-        // Placeholder: YieldToken doesn't support approvals
+        // YieldToken doesn't support this function
         panic!("approve not supported for YieldToken");
     }
 
@@ -108,7 +108,7 @@ impl TokenInterface for YieldToken {
         _to: Address,
         _amount: i128,
     ) {
-        // Placeholder: YieldToken doesn't support allowance-based transfers
+        // YieldToken doesn't support this function
         panic!("transfer_from not supported for YieldToken");
     }
 
@@ -130,7 +130,7 @@ impl TokenInterface for YieldToken {
     }
 
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
-        // Placeholder: YieldToken doesn't support allowance-based burns
+        // YieldToken doesn't support this function
         panic!("burn_from not supported for YieldToken");
     }
 
@@ -147,10 +147,8 @@ impl TokenInterface for YieldToken {
     }
 }
 
-// Import the unified trait
 use yield_token_interface::YieldTokenTrait;
 
-// Custom yield-specific functions - now part of the unified trait
 #[contractimpl]
 impl YieldTokenTrait for YieldToken {
     fn __constructor(
@@ -207,5 +205,9 @@ impl YieldTokenTrait for YieldToken {
         yield_manager_client.distribute_yield(&user, &claimable);
 
         claimable
+    }
+
+    fn total_supply(env: Env) -> i128 {
+        storage::get_total_supply(&env)
     }
 }

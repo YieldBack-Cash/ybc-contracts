@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, Env, MuxedAddress, String};
 use stellar_tokens::fungible::{Base, FungibleToken};
 use stellar_tokens::fungible::burnable::FungibleBurnable;
 use crate::storage;
@@ -38,7 +38,7 @@ impl MockVaultTrait for MockVault {
 
     fn convert_to_assets(env: Env, shares: i128) -> i128 {
         let exchange_rate = storage::get_exchange_rate(&env);
-        shares * exchange_rate / 1_000_0000
+        shares * exchange_rate
     }
 
     /// Mint tokens to an address (admin only for mock purposes)
@@ -49,15 +49,53 @@ impl MockVaultTrait for MockVault {
     }
 }
 
-// Implement the FungibleToken trait
-// This provides: balance, transfer, transfer_from, approve, allowance,
-// total_supply, name, symbol, decimals
 #[contractimpl]
 impl FungibleToken for MockVault {
     type ContractType = Base;
+    fn total_supply(e: &Env) -> i128 {
+        Base::total_supply(e)
+    }
+
+    fn balance(e: &Env, account: Address) -> i128 {
+        Base::balance(e, &account)
+    }
+
+    fn allowance(e: &Env, owner: Address, spender: Address) -> i128 {
+        Base::allowance(e, &owner, &spender)
+    }
+
+    fn transfer(e: &Env, from: Address, to: MuxedAddress, amount: i128) {
+        Base::transfer(e, &from, &to, amount)  // THIS is the missing transfer function
+    }
+
+    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, amount: i128) {
+        Base::transfer_from(e, &spender, &from, &to, amount)
+    }
+
+    fn approve(e: &Env, owner: Address, spender: Address, amount: i128, live_until_ledger: u32) {
+        Base::approve(e, &owner, &spender, amount, live_until_ledger)
+    }
+
+    fn decimals(e: &Env) -> u32 {
+        Base::decimals(e)
+    }
+
+    fn name(e: &Env) -> String {
+        Base::name(e)
+    }
+
+    fn symbol(e: &Env) -> String {
+        Base::symbol(e)
+    }
 }
 
-// Implement FungibleBurnable for SEP-41 compliance
-// This provides: burn, burn_from
 #[contractimpl]
-impl FungibleBurnable for MockVault {}
+impl FungibleBurnable for MockVault {
+    fn burn(e: &Env, from: Address, amount: i128) {
+        Base::burn(e, &from, amount)
+    }
+
+    fn burn_from(e: &Env, spender: Address, from: Address, amount: i128) {
+        Base::burn_from(e, &spender, &from, amount)
+    }
+}

@@ -44,13 +44,13 @@ fn test_yield_accrues_when_exchange_rate_increases() {
     let initial_accrued = test.get_accrued_yield(&test.user1);
     assert_eq!(initial_accrued, 0);
 
-    // Advance time to increase exchange rate
-    // The exact time depends on your vault's yield rate
-    test.advance_time(100);
+    // Simulate yield accrual by increasing the exchange rate on the mock vault
+    let new_rate = initial_rate + 100_0000; // Increase by 0.01 (scaled by 1e7)
+    test.set_vault_exchange_rate(new_rate);
 
     // Verify exchange rate increased
-    let new_rate = test.get_exchange_rate();
-    assert!(new_rate > initial_rate, "Exchange rate should increase");
+    let fetched_rate = test.get_exchange_rate();
+    assert!(fetched_rate > initial_rate, "Exchange rate should increase");
 
     // Trigger yield accrual by claiming
     let claimed = test.claim_yield(&test.user1);
@@ -74,9 +74,9 @@ fn test_user_index_updates_after_accrual() {
     let initial_index = test.get_user_index(&test.user1);
     assert_eq!(initial_index, initial_rate);
 
-    // Increase rate by advancing time
-    test.advance_time(200);
-    let new_rate = test.get_exchange_rate();
+    // Increase rate on mock vault
+    let new_rate = initial_rate + 200_0000; // Increase by 0.02 (scaled by 1e7)
+    test.set_vault_exchange_rate(new_rate);
 
     // Claim to trigger accrual
     test.claim_yield(&test.user1);
@@ -95,12 +95,14 @@ fn test_multiple_claims_accumulate_yield() {
     test.mint_yt(&test.user1, mint_amount, initial_rate);
 
     // First increase
-    test.advance_time(100);
+    let rate1 = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(rate1);
     let claimed1 = test.claim_yield(&test.user1);
     assert!(claimed1 > 0);
 
     // Second increase
-    test.advance_time(100);
+    let rate2 = rate1 + 100_0000;
+    test.set_vault_exchange_rate(rate2);
     let claimed2 = test.claim_yield(&test.user1);
     assert!(claimed2 > 0);
 
@@ -119,8 +121,8 @@ fn test_transfer_accrues_yield_for_both_parties() {
     test.mint_yt(&test.user1, mint_amount, initial_rate);
 
     // Increase rate before transfer
-    test.advance_time(100);
-    let new_rate = test.get_exchange_rate();
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
 
     // Transfer to user2
     let transfer_amount = 1_000_000_000_000i128;
@@ -152,8 +154,8 @@ fn test_transfer_to_existing_user_preserves_index() {
     test.mint_yt(&test.user2, 1_000_000_000_000i128, initial_rate);
 
     // Increase rate
-    test.advance_time(100);
-    let new_rate = test.get_exchange_rate();
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
 
     // Transfer from user1 to user2
     test.transfer(&test.user1, &test.user2, 500_000_000_000i128);
@@ -179,7 +181,8 @@ fn test_burn_accrues_yield_before_burning() {
     test.mint_yt(&test.user1, mint_amount, initial_rate);
 
     // Increase rate
-    test.advance_time(100);
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
 
     // Burn tokens
     let burn_amount = 500_000_000_000i128;
@@ -227,7 +230,8 @@ fn test_proportional_yield_distribution() {
     test.mint_yt(&test.user2, 1_000_000_000_000i128, initial_rate);
 
     // Increase rate
-    test.advance_time(100);
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
 
     // Both claim
     let claimed1 = test.claim_yield(&test.user1);
@@ -252,8 +256,8 @@ fn test_mint_to_existing_user_preserves_high_water_mark() {
     test.mint_yt(&test.user1, 1_000_000_000_000i128, initial_rate);
 
     // Rate increases
-    test.advance_time(100);
-    let new_rate = test.get_exchange_rate();
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
 
     // User gets more YT (should preserve their high water mark at new rate)
     test.mint_yt(&test.user1, 1_000_000_000_000i128, new_rate);

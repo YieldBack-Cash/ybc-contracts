@@ -1836,6 +1836,7 @@ dependencies = [
 name = "yield_token"
 version = "0.1.0"
 dependencies = [
+ "mock_vault",
  "principal_token",
  "soroban-sdk",
  "vault_interface",
