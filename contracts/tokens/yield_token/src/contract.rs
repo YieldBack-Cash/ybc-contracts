@@ -154,9 +154,9 @@ impl YieldTokenTrait for YieldToken {
     fn __constructor(
         env: Env,
         admin: Address,
-        decimals: u32,
         name: String,
         symbol: String,
+        decimals: u32,
     ) {
         if decimals > 18 {
             panic!("Decimal must not be greater than 18");

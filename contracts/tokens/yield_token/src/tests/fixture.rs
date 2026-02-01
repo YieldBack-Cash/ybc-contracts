@@ -75,9 +75,9 @@ impl<'a> YieldTokenTest<'a> {
             YieldToken,
             (
                 &yield_manager_id,
-                &7u32,
                 &String::from_str(&env, "Yield Token"),
                 &String::from_str(&env, "YT"),
+                &7u32,
             ),
         );
 

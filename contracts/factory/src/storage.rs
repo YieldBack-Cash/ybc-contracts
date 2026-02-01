@@ -9,6 +9,7 @@ const CURRENT_YT_TOKEN_KEY: &str = "cur_yt";
 const CURRENT_PT_POOL_KEY: &str = "cur_pt_pool";
 const CURRENT_YT_POOL_KEY: &str = "cur_yt_pool";
 const WASM_HASHES_KEY: &str = "wasm_h";
+const SALT_COUNTER_KEY: &str = "salt_ctr";
 
 // Admin functions
 pub fn set_admin(env: &Env, admin: &Address) {
@@ -74,4 +75,13 @@ pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
 
 pub fn get_wasm_hashes(env: &Env) -> WasmHashes {
     env.storage().instance().get(&WASM_HASHES_KEY).expect("WASM hashes not set")
+}
+
+// Deploy counter - increments with each contract deployment for unique salts
+pub fn get_salt_counter(env: &Env) -> u32 {
+    env.storage().instance().get(&SALT_COUNTER_KEY).unwrap_or(0)
+}
+
+pub fn set_salt_counter(env: &Env, counter: u32) {
+    env.storage().instance().set(&SALT_COUNTER_KEY, &counter);
 }

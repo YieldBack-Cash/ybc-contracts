@@ -1,4 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, String};
+use soroban_token_sdk::{metadata::TokenMetadata, TokenUtils};
 
 // Storage TTL constants
 pub const DAY_IN_LEDGERS: u32 = 17280;
@@ -9,20 +10,11 @@ pub const BALANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 pub const BALANCE_LIFETIME_THRESHOLD: u32 = BALANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
 
 #[contracttype]
-#[derive(Clone)]
-pub struct TokenMetadata {
-    pub name: String,
-    pub symbol: String,
-    pub decimals: u32,
-}
-
-#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Allowance(Address, Address),
     Balance(Address),
     Admin,
-    Metadata,
     TotalSupply,
 }
 
@@ -38,26 +30,20 @@ pub fn write_administrator(e: &Env, id: &Address) {
 }
 
 // Metadata functions
-pub fn read_metadata(e: &Env) -> TokenMetadata {
-    let key = DataKey::Metadata;
-    e.storage().instance().get(&key).unwrap()
-}
-
 pub fn write_metadata(e: &Env, metadata: TokenMetadata) {
-    let key = DataKey::Metadata;
-    e.storage().instance().set(&key, &metadata);
+    TokenUtils::new(e).metadata().set_metadata(&metadata);
 }
 
 pub fn read_decimal(e: &Env) -> u32 {
-    read_metadata(e).decimals
+    TokenUtils::new(e).metadata().get_metadata().decimal
 }
 
 pub fn read_name(e: &Env) -> String {
-    read_metadata(e).name
+    TokenUtils::new(e).metadata().get_metadata().name
 }
 
 pub fn read_symbol(e: &Env) -> String {
-    read_metadata(e).symbol
+    TokenUtils::new(e).metadata().get_metadata().symbol
 }
 
 // Balance functions
