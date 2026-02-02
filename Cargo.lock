@@ -971,6 +971,7 @@ dependencies = [
 name = "principal_token"
 version = "0.1.0"
 dependencies = [
+ "principal_token_interface",
  "soroban-sdk",
  "soroban-token-sdk",
 ]

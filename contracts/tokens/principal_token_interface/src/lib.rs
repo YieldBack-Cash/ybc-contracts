@@ -7,4 +7,6 @@ pub trait PrincipalTokenTrait: TokenInterface { //TODO: PT token is not implemen
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
     fn mint(env: Env, to: Address, amount: i128);
+
+    fn total_supply(env: Env) -> i128;
 }

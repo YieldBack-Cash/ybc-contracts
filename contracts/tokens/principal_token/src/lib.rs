@@ -11,12 +11,7 @@ use storage::{
     write_metadata, increase_total_supply, decrease_total_supply, read_total_supply,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
 };
-
-pub trait PrincipalTokenTrait {
-    fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
-    fn mint(env: Env, to: Address, amount: i128);
-    fn total_supply(env: Env) -> i128;
-}
+use principal_token_interface::PrincipalTokenTrait;
 
 #[contract]
 pub struct PrincipalToken;
