@@ -1,9 +1,6 @@
-use soroban_sdk::{contracttype, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String};
 use crate::storage;
-use yield_manager_interface::YieldManagerClient;
-
-#[cfg(feature = "contract")]
-use soroban_sdk::{contract, contractimpl};
+use yield_manager_interface::{YieldManagerClient, VaultType};
 
 #[contracttype]
 #[derive(Clone)]
@@ -20,6 +17,7 @@ pub trait FactoryTrait {
     fn deploy_yield_manager(
         env: Env,
         vault: Address,
+        vault_type: VaultType,
         maturity: u64,
     ) -> Address;
 
@@ -38,14 +36,20 @@ pub trait FactoryTrait {
     fn get_current_yt_pool(env: Env) -> Option<Address>;
 
     // Rollover function to deploy new contracts after maturity
-    fn rollover_if_expired(env: Env, new_maturity: u64) -> bool;
+    fn rollover_if_expired(env: Env, vault_type: VaultType, new_maturity: u64) -> bool;
 }
 
-#[cfg(feature = "contract")]
 #[contract]
 pub struct Factory;
 
-#[cfg(feature = "contract")]
+fn next_salt(env: &Env) -> BytesN<32> {
+    let counter = storage::get_salt_counter(env);
+    storage::set_salt_counter(env, counter + 1);
+    let mut buf = Bytes::new(env);
+    buf.extend_from_array(&counter.to_be_bytes());
+    env.crypto().keccak256(&buf).into()
+}
+
 #[contractimpl]
 impl FactoryTrait for Factory {
     fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes) {
@@ -56,59 +60,50 @@ impl FactoryTrait for Factory {
     fn deploy_yield_manager(
         env: Env,
         vault: Address,
+        vault_type: VaultType,
         maturity: u64,
     ) -> Address {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
         let wasm_hashes = storage::get_wasm_hashes(&env);
-        let pt_wasm_hash = wasm_hashes.pt;
-        let yt_wasm_hash = wasm_hashes.yt;
-        let ym_wasm_hash = wasm_hashes.ym;
-
-        // Deploy yield manager first
-        // Use a unique salt based on vault address and maturity
-        let ym_salt_data = [0u8; 32];
-        // Simple salt derivation - could be made more sophisticated
-        let ym_salt = BytesN::from_array(&env, &ym_salt_data);
 
         let ym_addr = env
             .deployer()
-            .with_current_contract(ym_salt.clone())
+            .with_current_contract(next_salt(&env))
             .deploy_v2(
-                ym_wasm_hash,
+                wasm_hashes.ym,
                 (
                     env.current_contract_address(),
                     vault,
+                    vault_type,
                     maturity,
                 ),
             );
 
-        // Deploy Principal Token with yield manager as admin
-        let pt_salt = BytesN::from_array(&env, &[0u8; 32]);
         let pt_addr = env
             .deployer()
-            .with_current_contract(pt_salt)
+            .with_current_contract(next_salt(&env))
             .deploy_v2(
-                pt_wasm_hash,
+                wasm_hashes.pt,
                 (
                     ym_addr.clone(),
                     String::from_str(&env, "Principal Token"),
                     String::from_str(&env, "PT"),
+                    7u32,
                 ),
             );
 
-        // Deploy Yield Token with yield manager as admin
-        let yt_salt = BytesN::from_array(&env, &[1u8; 32]);
         let yt_addr = env
             .deployer()
-            .with_current_contract(yt_salt)
+            .with_current_contract(next_salt(&env))
             .deploy_v2(
-                yt_wasm_hash,
+                wasm_hashes.yt,
                 (
                     ym_addr.clone(),
                     String::from_str(&env, "Yield Token"),
                     String::from_str(&env, "YT"),
+                    7u32,
                 ),
             );
 
@@ -133,25 +128,21 @@ impl FactoryTrait for Factory {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        let amm_wasm_hash = storage::get_wasm_hashes(&env).amm;
+        let wasm_hashes = storage::get_wasm_hashes(&env);
 
-        // Deploy PT/Vault Share AMM pool
-        let pt_pool_salt = BytesN::from_array(&env, &[2u8; 32]);
         let pt_pool_addr = env
             .deployer()
-            .with_current_contract(pt_pool_salt)
+            .with_current_contract(next_salt(&env))
             .deploy_v2(
-                amm_wasm_hash.clone(),
+                wasm_hashes.amm.clone(),
                 (pt_token, vault_share_token.clone()),
             );
 
-        // Deploy YT/Vault Share AMM pool
-        let yt_pool_salt = BytesN::from_array(&env, &[3u8; 32]);
         let yt_pool_addr = env
             .deployer()
-            .with_current_contract(yt_pool_salt)
+            .with_current_contract(next_salt(&env))
             .deploy_v2(
-                amm_wasm_hash,
+                wasm_hashes.amm,
                 (yt_token, vault_share_token),
             );
 
@@ -185,7 +176,7 @@ impl FactoryTrait for Factory {
 
     /// Checks if current yield manager has expired and deploys new contracts if so
     /// Returns true if rollover occurred, false otherwise
-    fn rollover_if_expired(env: Env, new_maturity: u64) -> bool {
+    fn rollover_if_expired(env: Env, vault_type: VaultType, new_maturity: u64) -> bool {
         // Get current yield manager
         let current_ym = match storage::get_current_yield_manager(&env) {
             Some(ym) => ym,
@@ -205,16 +196,14 @@ impl FactoryTrait for Factory {
         // Maturity has expired, deploy new contracts
         let vault = ym_client.get_vault();
 
-        // Deploy new yield manager with new maturity
-        // This sets new yt/pt tokens in storage
-        let new_ym_addr = Self::deploy_yield_manager(env.clone(), vault.clone(), new_maturity);
+        // Deploy new yield manager with new maturity (nonce ensures unique salts)
+        Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, new_maturity);
 
         // Get the newly deployed token addresses from storage
         let new_pt_addr = storage::get_current_pt_token(&env).unwrap();
         let new_yt_addr = storage::get_current_yt_token(&env).unwrap();
 
         // Deploy new liquidity pools
-        // Vault address is the vault share token
         Self::deploy_liquidity_pools(
             env,
             new_pt_addr,

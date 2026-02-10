@@ -8,7 +8,6 @@ members = [
   "contracts/yield/yield_manager_interface",
   "contracts/mocks/mock_vault",
   "vault/vault_interface",
-  "amm",
 ]
 
 [workspace.dependencies]

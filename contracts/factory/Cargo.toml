@@ -6,9 +6,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["contract"]
-contract = []
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -16,6 +13,7 @@ yield_manager_interface = { path = "../yield/yield_manager_interface" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+mock_vault = { path = "../mocks/mock_vault" }
 
 [profile.release]
 opt-level = "z"

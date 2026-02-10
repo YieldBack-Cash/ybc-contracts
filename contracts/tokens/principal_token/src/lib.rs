@@ -4,17 +4,14 @@ mod storage;
 
 use soroban_sdk::{contract, contractimpl, token::TokenInterface, Address, Env, MuxedAddress, String};
 use soroban_token_sdk::events::{Approve, Burn, Mint, Transfer};
+use soroban_token_sdk::metadata::TokenMetadata;
 use storage::{
     read_administrator, read_allowance, read_balance, read_decimal, read_name, read_symbol,
     receive_balance, spend_allowance, spend_balance, write_administrator, write_allowance,
-    write_metadata, increase_total_supply, decrease_total_supply, TokenMetadata,
+    write_metadata, increase_total_supply, decrease_total_supply, read_total_supply,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
 };
-
-pub trait PrincipalTokenTrait {
-    fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
-    fn mint(env: Env, to: Address, amount: i128);
-}
+use principal_token_interface::PrincipalTokenTrait;
 
 #[contract]
 pub struct PrincipalToken;
@@ -153,7 +150,7 @@ impl PrincipalTokenTrait for PrincipalToken {
             TokenMetadata {
                 name,
                 symbol,
-                decimals,
+                decimal: decimals,
             },
         );
     }
@@ -175,5 +172,12 @@ impl PrincipalTokenTrait for PrincipalToken {
             amount,
         }
         .publish(&env);
+    }
+
+    fn total_supply(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        read_total_supply(&env)
     }
 }

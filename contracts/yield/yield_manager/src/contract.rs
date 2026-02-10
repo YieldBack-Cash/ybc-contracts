@@ -136,7 +136,8 @@ impl YieldManagerTrait for YieldManager {
         let exchange_rate = storage::get_exchange_rate(&env);
 
         // Calculate the amount of tokens to mint based on shares and exchange rate
-        let mint_amount = shares_amount * exchange_rate;
+        // Divide by scale (1e7) to avoid double-scaling
+        let mint_amount = shares_amount * exchange_rate / 10_000_000;
 
         // Transfer vault shares from user to yield manager
         let vault_token_client = token::Client::new(&env, &vault_addr);
@@ -191,8 +192,9 @@ impl YieldManagerTrait for YieldManager {
         let pt_addr = storage::get_principal_token(&env);
 
         // Get the stored exchange rate (locked at maturity)
+        // Multiply by scale (1e7) to reverse the scaling applied during deposit
         let exchange_rate = storage::get_exchange_rate(&env);
-        let shares_to_return = pt_amount / exchange_rate;
+        let shares_to_return = pt_amount * 10_000_000 / exchange_rate;
 
         // Burn PT tokens from user
         let pt_token_client = token::Client::new(&env, &pt_addr);
