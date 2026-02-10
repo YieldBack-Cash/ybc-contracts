@@ -3,7 +3,7 @@ use soroban_sdk::{contractclient, Address, Env, String};
 use soroban_sdk::token::TokenInterface;
 
 #[contractclient(name = "PrincipalTokenClient")]
-pub trait PrincipalTokenTrait: TokenInterface { //TODO: PT token is not implementing the correct trait
+pub trait PrincipalTokenTrait: TokenInterface {
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
     fn mint(env: Env, to: Address, amount: i128);

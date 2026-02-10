@@ -46,8 +46,8 @@ impl YieldToken {
         // This contract only update if rate increased to avoid unnecessary storage writes
         if current_rate > old_index {
             // Calculate pending yield in vault shares
-            // balance and rates are scaled by 1e7
-            let pending_yield = (balance * (current_rate - old_index)) / old_index / 10_000_000;
+            // balance is in token units (scaled by 1e7), rate ratio gives fractional yield
+            let pending_yield = (balance * (current_rate - old_index)) / old_index;
             let current_accrued = storage::get_accrued_yield(env, user);
             storage::set_accrued_yield(env, user, current_accrued + pending_yield);
             storage::set_user_index(env, user, current_rate);

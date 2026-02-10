@@ -169,11 +169,11 @@ fn test_deposit_mints_pt_and_yt() {
     let pt_balance = test.get_pt_balance(&test.user1);
     let yt_balance = test.get_yt_balance(&test.user1);
 
-    // Both should equal shares * exchange_rate
+    // Both should equal shares * exchange_rate / scale
     // exchange_rate from convert_to_assets(1) is 1_000_0000 (1.0 scaled by 1e7)
-    let expected_balance = shares * 1_000_0000;
-    assert_eq!(pt_balance, expected_balance);
-    assert_eq!(yt_balance, expected_balance);
+    // mint_amount = shares * 1_000_0000 / 1_000_0000 = shares
+    assert_eq!(pt_balance, shares);
+    assert_eq!(yt_balance, shares);
 
     // Yield manager should hold the vault shares
     let ym_vault_balance = test.vault_balance(&test.yield_manager);
