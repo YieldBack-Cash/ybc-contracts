@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-token-sdk = "23.3.0"
+soroban-token-sdk = "25.3.1"

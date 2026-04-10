@@ -3,16 +3,19 @@ resolver = "2"
 members = [
   "contracts/factory",
   "contracts/tokens/principal_token",
+  "contracts/tokens/principal_token_interface",
   "contracts/tokens/yield_token",
+  "contracts/tokens/yield_token_interface",
   "contracts/yield/yield_manager",
   "contracts/yield/yield_manager_interface",
   "contracts/mocks/mock_vault",
   "vault/vault_interface",
+  "vault/defindex_interface",
 ]
 
 [workspace.dependencies]
-soroban-sdk = "23.0.2"
-soroban-token-sdk = "23.0.2"
+soroban-sdk = "25.3.1"
+soroban-token-sdk = "25.3.1"
 
 [profile.release]
 opt-level = "z"

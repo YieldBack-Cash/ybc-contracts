@@ -13,8 +13,8 @@ contract = []
 [dependencies]
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
-stellar-tokens = "0.6.0"
-stellar-macros = "0.6.0"
+stellar-tokens = "0.7.0"
+stellar-macros = "0.7.0"
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
