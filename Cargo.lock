@@ -15,6 +15,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "amm"
+version = "0.1.0"
+dependencies = [
+ "num-integer",
+ "soroban-fixed-point-math",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1382,6 +1391,15 @@ dependencies = [
  "serde_json",
  "stellar-xdr",
  "syn 2.0.108",
+]
+
+[[package]]
+name = "soroban-fixed-point-math"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "671e84e393a03992963c8763f8f5d8998c99e5079e03a56ab23e5dd9f7d99db5"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
