@@ -14,3 +14,4 @@ vault_interface = { path = "../../vault/vault_interface" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+mock_vault = { path = "../mocks/mock_vault" }

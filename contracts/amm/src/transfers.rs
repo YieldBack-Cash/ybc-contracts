@@ -8,7 +8,7 @@ use soroban_sdk::{token, Address, Env};
 /// * `to` - Recipient address
 /// * `amount` - Amount to transfer
 fn transfer(e: &Env, token: Address, to: Address, amount: i128) {
-    token::Client::new(e, &token).transfer(&e.current_contract_address(), &to, &amount);
+    token::TokenClient::new(e, &token).transfer(&e.current_contract_address(), &to, &amount);
 }
 
 /// Transfers token A from the contract to a recipient.
@@ -41,6 +41,15 @@ pub(crate) fn transfer_b(e: &Env, to: Address, amount: i128) {
 ///
 /// # Returns
 /// `(amount_a, amount_b)` to deposit
+pub(crate) fn transfer_v_from_user_to_pool(e: &Env, from: &Address, v_in: i128) {
+    let market = get_market_state(e);
+    token::TokenClient::new(e, &market.token_b).transfer(from, &e.current_contract_address(), &v_in);
+}
+
+pub(crate) fn transfer_pt_from_pool_to_user(e: &Env, to: &Address, pt_out: i128) {
+    transfer_a(e, to.clone(), pt_out);
+}
+
 pub(crate) fn get_deposit_amounts(
     desired_a: i128,
     min_a: i128,

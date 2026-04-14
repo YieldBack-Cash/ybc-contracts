@@ -44,7 +44,7 @@ pub fn get_total_shares(e: &Env) -> i128 {
 
 
 pub fn get_balance(e: &Env, contract: Address) -> i128 {
-    token::Client::new(e, &contract).balance(&e.current_contract_address())
+    token::TokenClient::new(e, &contract).balance(&e.current_contract_address())
 }
 
 pub fn get_balance_a(e: &Env) -> i128 {

@@ -18,9 +18,11 @@ dependencies = [
 name = "amm"
 version = "0.1.0"
 dependencies = [
+ "mock_vault",
  "num-integer",
  "soroban-fixed-point-math",
  "soroban-sdk",
+ "vault_interface",
 ]
 
 [[package]]
