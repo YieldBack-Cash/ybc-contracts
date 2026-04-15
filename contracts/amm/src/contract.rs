@@ -3,7 +3,17 @@ use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
 use num_integer::Roots;
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{contract, contractclient, contractimpl, token, Address, Env};
+
+#[contractclient(name = "AmmClient")]
+pub trait AmmInterface {
+    fn swap_v_for_pt(env: Env, to: Address, pt_out: i128, v_in_max: i128);
+    fn swap_pt_for_v(env: Env, to: Address, pt_in: i128, min_v_out: i128);
+    fn deposit(env: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128);
+    fn withdraw(env: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128);
+    fn get_rsrvs(env: Env) -> (i128, i128);
+    fn balance_shares(env: Env, user: Address) -> i128;
+}
 
 const MINIMUM_LIQUIDITY: i128 = 100;
 const BURN_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -33,10 +43,7 @@ impl LiquidityPool {
         fee_rate_root: i128,
         last_implied_rate: i128,
     ) {
-        if token_a >= token_b {
-            panic!("token_a must be less than token_b");
-        }
-        let now = e.ledger().timestamp();
+let now = e.ledger().timestamp();
         assert!(expiry_ts > now, "expiry must be in the future");
         assert!(scalar_root > 0, "scalar_root must be positive");
         assert!(fee_rate_root > 0, "fee_rate_root must be positive");

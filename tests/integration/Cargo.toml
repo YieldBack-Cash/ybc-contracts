@@ -1,0 +1,16 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+amm = { path = "../../contracts/amm", features = ["testutils"] }
+factory = { path = "../../contracts/factory" }
+mock_vault = { path = "../../contracts/mocks/mock_vault" }
+principal_token = { path = "../../contracts/tokens/principal_token" }
+yield_manager = { path = "../../contracts/yield/yield_manager" }
+yield_token = { path = "../../contracts/tokens/yield_token" }
