@@ -12,9 +12,10 @@ testutils = []
 [dependencies]
 soroban-sdk = { workspace = true }
 soroban-fixed-point-math = { workspace = true }
+amm-interface = { path = "../amm-interface" }
 num-integer = { version = "0.1.46", default-features = false }
-vault_interface = { path = "../../vault/vault_interface" }
+vault_interface = { path = "../../../vault/vault_interface" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-mock_vault = { path = "../mocks/mock_vault" }
+mock_vault = { path = "../../mocks/mock_vault" }

@@ -1,0 +1,5 @@
+# Tell rust-analyzer to check all targets (including tests).
+# This activates dev-dependencies (soroban-sdk testutils) so that
+# Env::default() and other test-only APIs resolve correctly in the IDE.
+[cargo]
+allTargets = true

@@ -8,10 +8,12 @@ members = [
   "contracts/tokens/yield_token_interface",
   "contracts/yield/yield_manager",
   "contracts/yield/yield_manager_interface",
-  "contracts/amm",
+  "contracts/amm/amm",
+  "contracts/amm/amm-interface",
   "contracts/mocks/mock_vault",
   "vault/vault_interface",
   "vault/defindex_interface",
+  "contracts/router",
   "tests/integration",
 ]
 

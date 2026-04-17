@@ -8,7 +8,7 @@ crate-type = ["rlib"]
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-amm = { path = "../../contracts/amm", features = ["testutils"] }
+amm = { path = "../../contracts/amm/amm", features = ["testutils"] }
 factory = { path = "../../contracts/factory" }
 mock_vault = { path = "../../contracts/mocks/mock_vault" }
 principal_token = { path = "../../contracts/tokens/principal_token" }

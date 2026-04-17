@@ -3,17 +3,8 @@ use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
 use num_integer::Roots;
-use soroban_sdk::{contract, contractclient, contractimpl, token, Address, Env};
-
-#[contractclient(name = "AmmClient")]
-pub trait AmmInterface {
-    fn swap_v_for_pt(env: Env, to: Address, pt_out: i128, v_in_max: i128);
-    fn swap_pt_for_v(env: Env, to: Address, pt_in: i128, min_v_out: i128);
-    fn deposit(env: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128);
-    fn withdraw(env: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128);
-    fn get_rsrvs(env: Env) -> (i128, i128);
-    fn balance_shares(env: Env, user: Address) -> i128;
-}
+use amm_interface::AmmInterface;
+use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
 const MINIMUM_LIQUIDITY: i128 = 100;
 const BURN_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -62,9 +53,12 @@ let now = e.ledger().timestamp();
         });
         put_total_shares(&e, 0);
     }
+}
 
+#[contractimpl]
+impl AmmInterface for LiquidityPool {
     /// Returns the pool share balance for a given user.
-    pub fn balance_shares(e: Env, user: Address) -> i128 {
+    fn balance_shares(e: Env, user: Address) -> i128 {
         get_shares(&e, &user)
     }
 
@@ -77,7 +71,7 @@ let now = e.ledger().timestamp();
     /// * `min_a` - Minimum acceptable amount of token A
     /// * `desired_b` - Desired amount of token B (vault shares)
     /// * `min_b` - Minimum acceptable amount of token B
-    pub fn deposit(
+    fn deposit(
         e: Env,
         to: Address,
         desired_a: i128,
@@ -136,7 +130,7 @@ let now = e.ledger().timestamp();
     /// * `to`       - Swapper address (must authorize)
     /// * `pt_out`   - Exact amount of PT to receive from the pool
     /// * `v_in_max` - Maximum vault shares willing to pay (slippage protection)
-    pub fn swap_v_for_pt(e: Env, to: Address, pt_out: i128, v_in_max: i128) {
+    fn swap_v_for_pt(e: Env, to: Address, pt_out: i128, v_in_max: i128) {
         to.require_auth();
         assert!(pt_out > 0);
         assert!(v_in_max > 0);
@@ -207,7 +201,7 @@ let now = e.ledger().timestamp();
     /// * `to`        - Swapper address (must authorize)
     /// * `pt_in`     - Exact amount of PT to sell into the pool
     /// * `min_v_out` - Minimum vault shares to receive (slippage protection)
-    pub fn swap_pt_for_v(e: Env, to: Address, pt_in: i128, min_v_out: i128) {
+    fn swap_pt_for_v(e: Env, to: Address, pt_in: i128, min_v_out: i128) {
         to.require_auth();
         assert!(pt_in > 0, "pt_in must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
@@ -298,7 +292,7 @@ let now = e.ledger().timestamp();
     ///
     /// # Returns
     /// `(amount_a, amount_b)` actually withdrawn
-    pub fn withdraw(
+    fn withdraw(
         e: Env,
         to: Address,
         share_amount: i128,
@@ -338,7 +332,7 @@ let now = e.ledger().timestamp();
     ///
     /// # Returns
     /// `(reserve_pt, reserve_v)` — PT reserve and vault share reserve
-    pub fn get_rsrvs(e: Env) -> (i128, i128) {
+    fn get_rsrvs(e: Env) -> (i128, i128) {
         let market = get_market_state(&e);
         (market.reserve_a, market.reserve_b)
     }
