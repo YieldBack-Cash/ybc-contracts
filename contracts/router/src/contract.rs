@@ -8,7 +8,7 @@ pub trait RouterInterface {
     fn swap_pt_for_v(env: Env, to: Address, pt_in: i128, min_v_out: i128);
     fn deposit(env: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128);
     fn withdraw(env: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128);
-    fn get_rsrvs(env: Env) -> (i128, i128);
+    fn get_reserves(env: Env) -> (i128, i128);
     fn balance_shares(env: Env, user: Address) -> i128;
 }
 
@@ -54,8 +54,8 @@ impl RouterInterface for RouterContract {
         AmmClient::new(&e, &get_amm(&e)).withdraw(&to, &share_amount, &min_a, &min_b)
     }
 
-    fn get_rsrvs(e: Env) -> (i128, i128) {
-        AmmClient::new(&e, &get_amm(&e)).get_rsrvs()
+    fn get_reserves(e: Env) -> (i128, i128) {
+        AmmClient::new(&e, &get_amm(&e)).get_reserves()
     }
 
     fn balance_shares(e: Env, user: Address) -> i128 {

@@ -57,73 +57,6 @@ let now = e.ledger().timestamp();
 
 #[contractimpl]
 impl AmmInterface for LiquidityPool {
-    /// Returns the pool share balance for a given user.
-    fn balance_shares(e: Env, user: Address) -> i128 {
-        get_shares(&e, &user)
-    }
-
-    /// Deposits tokens into the pool and mints shares. Deposit ratio must match
-    /// the current pool ratio (any ratio accepted if pool is empty).
-    ///
-    /// # Arguments
-    /// * `to` - Depositor address (must authorize)
-    /// * `desired_a` - Desired amount of token A (PT)
-    /// * `min_a` - Minimum acceptable amount of token A
-    /// * `desired_b` - Desired amount of token B (vault shares)
-    /// * `min_b` - Minimum acceptable amount of token B
-    fn deposit(
-        e: Env,
-        to: Address,
-        desired_a: i128,
-        min_a: i128,
-        desired_b: i128,
-        min_b: i128,
-    ) {
-        to.require_auth();
-
-        let mut market = get_market_state(&e);
-
-        let (amount_a, amount_b) =
-            get_deposit_amounts(desired_a, min_a, desired_b, min_b, market.reserve_a, market.reserve_b);
-
-        if amount_a <= 0 || amount_b <= 0 {
-            panic!("both amounts must be strictly positive");
-        }
-
-        let token_a_client = token::TokenClient::new(&e, &market.token_a);
-        let token_b_client = token::TokenClient::new(&e, &market.token_b);
-
-        token_a_client.transfer(&to, &e.current_contract_address(), &amount_a);
-        token_b_client.transfer(&to, &e.current_contract_address(), &amount_b);
-
-        let (balance_a, balance_b) = (get_balance_a(&e), get_balance_b(&e));
-        let total_shares = get_total_shares(&e);
-
-        let zero = 0;
-        let new_total_shares = if total_shares == zero {
-            (amount_a * amount_b).sqrt()
-        } else if market.reserve_a > zero && market.reserve_b > zero {
-            let shares_a = (balance_a * total_shares) / market.reserve_a;
-            let shares_b = (balance_b * total_shares) / market.reserve_b;
-            shares_a.min(shares_b)
-        } else {
-            panic!("reserves are empty but shares exist");
-        };
-
-        let shares_to_mint = new_total_shares - total_shares;
-        if total_shares == zero {
-            let burn_address = Address::from_str(&e, BURN_ADDRESS);
-            mint_shares(&e, &burn_address, MINIMUM_LIQUIDITY);
-            mint_shares(&e, &to, shares_to_mint - MINIMUM_LIQUIDITY);
-        } else {
-            mint_shares(&e, &to, shares_to_mint);
-        }
-
-        market.reserve_a = balance_a;
-        market.reserve_b = balance_b;
-        put_market_state(&e, &market);
-    }
-
     /// Sell vault shares to receive an exact amount of PT from the pool.
     ///
     /// # Arguments
@@ -282,6 +215,68 @@ impl AmmInterface for LiquidityPool {
         put_market_state(&e, &market);
     }
 
+    /// Deposits tokens into the pool and mints shares. Deposit ratio must match
+    /// the current pool ratio (any ratio accepted if pool is empty).
+    ///
+    /// # Arguments
+    /// * `to` - Depositor address (must authorize)
+    /// * `desired_a` - Desired amount of token A (PT)
+    /// * `min_a` - Minimum acceptable amount of token A
+    /// * `desired_b` - Desired amount of token B (vault shares)
+    /// * `min_b` - Minimum acceptable amount of token B
+    fn deposit(
+        e: Env,
+        to: Address,
+        desired_a: i128,
+        min_a: i128,
+        desired_b: i128,
+        min_b: i128,
+    ) {
+        to.require_auth();
+
+        let mut market = get_market_state(&e);
+
+        let (amount_a, amount_b) =
+            get_deposit_amounts(desired_a, min_a, desired_b, min_b, market.reserve_a, market.reserve_b);
+
+        if amount_a <= 0 || amount_b <= 0 {
+            panic!("both amounts must be strictly positive");
+        }
+
+        let token_a_client = token::TokenClient::new(&e, &market.token_a);
+        let token_b_client = token::TokenClient::new(&e, &market.token_b);
+
+        token_a_client.transfer(&to, &e.current_contract_address(), &amount_a);
+        token_b_client.transfer(&to, &e.current_contract_address(), &amount_b);
+
+        let (balance_a, balance_b) = (get_balance_a(&e), get_balance_b(&e));
+        let total_shares = get_total_shares(&e);
+
+        let zero = 0;
+        let new_total_shares = if total_shares == zero {
+            (amount_a * amount_b).sqrt()
+        } else if market.reserve_a > zero && market.reserve_b > zero {
+            let shares_a = (balance_a * total_shares) / market.reserve_a;
+            let shares_b = (balance_b * total_shares) / market.reserve_b;
+            shares_a.min(shares_b)
+        } else {
+            panic!("reserves are empty but shares exist");
+        };
+
+        let shares_to_mint = new_total_shares - total_shares;
+        if total_shares == zero {
+            let burn_address = Address::from_str(&e, BURN_ADDRESS);
+            mint_shares(&e, &burn_address, MINIMUM_LIQUIDITY);
+            mint_shares(&e, &to, shares_to_mint - MINIMUM_LIQUIDITY);
+        } else {
+            mint_shares(&e, &to, shares_to_mint);
+        }
+
+        market.reserve_a = balance_a;
+        market.reserve_b = balance_b;
+        put_market_state(&e, &market);
+    }
+
     /// Burns pool shares and withdraws a proportional amount of both tokens.
     ///
     /// # Arguments
@@ -332,8 +327,13 @@ impl AmmInterface for LiquidityPool {
     ///
     /// # Returns
     /// `(reserve_pt, reserve_v)` — PT reserve and vault share reserve
-    fn get_rsrvs(e: Env) -> (i128, i128) {
+    fn get_reserves(e: Env) -> (i128, i128) {
         let market = get_market_state(&e);
         (market.reserve_a, market.reserve_b)
+    }
+
+    /// Returns the pool share balance for a given user.
+    fn balance_shares(e: Env, user: Address) -> i128 {
+        get_shares(&e, &user)
     }
 }
