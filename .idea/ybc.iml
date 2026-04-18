@@ -19,6 +19,12 @@
       <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/contracts/yield/yield_manager_interface/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/vault/defindex_interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/amm/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/router/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/tests/integration/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/amm-interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/amm/amm-interface/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/contracts/amm/amm/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/.soroban" />
       <excludeFolder url="file://$MODULE_DIR$/.stellar" />

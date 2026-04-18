@@ -3,7 +3,7 @@ set -e
 
 SOURCE="user"
 NETWORK="testnet"
-PROJECT_DIR="$HOME/compsci/blockchain/ybc"
+PROJECT_DIR="$HOME/computerscience/blockchain/ybc"
 WASM_DIR="$PROJECT_DIR/target/wasm32v1-none/release"
 
 echo "Uploading WASMs"

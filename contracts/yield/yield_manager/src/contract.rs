@@ -131,12 +131,8 @@ impl YieldManagerTrait for YieldManager {
         let vault_addr = storage::get_vault(&env);
         let pt_addr = storage::get_principal_token(&env);
         let yt_addr = storage::get_yield_token(&env);
-
-        // Get the stored exchange rate
+        
         let exchange_rate = storage::get_exchange_rate(&env);
-
-        // Calculate the amount of tokens to mint based on shares and exchange rate
-        // Divide by scale (1e7) to avoid double-scaling
         let mint_amount = shares_amount * exchange_rate / 10_000_000;
 
         // Transfer vault shares from user to yield manager
