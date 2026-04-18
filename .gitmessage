@@ -1,0 +1,17 @@
+# <type>: <short summary> (50 chars max)
+# |<----  Using a maximum of 50 characters  ---->|
+
+# Types:
+#   feat     - new feature or capability
+#   fix      - bug fix
+#   chore    - build, deps, config, tooling
+#   test     - adding or updating tests
+#   refactor - restructuring without behavior change
+#   docs     - documentation only
+
+# Optional body (wrap at 72 chars, blank line above):
+# |<----  Wrap at 72 characters  --------------------------------->|
+
+# --- COMMIT END ---
+# Remember: this commit will land on main via squash merge.
+# Make it describe the whole feature/change, not a single step.
