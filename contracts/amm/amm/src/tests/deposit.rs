@@ -12,7 +12,7 @@ fn test_first_deposit_mints_shares_and_burns_minimum_liquidity() {
     let v_in = 10_000_000i128;
     f.deposit(&f.admin, pt_in, v_in);
 
-    let (res_pt, res_v) = f.pool.get_rsrvs();
+    let (res_pt, res_v) = f.pool.get_reserves();
     assert_eq!(res_pt, pt_in);
     assert_eq!(res_v, v_in);
 

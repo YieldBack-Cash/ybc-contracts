@@ -3,6 +3,7 @@ use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, IntoVal, Stri
 use amm::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::{MockVault, MockVaultClient};
 use principal_token::PrincipalToken;
+use router::RouterContract;
 use yield_manager::{YieldManager, VaultType};
 use yield_token::YieldToken;
 
@@ -23,6 +24,7 @@ pub struct IntegrationFixture<'a> {
     pub pt: Address,
     pub yt: Address,
     pub pool: LiquidityPoolClient<'a>,
+    pub router: Address,
     pub maturity: u64,
 }
 
@@ -72,10 +74,13 @@ impl<'a> IntegrationFixture<'a> {
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 
+        // ── Router ───────────────────────────────────────────────────────────
+        let router_addr = env.register(RouterContract, (&pool_addr, &ym_addr));
+
         // ── Fund user ────────────────────────────────────────────────────────
         vault.mint(&user, &1_000_000_000);
 
-        IntegrationFixture { env: env.clone(), admin, user, vault, yield_manager: ym_addr, pt: pt_addr, yt: yt_addr, pool, maturity }
+        IntegrationFixture { env: env.clone(), admin, user, vault, yield_manager: ym_addr, pt: pt_addr, yt: yt_addr, pool, router: router_addr, maturity }
     }
 
     /// Deposit vault shares into yield_manager, returning PT minted.
@@ -117,5 +122,23 @@ impl<'a> IntegrationFixture<'a> {
 
     pub fn advance_time(&self, seconds: u64) {
         self.env.ledger().with_mut(|l| l.timestamp += seconds);
+    }
+
+    /// Router: buy YT by spending vault shares (V→YT via flash_swap_pt).
+    pub fn router_swap_v_for_yt(&self, to: &Address, v_in: i128, min_yt_out: i128) {
+        self.env.invoke_contract::<()>(
+            &self.router,
+            &Symbol::new(&self.env, "swap_v_for_yt"),
+            (to, v_in, min_yt_out).into_val(&self.env),
+        );
+    }
+
+    /// Router: sell YT for vault shares (YT→V via flash_swap_v).
+    pub fn router_swap_yt_for_v(&self, to: &Address, yt_in: i128, min_v_out: i128) {
+        self.env.invoke_contract::<()>(
+            &self.router,
+            &Symbol::new(&self.env, "swap_yt_for_v"),
+            (to, yt_in, min_v_out).into_val(&self.env),
+        );
     }
 }

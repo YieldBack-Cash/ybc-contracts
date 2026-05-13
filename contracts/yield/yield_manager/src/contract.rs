@@ -148,6 +148,45 @@ impl YieldManagerTrait for YieldManager {
         yt_client.mint(&from, &mint_amount, &exchange_rate);
     }
 
+    fn redeem(env: Env, from: Address, amount: i128) {
+        from.require_auth();
+
+        if !storage::is_initialized(&env) {
+            panic!("Token contracts not initialized");
+        }
+
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
+
+        // After maturity PT holders must use redeem_principal; combining PT+YT
+        // here would burn YT for no extra shares.
+        let maturity = storage::get_maturity(&env);
+        if env.ledger().timestamp() >= maturity {
+            panic!("Maturity reached; use redeem_principal");
+        }
+
+        YieldManager::update_exchange_rate(&env);
+
+        let exchange_rate = storage::get_exchange_rate(&env);
+        if exchange_rate == 0 {
+            panic!("Exchange rate is zero");
+        }
+        let shares_to_return = amount * 10_000_000 / exchange_rate;
+
+        let pt_addr = storage::get_principal_token(&env);
+        let yt_addr = storage::get_yield_token(&env);
+        let vault_addr = storage::get_vault(&env);
+
+        // Burn equal amounts of PT and YT from the caller.
+        token::Client::new(&env, &pt_addr).burn(&from, &amount);
+        token::Client::new(&env, &yt_addr).burn(&from, &amount);
+
+        // Return the corresponding vault shares.
+        token::Client::new(&env, &vault_addr)
+            .transfer(&env.current_contract_address(), &from, &shares_to_return);
+    }
+
     fn distribute_yield(env: Env, to: Address, shares_amount: i128) {
         // Only the YT contract can call this
         let yt_addr = storage::get_yield_token(&env);

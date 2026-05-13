@@ -28,6 +28,7 @@ pub trait YieldManagerTrait {
     fn get_maturity(env: Env) -> u64;
     fn get_exchange_rate(env: Env) -> i128;
     fn deposit(env: Env, from: Address, shares_amount: i128);
+    fn redeem(env: Env, from: Address, amount: i128);
     fn distribute_yield(env: Env, to: Address, shares_amount: i128);
     fn redeem_principal(env: Env, from: Address, pt_amount: i128);
 }

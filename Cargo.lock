@@ -826,6 +826,7 @@ dependencies = [
  "factory",
  "mock_vault",
  "principal_token",
+ "router",
  "soroban-sdk",
  "yield_manager",
  "yield_token",
@@ -1136,6 +1137,7 @@ version = "0.1.0"
 dependencies = [
  "amm-interface",
  "soroban-sdk",
+ "yield_manager_interface",
 ]
 
 [[package]]

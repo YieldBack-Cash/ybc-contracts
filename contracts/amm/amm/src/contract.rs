@@ -3,7 +3,7 @@ use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
 use num_integer::Roots;
-use amm_interface::AmmInterface;
+use amm_interface::{AmmInterface, FlashReceiverClient, FlashVReceiverClient};
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
 const MINIMUM_LIQUIDITY: i128 = 100;
@@ -211,6 +211,162 @@ impl AmmInterface for LiquidityPool {
 
         market.last_implied_rate =
             crate::math::exchange_rate_to_implied_rate(ex_rate, t_years);
+
+        put_market_state(&e, &market);
+    }
+
+    fn swap_v_for_yt(_e: Env, _to: Address, _v_in: i128, _min_yt_out: i128) {
+        unimplemented!("swap_v_for_yt is handled by the router via flash_swap_pt")
+    }
+
+    fn swap_yt_for_v(_e: Env, _to: Address, _yt_in: i128, _min_v_out: i128) {
+        unimplemented!("swap_yt_for_v is handled by the router via flash_swap_v")
+    }
+
+    /// Flash-lends PT to a receiver, calls its callback, then enforces the invariant.
+    ///
+    /// The receiver must transfer back at least `pt_to_borrow` PT (plus any newly minted PT)
+    /// to this contract's address before returning from `on_flash_receive`. If the PT balance
+    /// after the callback is less than it was before lending, the transaction reverts.
+    fn flash_swap_pt(e: Env, receiver: Address, pt_to_borrow: i128, user: Address, v_in: i128, min_yt_out: i128) {
+        assert!(pt_to_borrow > 0, "pt_to_borrow must be positive");
+        assert!(v_in > 0, "v_in must be positive");
+
+        let mut market = get_market_state(&e);
+        let now = e.ledger().timestamp();
+        assert!(now < market.expiry_ts, "market expired");
+        assert!(market.reserve_a > pt_to_borrow, "insufficient PT liquidity");
+
+        let pt_balance_before = get_balance_a(&e);
+
+        // Send PT to receiver — pool is temporarily undercollateralized here.
+        token::TokenClient::new(&e, &market.token_a)
+            .transfer(&e.current_contract_address(), &receiver, &pt_to_borrow);
+
+        // Synchronous callback: receiver does YM deposit, sends YT to user,
+        // then transfers (pt_to_borrow + pt_minted) PT back to this address.
+        FlashReceiverClient::new(&e, &receiver)
+            .on_flash_receive(&pt_to_borrow, &user, &v_in, &min_yt_out);
+
+        // Invariant enforcement: pool must have at least as much PT as before the lend.
+        let pt_balance_after = get_balance_a(&e);
+        assert!(pt_balance_after >= pt_balance_before, "flash swap: PT not fully repaid");
+
+        // Update PT reserve; V reserve is unchanged (user V went to YM, not this pool).
+        let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
+        market.reserve_a = pt_balance_after;
+
+        // Update implied rate from new reserve state.
+        let time_to_expiry = market.expiry_ts - now;
+        let years = crate::math::seconds_to_years(time_to_expiry);
+        let rate_scalar = crate::math::div_down(market.scalar_root, years);
+        let rate_anchor = compute_rate_anchor(
+            market.reserve_a,
+            reserve_b_assets,
+            market.last_implied_rate,
+            rate_scalar,
+            time_to_expiry as i128,
+        );
+        let new_exchange_rate = get_exchange_rate_from_trade(
+            market.reserve_a,
+            reserve_b_assets,
+            rate_scalar,
+            rate_anchor,
+            0,
+        );
+        market.last_implied_rate =
+            crate::math::exchange_rate_to_implied_rate(new_exchange_rate, years);
+
+        put_market_state(&e, &market);
+    }
+
+    /// Flash-lends PT to a receiver and is repaid in vault shares (V).
+    ///
+    /// Mirror image of `flash_swap_pt`: from the pool's perspective this is a `swap_v_for_pt`
+    /// trade — PT leaves the pool, V comes in — except the PT recipient is the receiver's
+    /// callback (which combines it with the user's YT and redeems both for V via the yield
+    /// manager). The pool prices the lent PT through the same curve and requires that exact
+    /// amount of V back before the callback returns. The lent PT does not return (it is burned
+    /// in the redeem), so `reserve_a` falls by `pt_to_borrow`.
+    fn flash_swap_v(e: Env, receiver: Address, pt_to_borrow: i128, user: Address, min_v_out: i128) {
+        assert!(pt_to_borrow > 0, "pt_to_borrow must be positive");
+        assert!(min_v_out > 0, "min_v_out must be positive");
+
+        let mut market = get_market_state(&e);
+        let now = e.ledger().timestamp();
+        assert!(now < market.expiry_ts, "market expired");
+        assert!(market.reserve_a > pt_to_borrow, "insufficient PT liquidity");
+
+        let time_to_expiry = market.expiry_ts - now;
+        let years = crate::math::seconds_to_years(time_to_expiry);
+
+        // Convert vault share reserve to underlying assets for AMM pricing math.
+        let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
+
+        let rate_scalar = crate::math::div_down(market.scalar_root, years);
+        let fee_factor = crate::math::implied_rate_to_exchange_rate(market.fee_rate_root, time_to_expiry as i128);
+        let rate_anchor = compute_rate_anchor(
+            market.reserve_a,
+            reserve_b_assets,
+            market.last_implied_rate,
+            rate_scalar,
+            time_to_expiry as i128,
+        );
+
+        // PT flows OUT of the pool to the account → positive net_pt_to_account, V owed back.
+        let (net_v_to_account, _fee, _reserve_fee) = calc_trade(
+            market.reserve_a,
+            reserve_b_assets,
+            rate_scalar,
+            rate_anchor,
+            fee_factor,
+            0, // reserve fee off for now
+            pt_to_borrow,
+        );
+        assert!(net_v_to_account < 0, "expected pool to be repaid V");
+        let v_owed_assets = net_v_to_account
+            .checked_neg()
+            .expect("overflow converting signed V flow");
+        let v_owed_shares = convert_assets_to_vault_shares(&e, v_owed_assets);
+        assert!(v_owed_shares > 0, "v_owed must be positive");
+
+        let pt_balance_before = get_balance_a(&e);
+        let v_balance_before = get_balance_b(&e);
+
+        // Lend PT — pool is temporarily under-collateralized here.
+        token::TokenClient::new(&e, &market.token_a)
+            .transfer(&e.current_contract_address(), &receiver, &pt_to_borrow);
+
+        // Synchronous callback: receiver pulls YT from the user, redeems PT+YT → V via the YM,
+        // repays this address `v_owed_shares` V, and forwards the remainder to the user.
+        FlashVReceiverClient::new(&e, &receiver)
+            .on_flash_receive_v(&pt_to_borrow, &v_owed_shares, &user, &min_v_out);
+
+        let pt_balance_after = get_balance_a(&e);
+        let v_balance_after = get_balance_b(&e);
+        assert!(
+            pt_balance_after == pt_balance_before - pt_to_borrow,
+            "flash swap: lent PT must be consumed by the redeem"
+        );
+        assert!(
+            v_balance_after >= v_balance_before + v_owed_shares,
+            "flash swap: V not fully repaid"
+        );
+
+        // Re-sync reserves to actual balances: PT fell (lent then burned), V rose by repayment.
+        market.reserve_a = pt_balance_after;
+        market.reserve_b = v_balance_after;
+        assert!(market.reserve_a > 0 && market.reserve_b > 0, "new reserves must be strictly positive");
+
+        let new_exchange_rate = get_exchange_rate_from_trade(
+            market.reserve_a,
+            convert_vault_shares_to_assets(&e, market.reserve_b),
+            rate_scalar,
+            rate_anchor,
+            0,
+        );
+        market.last_implied_rate =
+            crate::math::exchange_rate_to_implied_rate(new_exchange_rate, years);
 
         put_market_state(&e, &market);
     }
