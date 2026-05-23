@@ -2,6 +2,7 @@
 
 mod fixture;
 
+mod auth;
 mod deposit;
 mod fees;
 mod flash;

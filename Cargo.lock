@@ -1924,6 +1924,7 @@ dependencies = [
 name = "yield_manager"
 version = "0.1.0"
 dependencies = [
+ "amm-interface",
  "defindex_interface",
  "mock_vault",
  "principal_token",

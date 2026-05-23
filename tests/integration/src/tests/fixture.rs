@@ -85,6 +85,8 @@ impl<'a> IntegrationFixture<'a> {
 
     /// Deposit vault shares into yield_manager, returning PT minted.
     pub fn ym_deposit(&self, user: &Address, shares: i128) {
+        let expiry_ledger = self.env.ledger().sequence() + 1000;
+        self.vault.approve(user, &self.yield_manager, &shares, &expiry_ledger);
         self.env.invoke_contract::<()>(
             &self.yield_manager,
             &Symbol::new(&self.env, "deposit"),

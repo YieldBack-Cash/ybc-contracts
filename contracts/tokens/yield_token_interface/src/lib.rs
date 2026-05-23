@@ -8,6 +8,8 @@ pub use soroban_sdk::token::TokenInterface as YieldTokenInterface;
 pub trait YieldTokenTrait: TokenInterface {
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
     fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128);
+    fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128);
+    fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128);
     fn user_index(env: Env, address: Address) -> i128;
     fn accrued_yield(env: Env, address: Address) -> i128;
     fn claim_yield(env: Env, user: Address) -> i128;

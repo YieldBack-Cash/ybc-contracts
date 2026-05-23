@@ -1,6 +1,6 @@
-use amm_interface::{AmmClient, FlashSwapReceiver, FlashSwapVReceiver};
+use amm_interface::AmmClient;
 use yield_manager_interface::YieldManagerClient;
-use soroban_sdk::{contract, contractclient, contractimpl, token, Address, Env};
+use soroban_sdk::{contract, contractclient, contractimpl, Address, Env};
 
 #[contractclient(name = "RouterClient")]
 pub trait RouterInterface {
@@ -63,7 +63,7 @@ impl RouterInterface for RouterContract {
         let pt_to_borrow = v_in * exchange_rate / 10_000_000;
 
         AmmClient::new(&e, &get_amm(&e))
-            .flash_swap_pt(&e.current_contract_address(), &pt_to_borrow, &to, &v_in, &min_yt_out);
+            .flash_swap_pt(&get_ym(&e), &pt_to_borrow, &to, &v_in, &min_yt_out);
     }
 
     fn swap_yt_for_v(e: Env, to: Address, yt_in: i128, min_v_out: i128) {
@@ -72,8 +72,9 @@ impl RouterInterface for RouterContract {
         assert!(min_v_out > 0, "min_v_out must be positive");
 
         // Borrow exactly `yt_in` PT so it pairs 1:1 with the user's YT in the YM redeem.
+        // The YM is the callback receiver — it pulls YT from the user, burns PT+YT, and repays the AMM.
         AmmClient::new(&e, &get_amm(&e))
-            .flash_swap_v(&e.current_contract_address(), &yt_in, &to, &min_v_out);
+            .flash_swap_v(&get_ym(&e), &yt_in, &to, &min_v_out);
     }
 
     fn deposit(e: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128) {
@@ -92,97 +93,5 @@ impl RouterInterface for RouterContract {
 
     fn balance_shares(e: Env, user: Address) -> i128 {
         AmmClient::new(&e, &get_amm(&e)).balance_shares(&user)
-    }
-}
-
-#[contractimpl]
-impl FlashSwapReceiver for RouterContract {
-    /// Called by the AMM during a flash swap. Receives borrowed PT, deposits user V into the
-    /// YM to mint PT + YT, sends YT to the user, then repays the AMM with all PT held.
-    fn on_flash_receive(e: Env, pt_borrowed: i128, user: Address, v_in: i128, min_yt_out: i128) {
-        // Only the AMM may invoke this callback.
-        get_amm(&e).require_auth();
-
-        let ym = get_ym(&e);
-        let ym_client = YieldManagerClient::new(&e, &ym);
-        let v_token = ym_client.get_vault();
-        let pt_addr = ym_client.get_principal_token();
-        let yt_addr = ym_client.get_yield_token();
-
-        let v_client = token::Client::new(&e, &v_token);
-        let pt_client = token::Client::new(&e, &pt_addr);
-        let yt_client = token::Client::new(&e, &yt_addr);
-
-        // Pull V from user into router.
-        v_client.transfer(&user, &e.current_contract_address(), &v_in);
-
-        // Deposit V → YM mints equal amounts of PT and YT to the router.
-        ym_client.deposit(&e.current_contract_address(), &v_in);
-
-        let exchange_rate = ym_client.get_exchange_rate();
-        let yt_minted = v_in * exchange_rate / 10_000_000;
-
-        assert!(yt_minted >= min_yt_out, "yt below minimum");
-
-        // Send YT to user.
-        yt_client.transfer(&e.current_contract_address(), &user, &yt_minted);
-
-        // Repay AMM: return the borrowed PT plus all newly minted PT.
-        let amm = get_amm(&e);
-        pt_client.transfer(&e.current_contract_address(), &amm, &(pt_borrowed + yt_minted));
-
-        // Post-conditions: router must hold no residual tokens.
-        assert!(pt_client.balance(&e.current_contract_address()) == 0, "router leaked PT");
-        assert!(yt_client.balance(&e.current_contract_address()) == 0, "router leaked YT");
-        assert!(v_client.balance(&e.current_contract_address()) == 0, "router leaked V");
-    }
-}
-
-#[contractimpl]
-impl FlashSwapVReceiver for RouterContract {
-    /// Called by the AMM during `flash_swap_v`. Receives `pt_borrowed` PT, pulls the user's
-    /// matching YT, redeems both for vault shares via the YM, repays the AMM `v_owed` shares,
-    /// and forwards the remainder to the user.
-    fn on_flash_receive_v(e: Env, pt_borrowed: i128, v_owed: i128, user: Address, min_v_out: i128) {
-        // Only the AMM may invoke this callback.
-        get_amm(&e).require_auth();
-
-        let router = e.current_contract_address();
-
-        let ym = get_ym(&e);
-        let ym_client = YieldManagerClient::new(&e, &ym);
-        let v_token = ym_client.get_vault();
-        let pt_addr = ym_client.get_principal_token();
-        let yt_addr = ym_client.get_yield_token();
-
-        let v_client = token::Client::new(&e, &v_token);
-        let pt_client = token::Client::new(&e, &pt_addr);
-        let yt_client = token::Client::new(&e, &yt_addr);
-
-        // Pull the user's YT into the router; together with the borrowed PT this is a 1:1 pair.
-        yt_client.transfer(&user, &router, &pt_borrowed);
-
-        // Redeem PT + YT → vault shares. The YM burns `pt_borrowed` of each from the router.
-        let v_before = v_client.balance(&router);
-        ym_client.redeem(&router, &pt_borrowed);
-        let v_total = v_client
-            .balance(&router)
-            .checked_sub(v_before)
-            .expect("V balance went backwards");
-
-        let v_to_user = v_total
-            .checked_sub(v_owed)
-            .expect("redeem yielded less V than owed to pool");
-        assert!(v_to_user >= min_v_out, "v out below minimum");
-
-        // Repay the AMM, then forward the remainder to the user.
-        let amm = get_amm(&e);
-        v_client.transfer(&router, &amm, &v_owed);
-        v_client.transfer(&router, &user, &v_to_user);
-
-        // Post-conditions: router must hold no residual tokens.
-        assert!(pt_client.balance(&router) == 0, "router leaked PT");
-        assert!(yt_client.balance(&router) == 0, "router leaked YT");
-        assert!(v_client.balance(&router) == 0, "router leaked V");
     }
 }

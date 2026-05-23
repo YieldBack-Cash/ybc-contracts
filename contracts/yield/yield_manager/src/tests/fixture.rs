@@ -24,7 +24,7 @@ pub struct YieldManagerTest {
 impl YieldManagerTest {
     pub fn setup() -> Self {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
 
         let admin = Address::generate(&env);
         let user1 = Address::generate(&env);
@@ -116,6 +116,9 @@ impl YieldManagerTest {
     }
 
     pub fn deposit(&self, user: &Address, shares: i128) {
+        let expiry = self.env.ledger().sequence() + 1000;
+        let vault = MockVaultClient::new(&self.env, &self.vault_addr);
+        vault.approve(user, &self.yield_manager, &shares, &expiry);
         self.env.invoke_contract::<()>(
             &self.yield_manager,
             &Symbol::new(&self.env, "deposit"),

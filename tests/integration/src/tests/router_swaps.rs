@@ -1,6 +1,6 @@
 use soroban_sdk::Env;
 
-use super::fixture::IntegrationFixture;
+use super::fixture::{IntegrationFixture, ONE_YEAR_SECS};
 
 const POOL_PT: i128 = 50_000_000;
 const POOL_V: i128 = 50_000_000;
@@ -62,6 +62,41 @@ fn test_router_swap_yt_for_v_zero_reverts() {
     f.router_swap_yt_for_v(&f.user, 0, 1);
 }
 
+/// When the vault rate rises, the pool needs fewer (but more valuable) shares
+/// to cover the same PT price, so the user keeps a larger slice of the redeemed
+/// position.
+///
+///   shares returned by YM  = yt_in  (fixed — YM redeems 1:1 at its stored rate)
+///   shares owed to pool     = curve_price_in_assets / vault_rate  (halves as rate doubles)
+///   shares kept by user     = returned − owed  (grows)
+#[test]
+fn test_router_swap_yt_for_v_higher_vault_rate() {
+    let yt_in = 10_000_000i128;
+
+    // Baseline swap at vault rate 1 — seeded already gives the user YT.
+    let env_base = Env::default();
+    let f_base = seeded(&env_base);
+    let yt_before_base = f_base.yt_balance(&f_base.user);
+    let v_before_base = f_base.vault.balance(&f_base.user);
+    f_base.router_swap_yt_for_v(&f_base.user, yt_in, 1);
+    let v_received_base = f_base.vault.balance(&f_base.user) - v_before_base;
+    assert!(v_received_base > 0);
+    assert_eq!(f_base.yt_balance(&f_base.user), yt_before_base - yt_in);
+
+    // Same swap after vault rate doubles.
+    let env_up = Env::default();
+    let f_up = seeded(&env_up);
+    f_up.vault.set_exchange_rate(&2);
+    let yt_before_up = f_up.yt_balance(&f_up.user);
+    let v_before_up = f_up.vault.balance(&f_up.user);
+    f_up.router_swap_yt_for_v(&f_up.user, yt_in, 1);
+    let v_received_up = f_up.vault.balance(&f_up.user) - v_before_up;
+
+    // Pool takes fewer shares at the higher rate → user keeps more.
+    assert!(v_received_up > v_received_base);
+    assert_eq!(f_up.yt_balance(&f_up.user), yt_before_up - yt_in);
+}
+
 // ── swap_v_for_yt (buy YT with V, via flash_swap_pt) ─────────────────────────
 
 #[test]
@@ -83,6 +118,43 @@ fn test_router_swap_v_for_yt() {
     let (pt_res, v_res) = f.pool.get_reserves();
     assert_eq!(pt_res, POOL_PT + v_in, "pool absorbed the minted PT");
     assert_eq!(v_res, POOL_V, "pool V reserve unchanged");
+}
+
+// ── swap_v_for_yt edge cases ──────────────────────────────────────────────────
+
+#[test]
+#[should_panic]
+fn test_router_swap_v_for_yt_slippage_reverts() {
+    let env = Env::default();
+    let f = seeded(&env);
+    // min_yt_out far above what 1M V can produce.
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 999_999_999);
+}
+
+#[test]
+#[should_panic]
+fn test_router_swap_v_for_yt_zero_reverts() {
+    let env = Env::default();
+    let f = seeded(&env);
+    f.router_swap_v_for_yt(&f.user, 0, 1);
+}
+
+#[test]
+#[should_panic]
+fn test_router_swap_v_for_yt_expired_reverts() {
+    let env = Env::default();
+    let f = seeded(&env);
+    f.advance_time(ONE_YEAR_SECS + 1);
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1);
+}
+
+#[test]
+#[should_panic]
+fn test_router_swap_yt_for_v_expired_reverts() {
+    let env = Env::default();
+    let f = seeded(&env);
+    f.advance_time(ONE_YEAR_SECS + 1);
+    f.router_swap_yt_for_v(&f.user, 1_000_000, 1);
 }
 
 // ── round trip ───────────────────────────────────────────────────────────────

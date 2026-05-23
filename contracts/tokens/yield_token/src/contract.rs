@@ -179,6 +179,40 @@ impl YieldTokenTrait for YieldToken {
         storage::set_total_supply(&env, total_supply + amount);
     }
 
+    fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128) {
+        from.require_auth();
+        check_nonnegative_amount(amount);
+
+        let from_balance = storage::get_balance(&env, &from);
+        if from_balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        Self::accrue_yield(&env, &from, Some(exchange_rate));
+        Self::accrue_yield(&env, &to, Some(exchange_rate));
+
+        let to_balance = storage::get_balance(&env, &to);
+        storage::set_balance(&env, &from, from_balance - amount);
+        storage::set_balance(&env, &to, to_balance + amount);
+    }
+
+    fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
+        from.require_auth();
+        check_nonnegative_amount(amount);
+
+        let balance = storage::get_balance(&env, &from);
+        if balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        Self::accrue_yield(&env, &from, Some(exchange_rate));
+
+        storage::set_balance(&env, &from, balance - amount);
+
+        let total_supply = storage::get_total_supply(&env);
+        storage::set_total_supply(&env, total_supply - amount);
+    }
+
     fn user_index(env: Env, address: Address) -> i128 {
         storage::get_user_index(&env, &address)
     }

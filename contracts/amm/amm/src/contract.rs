@@ -215,14 +215,6 @@ impl AmmInterface for LiquidityPool {
         put_market_state(&e, &market);
     }
 
-    fn swap_v_for_yt(_e: Env, _to: Address, _v_in: i128, _min_yt_out: i128) {
-        unimplemented!("swap_v_for_yt is handled by the router via flash_swap_pt")
-    }
-
-    fn swap_yt_for_v(_e: Env, _to: Address, _yt_in: i128, _min_v_out: i128) {
-        unimplemented!("swap_yt_for_v is handled by the router via flash_swap_v")
-    }
-
     /// Flash-lends PT to a receiver, calls its callback, then enforces the invariant.
     ///
     /// The receiver must transfer back at least `pt_to_borrow` PT (plus any newly minted PT)
@@ -246,7 +238,7 @@ impl AmmInterface for LiquidityPool {
         // Synchronous callback: receiver does YM deposit, sends YT to user,
         // then transfers (pt_to_borrow + pt_minted) PT back to this address.
         FlashReceiverClient::new(&e, &receiver)
-            .on_flash_receive(&pt_to_borrow, &user, &v_in, &min_yt_out);
+            .on_flash_receive(&pt_to_borrow, &user, &v_in, &min_yt_out, &e.current_contract_address());
 
         // Invariant enforcement: pool must have at least as much PT as before the lend.
         let pt_balance_after = get_balance_a(&e);
@@ -340,7 +332,7 @@ impl AmmInterface for LiquidityPool {
         // Synchronous callback: receiver pulls YT from the user, redeems PT+YT → V via the YM,
         // repays this address `v_owed_shares` V, and forwards the remainder to the user.
         FlashVReceiverClient::new(&e, &receiver)
-            .on_flash_receive_v(&pt_to_borrow, &v_owed_shares, &user, &min_v_out);
+            .on_flash_receive_v(&pt_to_borrow, &v_owed_shares, &user, &min_v_out, &e.current_contract_address());
 
         let pt_balance_after = get_balance_a(&e);
         let v_balance_after = get_balance_b(&e);
