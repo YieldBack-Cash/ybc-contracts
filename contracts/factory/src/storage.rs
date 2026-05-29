@@ -1,5 +1,5 @@
-use soroban_sdk::{Address, Env};
-use crate::contract::WasmHashes;
+use soroban_sdk::{Address, Env, Vec};
+use crate::contract::{Market, WasmHashes};
 
 // Storage keys
 const ADMIN_KEY: &str = "admin";
@@ -75,6 +75,22 @@ pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
 
 pub fn get_wasm_hashes(env: &Env) -> WasmHashes {
     env.storage().instance().get(&WASM_HASHES_KEY).expect("WASM hashes not set")
+}
+
+// Historic markets
+const MARKETS_KEY: &str = "markets";
+
+pub fn get_markets(env: &Env) -> Vec<Market> {
+    env.storage()
+        .persistent()
+        .get(&MARKETS_KEY)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn push_market(env: &Env, market: Market) {
+    let mut markets = get_markets(env);
+    markets.push_back(market);
+    env.storage().persistent().set(&MARKETS_KEY, &markets);
 }
 
 // Deploy counter - increments with each contract deployment for unique salts

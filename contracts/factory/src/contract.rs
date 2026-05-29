@@ -1,6 +1,18 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Vec};
 use crate::storage;
 use yield_manager_interface::{YieldManagerClient, VaultType};
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Market {
+    pub ym: Address,
+    pub pt: Address,
+    pub yt: Address,
+    pub pt_pool: Address,
+    pub yt_pool: Address,
+    pub maturity: u64,
+    pub vault: Address,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -34,6 +46,8 @@ pub trait FactoryTrait {
     fn get_current_yt_token(env: Env) -> Option<Address>;
     fn get_current_pt_pool(env: Env) -> Option<Address>;
     fn get_current_yt_pool(env: Env) -> Option<Address>;
+
+    fn get_markets(env: Env) -> Vec<Market>;
 
     // Rollover function to deploy new contracts after maturity
     fn rollover_if_expired(env: Env, vault_type: VaultType, new_maturity: u64) -> bool;
@@ -150,10 +164,28 @@ impl FactoryTrait for Factory {
         storage::set_current_pt_pool(&env, &pt_pool_addr);
         storage::set_current_yt_pool(&env, &yt_pool_addr);
 
+        // Record this market in history
+        let ym_addr = storage::get_current_yield_manager(&env)
+            .expect("No yield manager deployed");
+        let ym_client = YieldManagerClient::new(&env, &ym_addr);
+        storage::push_market(&env, Market {
+            pt: ym_client.get_principal_token(),
+            yt: ym_client.get_yield_token(),
+            maturity: ym_client.get_maturity(),
+            vault: ym_client.get_vault(),
+            ym: ym_addr,
+            pt_pool: pt_pool_addr.clone(),
+            yt_pool: yt_pool_addr.clone(),
+        });
+
         (pt_pool_addr, yt_pool_addr)
     }
 
     // Getter functions for current contracts
+    fn get_markets(env: Env) -> Vec<Market> {
+        storage::get_markets(&env)
+    }
+
     fn get_current_yield_manager(env: Env) -> Option<Address> {
         storage::get_current_yield_manager(&env)
     }
