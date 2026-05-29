@@ -8,8 +8,7 @@ pub struct Market {
     pub ym: Address,
     pub pt: Address,
     pub yt: Address,
-    pub pt_pool: Address,
-    pub yt_pool: Address,
+    pub pool: Address,
     pub maturity: u64,
     pub vault: Address,
 }
@@ -33,19 +32,16 @@ pub trait FactoryTrait {
         maturity: u64,
     ) -> Address;
 
-    fn deploy_liquidity_pools(
+    fn deploy_pool(
         env: Env,
-        pt_token: Address,
-        yt_token: Address,
         vault_share_token: Address,
-    ) -> (Address, Address);
+    ) -> Address;
 
     // Getter functions for current contracts
     fn get_current_yield_manager(env: Env) -> Option<Address>;
     fn get_current_pt_token(env: Env) -> Option<Address>;
     fn get_current_yt_token(env: Env) -> Option<Address>;
-    fn get_current_pt_pool(env: Env) -> Option<Address>;
-    fn get_current_yt_pool(env: Env) -> Option<Address>;
+    fn get_current_pool(env: Env) -> Option<Address>;
 
     fn get_markets(env: Env) -> Vec<Market>;
 
@@ -133,52 +129,38 @@ impl FactoryTrait for Factory {
         ym_addr
     }
 
-    fn deploy_liquidity_pools(
+    fn deploy_pool(
         env: Env,
-        pt_token: Address,
-        yt_token: Address,
         vault_share_token: Address,
-    ) -> (Address, Address) {
+    ) -> Address {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
         let wasm_hashes = storage::get_wasm_hashes(&env);
 
-        let pt_pool_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.amm.clone(),
-                (pt_token, vault_share_token.clone()),
-            );
-
-        let yt_pool_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.amm,
-                (yt_token, vault_share_token),
-            );
-
-        // Store current pool addresses in factory storage
-        storage::set_current_pt_pool(&env, &pt_pool_addr);
-        storage::set_current_yt_pool(&env, &yt_pool_addr);
-
-        // Record this market in history
         let ym_addr = storage::get_current_yield_manager(&env)
             .expect("No yield manager deployed");
         let ym_client = YieldManagerClient::new(&env, &ym_addr);
+
+        let pt_addr = ym_client.get_principal_token();
+
+        let pool_addr = env
+            .deployer()
+            .with_current_contract(next_salt(&env))
+            .deploy_v2(wasm_hashes.amm, (pt_addr, vault_share_token));
+
+        storage::set_current_pool(&env, &pool_addr);
+
         storage::push_market(&env, Market {
+            ym: ym_addr,
             pt: ym_client.get_principal_token(),
             yt: ym_client.get_yield_token(),
             maturity: ym_client.get_maturity(),
             vault: ym_client.get_vault(),
-            ym: ym_addr,
-            pt_pool: pt_pool_addr.clone(),
-            yt_pool: yt_pool_addr.clone(),
+            pool: pool_addr.clone(),
         });
 
-        (pt_pool_addr, yt_pool_addr)
+        pool_addr
     }
 
     // Getter functions for current contracts
@@ -198,12 +180,8 @@ impl FactoryTrait for Factory {
         storage::get_current_yt_token(&env)
     }
 
-    fn get_current_pt_pool(env: Env) -> Option<Address> {
-        storage::get_current_pt_pool(&env)
-    }
-
-    fn get_current_yt_pool(env: Env) -> Option<Address> {
-        storage::get_current_yt_pool(&env)
+    fn get_current_pool(env: Env) -> Option<Address> {
+        storage::get_current_pool(&env)
     }
 
     /// Checks if current yield manager has expired and deploys new contracts if so
@@ -228,20 +206,8 @@ impl FactoryTrait for Factory {
         // Maturity has expired, deploy new contracts
         let vault = ym_client.get_vault();
 
-        // Deploy new yield manager with new maturity (nonce ensures unique salts)
         Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, new_maturity);
-
-        // Get the newly deployed token addresses from storage
-        let new_pt_addr = storage::get_current_pt_token(&env).unwrap();
-        let new_yt_addr = storage::get_current_yt_token(&env).unwrap();
-
-        // Deploy new liquidity pools
-        Self::deploy_liquidity_pools(
-            env,
-            new_pt_addr,
-            new_yt_addr,
-            vault,
-        );
+        Self::deploy_pool(env, vault);
 
         true
     }
