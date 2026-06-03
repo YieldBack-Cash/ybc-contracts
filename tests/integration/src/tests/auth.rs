@@ -19,7 +19,7 @@ use super::fixture::IntegrationFixture;
 /// well-conditioned (same approach as the router_swaps test suite).
 fn seeded<'a>(env: &'a Env) -> IntegrationFixture<'a> {
     let f = IntegrationFixture::new(env);
-    f.vault.set_exchange_rate(&1);
+    f.vault.set_exchange_rate(&10_000_000); // 1.0 in SCALAR_7 — keeps AMM 1:1 vault-share-to-asset
     f.vault.mint(&f.admin, &200_000_000);
     f.ym_deposit(&f.admin, 100_000_000);
     f.amm_deposit(&f.admin, f.pt_balance(&f.admin), 50_000_000);

@@ -1,93 +1,99 @@
-use soroban_sdk::{Address, Env, Vec};
+use soroban_sdk::{contracttype, Address, Env, Vec};
 use crate::contract::{Market, WasmHashes};
 
-// Storage keys
-const ADMIN_KEY: &str = "admin";
-const CURRENT_YIELD_MANAGER_KEY: &str = "cur_ym";
-const CURRENT_PT_TOKEN_KEY: &str = "cur_pt";
-const CURRENT_YT_TOKEN_KEY: &str = "cur_yt";
-const CURRENT_POOL_KEY: &str = "cur_pool";
-const WASM_HASHES_KEY: &str = "wasm_h";
-const SALT_COUNTER_KEY: &str = "salt_ctr";
+#[contracttype]
+enum DataKey {
+    Admin,
+    WasmHashes,
+    SaltCounter,
+    Vaults,
+    CurrentYm(Address),
+    CurrentPt(Address),
+    CurrentYt(Address),
+    CurrentPool(Address),
+    Markets(Address),
+}
 
-// Admin functions
 pub fn set_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&ADMIN_KEY, admin);
+    env.storage().instance().set(&DataKey::Admin, admin);
 }
 
 pub fn get_admin(env: &Env) -> Address {
-    env.storage()
-        .instance()
-        .get(&ADMIN_KEY)
-        .expect("Admin not set")
+    env.storage().instance().get(&DataKey::Admin).expect("Admin not set")
 }
 
-// Current yield manager
-pub fn set_current_yield_manager(env: &Env, yield_manager: &Address) {
-    env.storage().instance().set(&CURRENT_YIELD_MANAGER_KEY, yield_manager);
-}
-
-pub fn get_current_yield_manager(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_YIELD_MANAGER_KEY)
-}
-
-// Current PT token
-pub fn set_current_pt_token(env: &Env, pt_token: &Address) {
-    env.storage().instance().set(&CURRENT_PT_TOKEN_KEY, pt_token);
-}
-
-pub fn get_current_pt_token(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_PT_TOKEN_KEY)
-}
-
-// Current YT token
-pub fn set_current_yt_token(env: &Env, yt_token: &Address) {
-    env.storage().instance().set(&CURRENT_YT_TOKEN_KEY, yt_token);
-}
-
-pub fn get_current_yt_token(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_YT_TOKEN_KEY)
-}
-
-// Current pool
-pub fn set_current_pool(env: &Env, pool: &Address) {
-    env.storage().instance().set(&CURRENT_POOL_KEY, pool);
-}
-
-pub fn get_current_pool(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_POOL_KEY)
-}
-
-// WASM hashes
 pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
-    env.storage().instance().set(&WASM_HASHES_KEY, hashes);
+    env.storage().instance().set(&DataKey::WasmHashes, hashes);
 }
 
 pub fn get_wasm_hashes(env: &Env) -> WasmHashes {
-    env.storage().instance().get(&WASM_HASHES_KEY).expect("WASM hashes not set")
+    env.storage().instance().get(&DataKey::WasmHashes).expect("WASM hashes not set")
 }
 
-// Historic markets
-const MARKETS_KEY: &str = "markets";
-
-pub fn get_markets(env: &Env) -> Vec<Market> {
-    env.storage()
-        .persistent()
-        .get(&MARKETS_KEY)
-        .unwrap_or_else(|| Vec::new(env))
-}
-
-pub fn push_market(env: &Env, market: Market) {
-    let mut markets = get_markets(env);
-    markets.push_back(market);
-    env.storage().persistent().set(&MARKETS_KEY, &markets);
-}
-
-// Deploy counter - increments with each contract deployment for unique salts
 pub fn get_salt_counter(env: &Env) -> u32 {
-    env.storage().instance().get(&SALT_COUNTER_KEY).unwrap_or(0)
+    env.storage().instance().get(&DataKey::SaltCounter).unwrap_or(0)
 }
 
 pub fn set_salt_counter(env: &Env, counter: u32) {
-    env.storage().instance().set(&SALT_COUNTER_KEY, &counter);
+    env.storage().instance().set(&DataKey::SaltCounter, &counter);
+}
+
+pub fn get_vaults(env: &Env) -> Vec<Address> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Vaults)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn register_vault(env: &Env, vault: &Address) {
+    let mut vaults = get_vaults(env);
+    if !vaults.contains(vault) {
+        vaults.push_back(vault.clone());
+        env.storage().persistent().set(&DataKey::Vaults, &vaults);
+    }
+}
+
+pub fn set_current_yield_manager(env: &Env, vault: &Address, ym: &Address) {
+    env.storage().instance().set(&DataKey::CurrentYm(vault.clone()), ym);
+}
+
+pub fn get_current_yield_manager(env: &Env, vault: &Address) -> Option<Address> {
+    env.storage().instance().get(&DataKey::CurrentYm(vault.clone()))
+}
+
+pub fn set_current_pt_token(env: &Env, vault: &Address, pt: &Address) {
+    env.storage().instance().set(&DataKey::CurrentPt(vault.clone()), pt);
+}
+
+pub fn get_current_pt_token(env: &Env, vault: &Address) -> Option<Address> {
+    env.storage().instance().get(&DataKey::CurrentPt(vault.clone()))
+}
+
+pub fn set_current_yt_token(env: &Env, vault: &Address, yt: &Address) {
+    env.storage().instance().set(&DataKey::CurrentYt(vault.clone()), yt);
+}
+
+pub fn get_current_yt_token(env: &Env, vault: &Address) -> Option<Address> {
+    env.storage().instance().get(&DataKey::CurrentYt(vault.clone()))
+}
+
+pub fn set_current_pool(env: &Env, vault: &Address, pool: &Address) {
+    env.storage().instance().set(&DataKey::CurrentPool(vault.clone()), pool);
+}
+
+pub fn get_current_pool(env: &Env, vault: &Address) -> Option<Address> {
+    env.storage().instance().get(&DataKey::CurrentPool(vault.clone()))
+}
+
+pub fn get_markets(env: &Env, vault: &Address) -> Vec<Market> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Markets(vault.clone()))
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn push_market(env: &Env, vault: &Address, market: Market) {
+    let mut markets = get_markets(env, vault);
+    markets.push_back(market);
+    env.storage().persistent().set(&DataKey::Markets(vault.clone()), &markets);
 }

@@ -43,8 +43,8 @@ impl<'a> IntegrationFixture<'a> {
             (&admin, String::from_str(env, "Mock Vault"), String::from_str(env, "MVT"), 7u32),
         );
         let vault = MockVaultClient::new(env, &vault_addr);
-        // Default rate of 10_000_000 (1.0 in 1e7 fixed point) is intentional —
-        // yield_manager expects convert_to_assets(1) to return the 1e7-scaled rate.
+        // Default rate of 10_000_000 (1.0 in 1e7 fixed-point) gives convert_to_assets(SCALAR_7) = SCALAR_7,
+        // so the yield_manager stores an initial exchange rate of SCALAR_7 (1.0).
 
         // ── Yield Manager ────────────────────────────────────────────────────
         let ym_addr = env.register(YieldManager, (&admin, &vault_addr, VaultType::Vault4626, maturity));

@@ -1,5 +1,7 @@
 use soroban_sdk::{token, Address, Env};
 use crate::storage;
+
+const SCALAR_7: i128 = 1_0000000;
 use amm_interface::{FlashSwapReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
@@ -24,11 +26,11 @@ impl YieldManager {
         match vault_type {
             VaultType::Vault4626 => {
                 let client = VaultContractClient::new(env, &vault_addr);
-                client.convert_to_assets(&1i128)
+                client.convert_to_assets(&(1 * SCALAR_7))
             }
             VaultType::VaultDefindex => {
                 let client = DefindexVaultContractClient::new(env, &vault_addr);
-                let asset_amounts = client.get_asset_amounts_per_shares(&1i128);
+                let asset_amounts = client.get_asset_amounts_per_shares(&(1 * SCALAR_7));
                 asset_amounts.get(0).unwrap()
             }
         }
@@ -235,8 +237,7 @@ impl YieldManagerTrait for YieldManager {
         let vault_addr = storage::get_vault(&env);
         let pt_addr = storage::get_principal_token(&env);
 
-        // Get the stored exchange rate (locked at maturity)
-        // Multiply by scale (1e7) to reverse the scaling applied during deposit
+        YieldManager::update_exchange_rate(&env);
         let exchange_rate = storage::get_exchange_rate(&env);
         let shares_to_return = pt_amount * 10_000_000 / exchange_rate;
 

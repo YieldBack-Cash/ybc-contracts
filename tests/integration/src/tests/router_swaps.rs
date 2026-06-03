@@ -11,7 +11,7 @@ const YM_DEPOSIT: i128 = 100_000_000;
 /// holding `YM_DEPOSIT` PT + YT, and the pool seeded with `POOL_PT` PT / `POOL_V` V.
 fn seeded<'a>(env: &'a Env) -> IntegrationFixture<'a> {
     let f = IntegrationFixture::new(env);
-    f.vault.set_exchange_rate(&1);
+    f.vault.set_exchange_rate(&10_000_000); // 1.0 in SCALAR_7 — 1:1 vault-share-to-asset for clean curve math
     f.ym_deposit(&f.user, YM_DEPOSIT);
     f.amm_deposit(&f.user, POOL_PT, POOL_V);
     f
@@ -86,14 +86,15 @@ fn test_router_swap_yt_for_v_higher_vault_rate() {
     // Same swap after vault rate doubles.
     let env_up = Env::default();
     let f_up = seeded(&env_up);
-    f_up.vault.set_exchange_rate(&2);
+    f_up.vault.set_exchange_rate(&20_000_000); // 2.0 in SCALAR_7 — doubles the vault rate
     let yt_before_up = f_up.yt_balance(&f_up.user);
     let v_before_up = f_up.vault.balance(&f_up.user);
     f_up.router_swap_yt_for_v(&f_up.user, yt_in, 1);
     let v_received_up = f_up.vault.balance(&f_up.user) - v_before_up;
 
-    // Pool takes fewer shares at the higher rate → user keeps more.
-    assert!(v_received_up > v_received_base);
+    // At 2x rate the redeem returns half the shares and the pool charges half — both halve,
+    // so the user keeps fewer vault shares (each worth twice as much in asset terms).
+    assert!(v_received_up < v_received_base);
     assert_eq!(f_up.yt_balance(&f_up.user), yt_before_up - yt_in);
 }
 

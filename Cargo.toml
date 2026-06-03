@@ -15,6 +15,7 @@ members = [
   "vault/defindex_interface",
   "contracts/router",
   "tests/integration",
+  "tests/blend",
 ]
 
 [workspace.dependencies]
