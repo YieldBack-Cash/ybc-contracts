@@ -480,6 +480,10 @@ impl AmmInterface for LiquidityPool {
         (market.reserve_a, market.reserve_b)
     }
 
+    fn get_implied_rate(e: Env) -> i128 {
+        get_market_state(&e).last_implied_rate
+    }
+
     /// Returns the pool share balance for a given user.
     fn balance_shares(e: Env, user: Address) -> i128 {
         get_shares(&e, &user)
