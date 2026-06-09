@@ -1,0 +1,15 @@
+[package]
+name = "blend-tests"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+amm = { path = "../../contracts/amm/amm", features = ["testutils"] }
+principal_token = { path = "../../contracts/tokens/principal_token" }
+router = { path = "../../contracts/router" }
+yield_manager = { path = "../../contracts/yield/yield_manager" }
+yield_token = { path = "../../contracts/tokens/yield_token" }
