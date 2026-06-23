@@ -1,5 +1,5 @@
 use crate::curve::{calc_trade, compute_rate_anchor, get_exchange_rate_from_trade};
-use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_from_pool_to_user, transfer_v_from_user_to_pool};
+use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_from_pool_to_user, transfer_pt_from_user_to_pool, transfer_v_from_user_to_pool, transfer_v_from_pool_to_user};
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
 use num_integer::Roots;
@@ -65,13 +65,13 @@ impl AmmInterface for LiquidityPool {
     /// * `v_in_max` - Maximum vault shares willing to pay (slippage protection)
     fn swap_v_for_pt(e: Env, to: Address, pt_out: i128, v_in_max: i128) {
         to.require_auth();
-        assert!(pt_out > 0);
-        assert!(v_in_max > 0);
+        assert!(pt_out > 0, "pt_out must be positive");
+        assert!(v_in_max > 0, "v_in_max must be positive");
 
         let mut market = get_market_state(&e);
         let now = e.ledger().timestamp();
-        assert!(now < market.expiry_ts);
-        assert!(market.reserve_a >= pt_out); // TODO: > is safer since post-trade PT must remain positive
+        assert!(now < market.expiry_ts, "market expired");
+        assert!(market.reserve_a > pt_out, "insufficient PT liquidity");
 
         let time_to_expiry = market.expiry_ts - now;
         let years = crate::math::seconds_to_years(time_to_expiry);
@@ -194,9 +194,8 @@ impl AmmInterface for LiquidityPool {
 
         assert!(new_reserve_a > 0 && new_reserve_b > 0, "new reserves must be strictly positive");
 
-        let pt_client = token::TokenClient::new(&e, &market.token_a);
-        pt_client.transfer(&to, &e.current_contract_address(), &pt_in);
-        transfer_b(&e, to, v_out_shares);
+        transfer_pt_from_user_to_pool(&e, &to, pt_in);
+        transfer_v_from_pool_to_user(&e, &to, v_out_shares);
 
         market.reserve_a = new_reserve_a;
         market.reserve_b = new_reserve_b;
@@ -229,6 +228,20 @@ impl AmmInterface for LiquidityPool {
         assert!(now < market.expiry_ts, "market expired");
         assert!(market.reserve_a > pt_to_borrow, "insufficient PT liquidity");
 
+        let time_to_expiry = market.expiry_ts - now;
+        let years = crate::math::seconds_to_years(time_to_expiry);
+        let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
+        let rate_scalar = crate::math::div_down(market.scalar_root, years);
+
+        // Anchor locked from pre-borrow reserves so the rate update is not a no-op.
+        let rate_anchor = compute_rate_anchor(
+            market.reserve_a,
+            reserve_b_assets,
+            market.last_implied_rate,
+            rate_scalar,
+            time_to_expiry as i128,
+        );
+
         let pt_balance_before = get_balance_a(&e);
 
         // Send PT to receiver — pool is temporarily undercollateralized here.
@@ -244,21 +257,10 @@ impl AmmInterface for LiquidityPool {
         let pt_balance_after = get_balance_a(&e);
         assert!(pt_balance_after >= pt_balance_before, "flash swap: PT not fully repaid");
 
-        // Update PT reserve; V reserve is unchanged (user V went to YM, not this pool).
-        let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
         market.reserve_a = pt_balance_after;
 
-        // Update implied rate from new reserve state.
-        let time_to_expiry = market.expiry_ts - now;
-        let years = crate::math::seconds_to_years(time_to_expiry);
-        let rate_scalar = crate::math::div_down(market.scalar_root, years);
-        let rate_anchor = compute_rate_anchor(
-            market.reserve_a,
-            reserve_b_assets,
-            market.last_implied_rate,
-            rate_scalar,
-            time_to_expiry as i128,
-        );
+        // Evaluate at post-callback reserves using the pre-borrow anchor so the
+        // rate reflects the actual change in pool composition.
         let new_exchange_rate = get_exchange_rate_from_trade(
             market.reserve_a,
             reserve_b_assets,

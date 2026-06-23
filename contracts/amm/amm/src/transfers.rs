@@ -50,6 +50,15 @@ pub(crate) fn transfer_pt_from_pool_to_user(e: &Env, to: &Address, pt_out: i128)
     transfer_a(e, to.clone(), pt_out);
 }
 
+pub(crate) fn transfer_pt_from_user_to_pool(e: &Env, from: &Address, pt_in: i128) {
+    let market = get_market_state(e);
+    token::TokenClient::new(e, &market.token_a).transfer(from, &e.current_contract_address(), &pt_in);
+}
+
+pub(crate) fn transfer_v_from_pool_to_user(e: &Env, to: &Address, v_out: i128) {
+    transfer_b(e, to.clone(), v_out);
+}
+
 pub(crate) fn get_deposit_amounts(
     desired_a: i128,
     min_a: i128,
