@@ -138,25 +138,31 @@ fn two_users_earn_proportional_yield() {
     );
 }
 
-/// After maturity no new yield accrues, regardless of ongoing pool interest.
+/// After the exchange rate is sealed at maturity, no further yield accrues.
+///
+/// The YM fetches the vault rate one final time when maturity is first crossed, then
+/// permanently locks it. The first claim at/after maturity captures that residual yield
+/// and seals the rate; every subsequent claim must return 0.
 #[test]
-fn no_new_yield_accrues_after_maturity() {
+fn no_new_yield_accrues_after_maturity_is_sealed() {
     let env = Env::default();
     let f = RealBlendFixture::new(&env);
     let user = f.user.clone();
     f.setup_yt_position(&user, 1_000_0000000);
 
-    // Claim any pre-maturity yield so the slate is clean.
-    f.advance_time(ONE_DAY_SECS);
+    // Advance past maturity and accrue interest so the pool has a fresh b_rate.
+    f.advance_time(ONE_YEAR_SECS + ONE_DAY_SECS);
     f.accrue_interest();
+
+    // First claim at/after maturity seals the exchange rate (may return > 0).
     let _ = f.claim_yield(&user);
 
-    // Advance well past maturity and accrue more interest.
-    f.advance_time(ONE_YEAR_SECS + 1);
+    // Advance more time and accrue more pool interest — rate is now locked.
+    f.advance_time(30 * ONE_DAY_SECS);
     f.accrue_interest();
 
     let claimed = f.claim_yield(&user);
-    assert_eq!(claimed, 0, "no new yield should accrue after maturity");
+    assert_eq!(claimed, 0, "no new yield should accrue after the rate is sealed");
 }
 
 /// Yield that accrued before maturity remains claimable after maturity passes.
