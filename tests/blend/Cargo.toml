@@ -8,6 +8,7 @@ crate-type = ["rlib"]
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+blend-contract-sdk = { version = "2.25.0", features = ["testutils"] }
 amm = { path = "../../contracts/amm/amm", features = ["testutils"] }
 principal_token = { path = "../../contracts/tokens/principal_token" }
 router = { path = "../../contracts/router" }

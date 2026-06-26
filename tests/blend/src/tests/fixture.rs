@@ -168,7 +168,7 @@ impl<'a> BlendFixture<'a> {
     ///                          →  yield manager  →  PT / YT
     ///                                            →  AMM  →  router
     pub fn new(env: &'a Env) -> Self {
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
         let admin = Address::generate(env);
