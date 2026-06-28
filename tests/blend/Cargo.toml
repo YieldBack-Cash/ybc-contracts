@@ -11,6 +11,9 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 blend-contract-sdk = { version = "2.25.0", features = ["testutils"] }
 amm = { path = "../../contracts/amm/amm", features = ["testutils"] }
 principal_token = { path = "../../contracts/tokens/principal_token" }
+principal_token_interface = { path = "../../contracts/tokens/principal_token_interface" }
 router = { path = "../../contracts/router" }
 yield_manager = { path = "../../contracts/yield/yield_manager" }
+yield_manager_interface = { path = "../../contracts/yield/yield_manager_interface" }
 yield_token = { path = "../../contracts/tokens/yield_token" }
+yield_token_interface = { path = "../../contracts/tokens/yield_token_interface" }

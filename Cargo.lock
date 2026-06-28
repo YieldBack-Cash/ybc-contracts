@@ -220,10 +220,13 @@ dependencies = [
  "amm",
  "blend-contract-sdk",
  "principal_token",
+ "principal_token_interface",
  "router",
  "soroban-sdk",
  "yield_manager",
+ "yield_manager_interface",
  "yield_token",
+ "yield_token_interface",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    contracttype, token::StellarAssetClient, Address, BytesN, Env, IntoVal, String, Symbol,
+    contracttype, token::StellarAssetClient, Address, BytesN, Env, String, Symbol,
 };
 use soroban_sdk::testutils::{Address as _, BytesN as _, Ledger};
 
@@ -10,6 +10,7 @@ use blend_contract_sdk::{
 
 use principal_token::PrincipalToken;
 use yield_manager::{YieldManager, VaultType};
+use yield_manager_interface::YieldManagerClient;
 use yield_token::YieldToken;
 
 pub const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
@@ -94,7 +95,6 @@ pub struct RealBlendFixture<'a> {
     pub env: Env,
     pub admin: Address,
     pub user: Address,
-    /// The underlying asset used as the pool reserve and fee vault target.
     pub underlying: Address,
     pub fee_vault: fee_vault::Client<'a>,
     pub blend_pool: BlendPoolClient<'a>,
@@ -213,11 +213,7 @@ impl<'a> RealBlendFixture<'a> {
             ),
         );
 
-        env.invoke_contract::<()>(
-            &ym_addr,
-            &Symbol::new(env, "set_token_contracts"),
-            (&pt_addr, &yt_addr).into_val(env),
-        );
+        YieldManagerClient::new(env, &ym_addr).set_token_contracts(&pt_addr, &yt_addr);
 
         RealBlendFixture {
             env: env.clone(),
@@ -246,11 +242,7 @@ impl<'a> RealBlendFixture<'a> {
         let shares = self.fee_vault.deposit(&underlying_amount, user, user, user);
         let expiry = self.env.ledger().sequence() + 1000;
         self.fee_vault.approve(user, &self.yield_manager, &shares, &expiry);
-        self.env.invoke_contract::<()>(
-            &self.yield_manager,
-            &Symbol::new(&self.env, "deposit"),
-            (user, shares).into_val(&self.env),
-        );
+        YieldManagerClient::new(&self.env, &self.yield_manager).deposit(user, &shares);
     }
 
     /// Advance timestamp and ledger sequence (Stellar: ~5 s/ledger).
@@ -276,19 +268,16 @@ impl<'a> RealBlendFixture<'a> {
     }
 
     pub fn claim_yield(&self, user: &Address) -> i128 {
-        self.env.invoke_contract::<i128>(
-            &self.yt,
-            &Symbol::new(&self.env, "claim_yield"),
-            (user,).into_val(&self.env),
-        )
+        use yield_token_interface::YieldTokenClient;
+        YieldTokenClient::new(&self.env, &self.yt).claim_yield(user)
+    }
+
+    pub fn pt_balance(&self, user: &Address) -> i128 {
+        soroban_sdk::token::Client::new(&self.env, &self.pt).balance(user)
     }
 
     pub fn yt_balance(&self, user: &Address) -> i128 {
-        self.env.invoke_contract::<i128>(
-            &self.yt,
-            &Symbol::new(&self.env, "balance"),
-            (user,).into_val(&self.env),
-        )
+        soroban_sdk::token::Client::new(&self.env, &self.yt).balance(user)
     }
 
     pub fn vault_shares(&self, user: &Address) -> i128 {
