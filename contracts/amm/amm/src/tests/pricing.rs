@@ -59,7 +59,7 @@ fn test_higher_vault_rate_affects_pricing() {
     let env2 = Env::default();
     env2.mock_all_auths();
     let f2 = AmmFixture::new(&env2);
-    f2.set_vault_rate(2); // 2 assets per share
+    f2.set_vault_rate(2 * 1_000_0000); // 2 assets per share (1e7-scaled)
     f2.deposit(&f2.admin, 100_000_000, 100_000_000);
 
     let v_before_high = f2.vault.balance(&f2.user);
