@@ -81,6 +81,7 @@ pub trait FactoryTrait {
     fn get_current_pt_token(env: Env, vault: Address) -> Option<Address>;
     fn get_current_yt_token(env: Env, vault: Address) -> Option<Address>;
     fn get_current_pool(env: Env, vault: Address) -> Option<Address>;
+    fn get_wasm_hashes(env: Env) -> WasmHashes;
 
     fn rollover_if_expired(
         env: Env,
@@ -301,6 +302,10 @@ impl FactoryTrait for Factory {
 
     fn get_current_pool(env: Env, vault: Address) -> Option<Address> {
         storage::get_current_pool(&env, &vault)
+    }
+
+    fn get_wasm_hashes(env: Env) -> WasmHashes {
+        storage::get_wasm_hashes(&env)
     }
 
     fn rollover_if_expired(

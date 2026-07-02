@@ -1,31 +1,29 @@
 #![cfg(test)]
 
-use crate::{Factory, FactoryClient, WasmHashes};
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    token::TokenClient,
-    Address, Env, String,
+use crate::{
+    contract::{ContractUpgraded, Market, MarketRolledOver, WasmHashesUpdated},
+    Factory, FactoryClient, WasmHashes,
 };
 use mock_vault::{MockVault, MockVaultClient};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _, Ledger},
+    token::TokenClient,
+    Address, Env, Event, String,
+};
 use yield_manager_interface::VaultType;
 
 // Import compiled WASM bytecode for contracts the factory deploys.
 mod ym_wasm {
-    soroban_sdk::contractimport!(
-        file = "../../target/wasm32v1-none/release/yield_manager.wasm"
-    );
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_manager.wasm");
 }
 
-mod pt_wasm { // TODO: look into using the separate interface crate and importing this as bytes instead of contractimport!
-    soroban_sdk::contractimport!(
-        file = "../../target/wasm32v1-none/release/principal_token.wasm"
-    );
+mod pt_wasm {
+    // TODO: look into using the separate interface crate and importing this as bytes instead of contractimport!
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/principal_token.wasm");
 }
 
 mod yt_wasm {
-    soroban_sdk::contractimport!(
-        file = "../../target/wasm32v1-none/release/yield_token.wasm"
-    );
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_token.wasm");
 }
 
 struct FactoryTest {
@@ -85,7 +83,8 @@ impl FactoryTest {
     }
 
     fn deploy_yield_manager(&self, maturity: u64) -> Address {
-        self.factory.deploy_yield_manager(&self.vault_addr, &VaultType::Vault4626, &maturity)
+        self.factory
+            .deploy_yield_manager(&self.vault_addr, &VaultType::Vault4626, &maturity)
     }
 
     fn mint_vault_shares(&self, to: &Address, amount: i128) {
@@ -108,9 +107,12 @@ impl FactoryTest {
 fn test_getters_before_deployment() {
     let test = FactoryTest::setup();
 
-    assert_eq!(test.factory.get_current_yield_manager(), None);
-    assert_eq!(test.factory.get_current_pt_token(), None);
-    assert_eq!(test.factory.get_current_yt_token(), None);
+    assert_eq!(
+        test.factory.get_current_yield_manager(&test.vault_addr),
+        None
+    );
+    assert_eq!(test.factory.get_current_pt_token(&test.vault_addr), None);
+    assert_eq!(test.factory.get_current_yt_token(&test.vault_addr), None);
 }
 
 #[test]
@@ -121,9 +123,18 @@ fn test_deploy_yield_manager() {
     let ym_addr = test.deploy_yield_manager(maturity);
 
     // All three addresses should be stored
-    assert_eq!(test.factory.get_current_yield_manager(), Some(ym_addr.clone()));
-    assert!(test.factory.get_current_pt_token().is_some());
-    assert!(test.factory.get_current_yt_token().is_some());
+    assert_eq!(
+        test.factory.get_current_yield_manager(&test.vault_addr),
+        Some(ym_addr.clone())
+    );
+    assert!(test
+        .factory
+        .get_current_pt_token(&test.vault_addr)
+        .is_some());
+    assert!(test
+        .factory
+        .get_current_yt_token(&test.vault_addr)
+        .is_some());
 
     // Deployed YM should point at the correct vault
     let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
@@ -139,8 +150,8 @@ fn test_ym_knows_its_tokens() {
     let maturity = test.env.ledger().timestamp() + 1000;
 
     let ym_addr = test.deploy_yield_manager(maturity);
-    let pt_addr = test.factory.get_current_pt_token().unwrap();
-    let yt_addr = test.factory.get_current_yt_token().unwrap();
+    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
+    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
 
     let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
 
@@ -157,10 +168,13 @@ fn test_deployed_pt_metadata() {
     let maturity = test.env.ledger().timestamp() + 1000;
     test.deploy_yield_manager(maturity);
 
-    let pt_addr = test.factory.get_current_pt_token().unwrap();
+    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
     let pt_token = TokenClient::new(&test.env, &pt_addr);
 
-    assert_eq!(pt_token.name(), String::from_str(&test.env, "Principal Token"));
+    assert_eq!(
+        pt_token.name(),
+        String::from_str(&test.env, "Principal Token")
+    );
     assert_eq!(pt_token.symbol(), String::from_str(&test.env, "PT"));
     assert_eq!(pt_token.decimals(), 7);
 }
@@ -171,7 +185,7 @@ fn test_deployed_yt_metadata() {
     let maturity = test.env.ledger().timestamp() + 1000;
     test.deploy_yield_manager(maturity);
 
-    let yt_addr = test.factory.get_current_yt_token().unwrap();
+    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
     let yt_token = TokenClient::new(&test.env, &yt_addr);
 
     assert_eq!(yt_token.name(), String::from_str(&test.env, "Yield Token"));
@@ -185,8 +199,8 @@ fn test_deposit_through_factory_deployed_contracts() {
     let maturity = test.env.ledger().timestamp() + 1000;
 
     let ym_addr = test.deploy_yield_manager(maturity);
-    let pt_addr = test.factory.get_current_pt_token().unwrap();
-    let yt_addr = test.factory.get_current_yt_token().unwrap();
+    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
+    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
 
     // Mint vault shares to user
     let shares = 1_000_0000i128;
@@ -217,7 +231,12 @@ fn test_rollover_before_maturity_returns_false() {
     let maturity = test.env.ledger().timestamp() + 1000;
     test.deploy_yield_manager(maturity);
 
-    let rolled = test.factory.rollover_if_expired(&VaultType::Vault4626, &(maturity + 2000));
+    let rolled = test.factory.rollover_if_expired(
+        &test.vault_addr,
+        &VaultType::Vault4626,
+        &test.vault_addr,
+        &(maturity + 2000),
+    );
     assert!(!rolled);
 }
 
@@ -225,6 +244,108 @@ fn test_rollover_before_maturity_returns_false() {
 fn test_rollover_with_no_deployment_returns_false() {
     let test = FactoryTest::setup();
 
-    let rolled = test.factory.rollover_if_expired(&VaultType::Vault4626, &5000u64);
+    let rolled = test.factory.rollover_if_expired(
+        &test.vault_addr,
+        &VaultType::Vault4626,
+        &test.vault_addr,
+        &5000u64,
+    );
     assert!(!rolled);
+}
+
+#[test]
+fn test_set_wasm_hashes_emits_event() {
+    let test = FactoryTest::setup();
+    let old_hashes = test.factory.get_wasm_hashes();
+
+    let new_hash = test.env.deployer().upload_contract_wasm(ym_wasm::WASM);
+    let new_hashes = WasmHashes {
+        pt: new_hash.clone(),
+        yt: new_hash.clone(),
+        ym: new_hash.clone(),
+        amm: new_hash,
+    };
+
+    test.factory.set_wasm_hashes(&new_hashes);
+
+    let expected = WasmHashesUpdated {
+        old_hashes,
+        new_hashes,
+    };
+
+    let events = test.env.events().all();
+    let raw = events.events();
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0], expected.to_xdr(&test.env, &test.factory_addr));
+}
+
+#[test]
+fn test_upgrade_emits_event() {
+    let test = FactoryTest::setup();
+    let new_wasm_hash = test.env.deployer().upload_contract_wasm(ym_wasm::WASM);
+
+    test.factory.upgrade(&new_wasm_hash);
+
+    let expected = ContractUpgraded { new_wasm_hash };
+
+    let events = test.env.events().all();
+    let raw = events.events();
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0], expected.to_xdr(&test.env, &test.factory_addr));
+}
+
+#[test]
+fn test_rollover_after_expiry_emits_event() {
+    let test = FactoryTest::setup();
+    let maturity = test.env.ledger().timestamp() + 1000;
+
+    test.factory
+        .deploy_yield_manager(&test.vault_addr, &VaultType::Vault4626, &maturity);
+    test.factory.deploy_pool(&test.vault_addr, &test.vault_addr);
+
+    let old_market = Market {
+        ym: test
+            .factory
+            .get_current_yield_manager(&test.vault_addr)
+            .unwrap(),
+        pt: test.factory.get_current_pt_token(&test.vault_addr).unwrap(),
+        yt: test.factory.get_current_yt_token(&test.vault_addr).unwrap(),
+        pool: test.factory.get_current_pool(&test.vault_addr).unwrap(),
+        maturity,
+        vault: test.vault_addr.clone(),
+    };
+
+    test.advance_time(1500); // past maturity
+    let new_maturity = test.env.ledger().timestamp() + 1000;
+
+    let rolled = test.factory.rollover_if_expired(
+        &test.vault_addr,
+        &VaultType::Vault4626,
+        &test.vault_addr,
+        &new_maturity,
+    );
+    assert!(rolled);
+
+    let new_market = Market {
+        ym: test
+            .factory
+            .get_current_yield_manager(&test.vault_addr)
+            .unwrap(),
+        pt: test.factory.get_current_pt_token(&test.vault_addr).unwrap(),
+        yt: test.factory.get_current_yt_token(&test.vault_addr).unwrap(),
+        pool: test.factory.get_current_pool(&test.vault_addr).unwrap(),
+        maturity: new_maturity,
+        vault: test.vault_addr.clone(),
+    };
+
+    let expected = MarketRolledOver {
+        vault: test.vault_addr.clone(),
+        old_market,
+        new_market,
+    };
+
+    let events = test.env.events().all();
+    let raw = events.events();
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0], expected.to_xdr(&test.env, &test.factory_addr));
 }
