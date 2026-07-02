@@ -11,7 +11,7 @@
   "gitRef": null,
   "status": "open",
   "createdAt": 1782793667,
-  "updatedAt": 1782799254,
+  "updatedAt": 1782947067,
   "annotations": [
     {
       "id": "cbd02b54-3173-4478-955c-c2bf87cfa183",
@@ -70,7 +70,7 @@
         "startLine": 65,
         "endLine": 68
       },
-      "content": "No way to update contract WASM hashes after deployment.\n\nWether the admin's key is compromised or there are any bugs that we fix in the PT, YT, YM or AMM contracts, the factory doesn't pick them up.\n\nWe already have the internal `set_admin()` and `set_wasm_hashes` functions, but we need two new admin-gated functions:\n- `set_admin(new_admin)` to transfer ownership\n- `set_wasm_hashes(new_hashes)` to update child contract bytecodes.\n\nWe also would need to add a third new admin-gated function to make the factory contract itself upgradeable (it's own bytecode):\n- `upgrade(new_wasm_hash)` that calls `env.deployer().update_current_contract_wasm(new_Wasm_hash)`.",
+      "content": "No way to update contract WASM hashes after deployment.\n\nWhether the admin's key is compromised or there are any bugs that we fix in the PT, YT, YM or AMM contracts, the factory doesn't pick them up.\n\nWe already have the internal `set_admin()` and `set_wasm_hashes` functions, but we need two new admin-gated functions:\n- `set_admin(new_admin)` to transfer ownership\n- `set_wasm_hashes(new_hashes)` to update child contract bytecodes.\n\nWe also would need to add a third new admin-gated function to make the factory contract itself upgradeable (it's own bytecode):\n- `upgrade(new_wasm_hash)` that calls `env.deployer().update_current_contract_wasm(new_Wasm_hash)`.",
       "contentHash": "23b6ac47615862320cb7e54899631957b5c022a1f40cf539ec06df33f98db429"
     },
     {

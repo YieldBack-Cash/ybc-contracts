@@ -1,5 +1,7 @@
 use crate::storage;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Vec};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Vec,
+};
 use yield_manager_interface::{VaultType, YieldManagerClient};
 
 #[contracttype]
@@ -22,6 +24,38 @@ pub struct WasmHashes {
     pub amm: BytesN<32>,
 }
 
+#[contractevent(data_format = "single-value")]
+pub struct MarketCreated {
+    #[topic]
+    pub vault: Address,
+    pub market: Market,
+}
+
+#[contractevent]
+pub struct MarketRolledOver {
+    #[topic]
+    pub vault: Address,
+    pub old_market: Market,
+    pub new_market: Market,
+}
+
+#[contractevent]
+pub struct AdminChanged {
+    pub old_admin: Address,
+    pub new_admin: Address,
+}
+
+#[contractevent]
+pub struct WasmHashesUpdated {
+    pub old_hashes: WasmHashes,
+    pub new_hashes: WasmHashes,
+}
+
+#[contractevent]
+pub struct ContractUpgraded {
+    pub new_wasm_hash: BytesN<32>,
+}
+
 pub trait FactoryTrait {
     fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes);
 
@@ -32,6 +66,13 @@ pub trait FactoryTrait {
         maturity: u64,
     ) -> Address;
     fn deploy_pool(env: Env, vault: Address, vault_share_token: Address) -> Address;
+    fn create_market(
+        env: Env,
+        vault: Address,
+        vault_type: VaultType,
+        maturity: u64,
+        vault_share_token: Address,
+    ) -> Market;
 
     fn get_vaults(env: Env) -> Vec<Address>;
     fn get_markets(env: Env, vault: Address) -> Vec<Market>;
@@ -45,8 +86,13 @@ pub trait FactoryTrait {
         env: Env,
         vault: Address,
         vault_type: VaultType,
+        vault_share_token: Address,
         new_maturity: u64,
     ) -> bool;
+
+    fn set_admin(env: Env, new_admin: Address);
+    fn set_wasm_hashes(env: Env, new_hashes: WasmHashes);
+    fn upgrade(env: Env, new_wasm_hashes: BytesN<32>);
 }
 
 #[contract]
@@ -164,6 +210,75 @@ impl FactoryTrait for Factory {
         pool_addr
     }
 
+    fn create_market(
+        env: Env,
+        vault: Address,
+        vault_type: VaultType,
+        maturity: u64,
+        vault_share_token: Address,
+    ) -> Market {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+
+        let ym_address =
+            Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, maturity);
+        let pool_address = Self::deploy_pool(env.clone(), vault.clone(), vault_share_token);
+
+        let market = Market {
+            ym: ym_address,
+            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
+            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
+            pool: pool_address,
+            maturity,
+            vault: vault.clone(),
+        };
+
+        MarketCreated {
+            vault: vault.clone(),
+            market: market.clone(),
+        }
+        .publish(&env);
+
+        market
+    }
+
+    fn set_admin(env: Env, new_admin: Address) {
+        let old_admin = storage::get_admin(&env);
+        old_admin.require_auth();
+
+        storage::set_admin(&env, &new_admin);
+
+        AdminChanged {
+            old_admin,
+            new_admin,
+        }
+        .publish(&env);
+    }
+
+    fn set_wasm_hashes(env: Env, new_hashes: WasmHashes) {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+
+        let old_hashes = storage::get_wasm_hashes(&env);
+        storage::set_wasm_hashes(&env, &new_hashes);
+
+        WasmHashesUpdated {
+            old_hashes,
+            new_hashes,
+        }
+        .publish(&env);
+    }
+
+    fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+
+        env.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
+
+        ContractUpgraded { new_wasm_hash }.publish(&env);
+    }
+
     fn get_vaults(env: Env) -> Vec<Address> {
         storage::get_vaults(&env)
     }
@@ -192,6 +307,7 @@ impl FactoryTrait for Factory {
         env: Env,
         vault: Address,
         vault_type: VaultType,
+        vault_share_token: Address,
         new_maturity: u64,
     ) -> bool {
         let current_ym = match storage::get_current_yield_manager(&env, &vault) {
@@ -204,8 +320,35 @@ impl FactoryTrait for Factory {
             return false;
         }
 
-        Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, new_maturity);
-        Self::deploy_pool(env, vault.clone(), vault);
+        // we capture old market state
+        let old_market = Market {
+            ym: current_ym,
+            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
+            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
+            pool: storage::get_current_pool(&env, &vault).expect("Pool not set"),
+            maturity: ym_client.get_maturity(),
+            vault: vault.clone(),
+        };
+
+        let new_ym =
+            Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, new_maturity);
+        let new_pool = Self::deploy_pool(env.clone(), vault.clone(), vault_share_token);
+
+        let new_market = Market {
+            ym: new_ym,
+            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
+            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
+            pool: new_pool,
+            maturity: new_maturity,
+            vault: vault.clone(),
+        };
+
+        MarketRolledOver {
+            vault,
+            old_market,
+            new_market,
+        }
+        .publish(&env);
 
         true
     }
