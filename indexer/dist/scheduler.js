@@ -9,7 +9,7 @@ const connection = {
 };
 const queue = new bullmq_1.Queue("ybc-indexer", { connection });
 new bullmq_1.Worker("ybc-indexer", async () => {
-    await (0, indexer_1.syncMarkets)();
+    await (0, indexer_1.syncMarket)();
 }, {
     connection,
 });

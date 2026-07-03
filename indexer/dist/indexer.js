@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncMarket = syncMarket;
+require("dotenv/config");
 const client_1 = require("@prisma/client");
 const stellar_1 = require("./stellar");
 const prisma = new client_1.PrismaClient();
