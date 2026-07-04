@@ -9,17 +9,17 @@ const connection = {
 };
 const queue = new bullmq_1.Queue("ybc-indexer", { connection });
 new bullmq_1.Worker("ybc-indexer", async () => {
-    await (0, indexer_1.syncMarket)();
+    await (0, indexer_1.syncFactoryEvents)();
 }, {
     connection,
 });
 async function start() {
     await queue.add("sync", {}, {
-        repeat: { every: 10000 },
+        repeat: { every: 5000 },
         removeOnComplete: true,
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },
     });
-    console.log("YBC Indexer started — polling every 10s");
+    console.log("YBC Indexer started — syncing factory events every 5s");
 }
 start();

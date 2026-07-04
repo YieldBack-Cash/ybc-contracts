@@ -8,10 +8,7 @@
         "strict": false,
         "esModuleInterop": true,
         "resolveJsonModule": true,
-        "skipLibCheck": true,
-        "paths": {
-            "@prisma/client": ["./node_modules/.prisma/client/index.d.ts"]
-        }
+        "skipLibCheck": true
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules"]
