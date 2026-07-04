@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Queue, Worker } from "bullmq";
-import { syncMarket } from "./indexer";
+import { syncFactoryEvents } from "./indexer";
 
 const connection = {
     host: "localhost",
@@ -12,7 +12,7 @@ const queue = new Queue("ybc-indexer", { connection });
 new Worker(
     "ybc-indexer",
     async () => {
-        await syncMarket();
+        await syncFactoryEvents();
     },
     {
         connection,
@@ -24,14 +24,14 @@ async function start() {
         "sync",
         {},
         {
-            repeat: { every: 10_000 },
+            repeat: { every: 5_000 },
             removeOnComplete: true,
             attempts: 3,
             backoff: { type: "exponential", delay: 2000 },
         },
     );
 
-    console.log("YBC Indexer started — polling every 10s");
+    console.log("YBC Indexer started — syncing factory events every 5s");
 }
 
 start();
