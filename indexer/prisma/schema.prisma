@@ -8,30 +8,41 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model IndexerState {
   id         Int      @id @default(1)
   lastPolled DateTime @default(now())
+  lastLedger Int?
 }
 
 model Vault {
   address   String   @id
   markets   Market[]
   createdAt DateTime @default(now())
-  }
+}
 
 model Market {
-  id       String  @id
-  vault    String
-  ym       String
-  pt       String
-  yt       String
-  pool     String
-  maturity BigInt
-  isActive Boolean  @default(true)
+  id        String   @id
+  vault     String
+  ym        String
+  pt        String
+  yt        String
+  pool      String
+  maturity  BigInt
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  vaultRef Vault @relation(fields: [vault], references: [address])
+  vaultRef  Vault    @relation(fields: [vault], references: [address])
+}
+
+model FactoryEvent {
+  id             String   @id
+  ledger         Int
+  ledgerClosedAt DateTime
+  type           String
+  txHash         String?
+  vault          String?
+  payload        Json
+  createdAt      DateTime @default(now())
 }
