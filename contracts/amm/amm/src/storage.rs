@@ -22,6 +22,22 @@ pub enum DataKey {
     MarketState,
 }
 
+// Storage TTL constants
+pub const DAY_IN_LEDGERS: u32 = 17280;
+pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+/// Extends the instance TTL (market state, total shares). Call once per
+/// entrypoint so the pool's own config doesn't expire from inactivity.
+pub fn extend_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
 pub fn get_market_state(e: &Env) -> MarketState {
     e.storage().instance().get(&DataKey::MarketState).unwrap()
 }
@@ -56,16 +72,23 @@ pub fn get_balance_b(e: &Env) -> i128 {
 }
 
 pub fn get_shares(e: &Env, user: &Address) -> i128 {
-    e.storage()
-        .persistent()
-        .get(&DataKey::Shares(user.clone()))
-        .unwrap_or(0)
+    let key = DataKey::Shares(user.clone());
+    if let Some(shares) = e.storage().persistent().get(&key) {
+        e.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        shares
+    } else {
+        0
+    }
 }
 
 pub fn put_shares(e: &Env, user: &Address, amount: i128) {
+    let key = DataKey::Shares(user.clone());
+    e.storage().persistent().set(&key, &amount);
     e.storage()
         .persistent()
-        .set(&DataKey::Shares(user.clone()), &amount);
+        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
 }
 
 pub fn put_total_shares(e: &Env, amount: i128) {

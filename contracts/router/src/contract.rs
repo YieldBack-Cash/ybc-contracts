@@ -2,6 +2,8 @@ use amm_interface::AmmClient;
 use yield_manager_interface::YieldManagerClient;
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Env};
 
+use crate::storage::{extend_instance_ttl, get_amm, get_ym, set_amm, set_ym};
+
 #[contractclient(name = "RouterClient")]
 pub trait RouterInterface {
     fn get_amm(env: Env) -> Address;
@@ -15,46 +17,39 @@ pub trait RouterInterface {
     fn balance_shares(env: Env, user: Address) -> i128;
 }
 
-const AMM_KEY: &str = "amm";
-const YM_KEY: &str = "ym";
-
-fn get_amm(e: &Env) -> Address {
-    e.storage().instance().get(&AMM_KEY).unwrap()
-}
-
-fn get_ym(e: &Env) -> Address {
-    e.storage().instance().get(&YM_KEY).unwrap()
-}
-
 #[contract]
 pub struct RouterContract;
 
 #[contractimpl]
 impl RouterContract {
     pub fn __constructor(e: Env, amm: Address, ym: Address) {
-        e.storage().instance().set(&AMM_KEY, &amm);
-        e.storage().instance().set(&YM_KEY, &ym);
+        set_amm(&e, &amm);
+        set_ym(&e, &ym);
     }
 }
 
 #[contractimpl]
 impl RouterInterface for RouterContract {
     fn get_amm(e: Env) -> Address {
+        extend_instance_ttl(&e);
         get_amm(&e)
     }
 
     fn swap_v_for_pt(e: Env, to: Address, pt_out: i128, v_in_max: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).swap_v_for_pt(&to, &pt_out, &v_in_max);
     }
 
     fn swap_pt_for_v(e: Env, to: Address, pt_in: i128, min_v_out: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).swap_pt_for_v(&to, &pt_in, &min_v_out);
     }
 
     fn swap_v_for_yt(e: Env, to: Address, v_in: i128, min_yt_out: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         assert!(v_in > 0, "v_in must be positive");
         assert!(min_yt_out > 0, "min_yt_out must be positive");
 
@@ -68,6 +63,7 @@ impl RouterInterface for RouterContract {
 
     fn swap_yt_for_v(e: Env, to: Address, yt_in: i128, min_v_out: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         assert!(yt_in > 0, "yt_in must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
 
@@ -79,19 +75,23 @@ impl RouterInterface for RouterContract {
 
     fn deposit(e: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).deposit(&to, &desired_a, &min_a, &desired_b, &min_b);
     }
 
     fn withdraw(e: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).withdraw(&to, &share_amount, &min_a, &min_b)
     }
 
     fn get_reserves(e: Env) -> (i128, i128) {
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).get_reserves()
     }
 
     fn balance_shares(e: Env, user: Address) -> i128 {
+        extend_instance_ttl(&e);
         AmmClient::new(&e, &get_amm(&e)).balance_shares(&user)
     }
 }

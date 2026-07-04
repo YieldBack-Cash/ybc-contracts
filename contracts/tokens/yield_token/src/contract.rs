@@ -78,11 +78,13 @@ impl TokenInterface for YieldToken {
     }
 
     fn balance(env: Env, id: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_balance(&env, &id)
     }
 
     fn transfer(env: Env, from: Address, to_muxed: MuxedAddress, amount: i128) {
         from.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let to: Address = to_muxed.address();
@@ -114,6 +116,7 @@ impl TokenInterface for YieldToken {
 
     fn burn(env: Env, from: Address, amount: i128) {
         from.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let balance = storage::get_balance(&env, &from);
@@ -135,14 +138,17 @@ impl TokenInterface for YieldToken {
     }
 
     fn decimals(env: Env) -> u32 {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).decimal
     }
 
     fn name(env: Env) -> String {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).name
     }
 
     fn symbol(env: Env) -> String {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).symbol
     }
 }
@@ -168,6 +174,7 @@ impl YieldTokenTrait for YieldToken {
     fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128) {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         Self::accrue_yield(&env, &to, Some(exchange_rate));
@@ -181,6 +188,8 @@ impl YieldTokenTrait for YieldToken {
 
     fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128) {
         from.require_auth();
+        storage::get_admin(&env).require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let from_balance = storage::get_balance(&env, &from);
@@ -198,6 +207,8 @@ impl YieldTokenTrait for YieldToken {
 
     fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
         from.require_auth();
+        storage::get_admin(&env).require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let balance = storage::get_balance(&env, &from);
@@ -214,15 +225,18 @@ impl YieldTokenTrait for YieldToken {
     }
 
     fn user_index(env: Env, address: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_user_index(&env, &address)
     }
 
     fn accrued_yield(env: Env, address: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_accrued_yield(&env, &address)
     }
 
     fn claim_yield(env: Env, user: Address) -> i128 {
         user.require_auth();
+        storage::extend_instance_ttl(&env);
 
         Self::accrue_yield(&env, &user, None);
 
@@ -242,6 +256,7 @@ impl YieldTokenTrait for YieldToken {
     }
 
     fn total_supply(env: Env) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_total_supply(&env)
     }
 }

@@ -65,6 +65,7 @@ impl AmmInterface for LiquidityPool {
     /// * `v_in_max` - Maximum vault shares willing to pay (slippage protection)
     fn swap_v_for_pt(e: Env, to: Address, pt_out: i128, v_in_max: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         assert!(pt_out > 0, "pt_out must be positive");
         assert!(v_in_max > 0, "v_in_max must be positive");
 
@@ -136,6 +137,7 @@ impl AmmInterface for LiquidityPool {
     /// * `min_v_out` - Minimum vault shares to receive (slippage protection)
     fn swap_pt_for_v(e: Env, to: Address, pt_in: i128, min_v_out: i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
         assert!(pt_in > 0, "pt_in must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
 
@@ -220,6 +222,7 @@ impl AmmInterface for LiquidityPool {
     /// to this contract's address before returning from `on_flash_receive`. If the PT balance
     /// after the callback is less than it was before lending, the transaction reverts.
     fn flash_swap_pt(e: Env, receiver: Address, pt_to_borrow: i128, user: Address, v_in: i128, min_yt_out: i128) {
+        extend_instance_ttl(&e);
         assert!(pt_to_borrow > 0, "pt_to_borrow must be positive");
         assert!(v_in > 0, "v_in must be positive");
 
@@ -283,6 +286,7 @@ impl AmmInterface for LiquidityPool {
     /// amount of V back before the callback returns. The lent PT does not return (it is burned
     /// in the redeem), so `reserve_a` falls by `pt_to_borrow`.
     fn flash_swap_v(e: Env, receiver: Address, pt_to_borrow: i128, user: Address, min_v_out: i128) {
+        extend_instance_ttl(&e);
         assert!(pt_to_borrow > 0, "pt_to_borrow must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
 
@@ -383,6 +387,7 @@ impl AmmInterface for LiquidityPool {
         min_b: i128,
     ) {
         to.require_auth();
+        extend_instance_ttl(&e);
 
         let mut market = get_market_state(&e);
 
@@ -445,6 +450,7 @@ impl AmmInterface for LiquidityPool {
         min_b: i128,
     ) -> (i128, i128) {
         to.require_auth();
+        extend_instance_ttl(&e);
 
         let current_shares = get_shares(&e, &to);
         if current_shares < share_amount {
@@ -478,16 +484,19 @@ impl AmmInterface for LiquidityPool {
     /// # Returns
     /// `(reserve_pt, reserve_v)` — PT reserve and vault share reserve
     fn get_reserves(e: Env) -> (i128, i128) {
+        extend_instance_ttl(&e);
         let market = get_market_state(&e);
         (market.reserve_a, market.reserve_b)
     }
 
     fn get_implied_rate(e: Env) -> i128 {
+        extend_instance_ttl(&e);
         get_market_state(&e).last_implied_rate
     }
 
     /// Returns the pool share balance for a given user.
     fn balance_shares(e: Env, user: Address) -> i128 {
+        extend_instance_ttl(&e);
         get_shares(&e, &user)
     }
 }

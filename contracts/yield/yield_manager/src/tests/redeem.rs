@@ -1,9 +1,9 @@
 use soroban_sdk::{IntoVal, Symbol};
+use yield_manager_interface::YieldManagerError;
 
 use super::fixture::YieldManagerTest;
 
 #[test]
-#[should_panic(expected = "Maturity not reached")]
 fn test_cannot_redeem_principal_before_maturity() {
     let test = YieldManagerTest::setup();
 
@@ -13,11 +13,13 @@ fn test_cannot_redeem_principal_before_maturity() {
 
     let pt_balance = test.get_pt_balance(&test.user1);
 
-    test.env.invoke_contract::<()>(
+    let result = test.env.try_invoke_contract::<(), YieldManagerError>(
         &test.yield_manager,
         &Symbol::new(&test.env, "redeem_principal"),
         (&test.user1, pt_balance).into_val(&test.env),
     );
+
+    assert_eq!(result, Err(Ok(YieldManagerError::MaturityNotReached)));
 }
 
 #[test]

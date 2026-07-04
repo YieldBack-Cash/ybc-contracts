@@ -1,5 +1,8 @@
 use super::YieldTokenTest;
-use soroban_sdk::String;
+use soroban_sdk::{
+    testutils::{MockAuth, MockAuthInvoke},
+    IntoVal, String,
+};
 
 #[test]
 fn test_initialization() {
@@ -141,6 +144,47 @@ fn test_transfer_accrues_yield_for_both_parties() {
     // Balances should be correct
     assert_eq!(test.get_balance(&test.user1), mint_amount - transfer_amount);
     assert_eq!(test.get_balance(&test.user2), transfer_amount);
+}
+
+/// A holder must be able to move YT with only their own signature -- unlike
+/// transfer_with_rate/burn_with_rate, plain transfer never trusts a
+/// caller-supplied rate (it always fetches the real rate from the yield
+/// manager), so it must not require the yield manager's auth too.
+#[test]
+fn test_transfer_needs_only_sender_auth_and_still_accrues_yield() {
+    let test = YieldTokenTest::setup();
+
+    let mint_amount = 1_000_000_000_000i128;
+    let initial_rate = test.get_exchange_rate();
+    test.mint_yt(&test.user1, mint_amount, initial_rate);
+
+    // Bump the vault rate so there is yield to accrue across the transfer.
+    let new_rate = initial_rate + 100_0000;
+    test.set_vault_exchange_rate(new_rate);
+
+    // Restrict auth to exactly what a real user transfer provides: the
+    // sender's own signature. The yield manager never signs a plain transfer.
+    let transfer_amount = 500_000_000_000i128;
+    test.env.mock_auths(&[MockAuth {
+        address: &test.user1,
+        invoke: &MockAuthInvoke {
+            contract: &test.yield_token,
+            fn_name: "transfer",
+            args: (&test.user1, &test.user2, transfer_amount).into_val(&test.env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    test.transfer(&test.user1, &test.user2, transfer_amount);
+
+    // Transfer succeeded and balances moved.
+    assert_eq!(test.get_balance(&test.user1), mint_amount - transfer_amount);
+    assert_eq!(test.get_balance(&test.user2), transfer_amount);
+
+    // Yield accrual still ran correctly for both parties.
+    assert!(test.get_accrued_yield(&test.user1) > 0);
+    assert_eq!(test.get_user_index(&test.user1), new_rate);
+    assert_eq!(test.get_user_index(&test.user2), new_rate);
 }
 
 #[test]

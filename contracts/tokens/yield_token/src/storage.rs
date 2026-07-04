@@ -21,6 +21,22 @@ const ADMIN_KEY: &str = "admin";
 const METADATA_KEY: &str = "metadata";
 const TOTAL_SUPPLY_KEY: &str = "total_supply";
 
+// Storage TTL constants
+pub const DAY_IN_LEDGERS: u32 = 17280;
+pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+/// Extends the instance TTL (admin, metadata, total supply). Call once per
+/// entrypoint so the contract's own config doesn't expire from inactivity.
+pub fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
 // Admin functions
 pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&ADMIN_KEY, admin);
@@ -60,42 +76,63 @@ pub fn get_total_supply(env: &Env) -> i128 {
 
 // User balance
 pub fn set_balance(env: &Env, address: &Address, balance: i128) {
+    let key = DataKey::Balance(address.clone());
+    env.storage().persistent().set(&key, &balance);
     env.storage()
         .persistent()
-        .set(&DataKey::Balance(address.clone()), &balance);
+        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
 }
 
 pub fn get_balance(env: &Env, address: &Address) -> i128 {
-    env.storage()
-        .persistent()
-        .get(&DataKey::Balance(address.clone()))
-        .unwrap_or(0)
+    let key = DataKey::Balance(address.clone());
+    if let Some(balance) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        balance
+    } else {
+        0
+    }
 }
 
 // User index (exchange rate at last interaction)
 pub fn set_user_index(env: &Env, address: &Address, index: i128) {
+    let key = DataKey::UserIndex(address.clone());
+    env.storage().persistent().set(&key, &index);
     env.storage()
         .persistent()
-        .set(&DataKey::UserIndex(address.clone()), &index);
+        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
 }
 
 pub fn get_user_index(env: &Env, address: &Address) -> i128 {
-    env.storage()
-        .persistent()
-        .get(&DataKey::UserIndex(address.clone()))
-        .unwrap_or(0)
+    let key = DataKey::UserIndex(address.clone());
+    if let Some(index) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        index
+    } else {
+        0
+    }
 }
 
 // Accrued yield (accumulated yield not yet claimed)
 pub fn set_accrued_yield(env: &Env, address: &Address, amount: i128) {
+    let key = DataKey::AccruedYield(address.clone());
+    env.storage().persistent().set(&key, &amount);
     env.storage()
         .persistent()
-        .set(&DataKey::AccruedYield(address.clone()), &amount);
+        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
 }
 
 pub fn get_accrued_yield(env: &Env, address: &Address) -> i128 {
-    env.storage()
-        .persistent()
-        .get(&DataKey::AccruedYield(address.clone()))
-        .unwrap_or(0)
+    let key = DataKey::AccruedYield(address.clone());
+    if let Some(amount) = env.storage().persistent().get(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        amount
+    } else {
+        0
+    }
 }
