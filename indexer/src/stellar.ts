@@ -12,34 +12,33 @@ import {
 
 const server = new rpc.Server(process.env.SOROBAN_RPC_URL!);
 const FACTORY_ADDRESS = process.env.FACTORY_CONTRACT_ADDRESS!;
-const DUMMY_KEY = process.env.DUMMY_PUBLIC_KEY!;
+const PAGE_LIMIT = 1000;
 
-async function callView(functionName: string, args: xdr.ScVal[] = []) {
-    const account = new Account(DUMMY_KEY, "0");
-    const contract = new Contract(FACTORY_ADDRESS);
-    const tx = new TransactionBuilder(account, {
-        fee: "100",
+export async function getCurrentLedger(): Promise<number> {
+    const latest = await server.getLatestLedger();
+    return latest.sequence;
+}
 
-        networkPassphrase: Networks.TESTNET,
-    })
-        .addOperation(contract.call(functionName, ...args))
-        .setTimeout(30)
-        .build();
-    const result = await server.simulateTransaction(tx);
+export async function getFactoryEvents(
+    startLedger: number,
+): Promise<rpc.Api.EventResponse[]> {
+    const events: rpc.Api.EventResponse[] = [];
 
-    if (rpc.Api.isSimulationError(result)) {
-        throw new Error(`Simulation failed: ${result.error}`);
+    let response = await server.getEvents({
+        filters: [{ type: "contract", contractIds: [FACTORY_ADDRESS] }],
+        startLedger,
+        limit: PAGE_LIMIT,
+    });
+    events.push(...response.events);
+
+    while (response.events.length === PAGE_LIMIT) {
+        response = await server.getEvents({
+            filters: [{ type: "contract", contractIds: [FACTORY_ADDRESS] }],
+            cursor: response.cursor,
+            limit: PAGE_LIMIT,
+        });
+        events.push(...response.events);
     }
 
-    return scValToNative(result.result!.retval);
-}
-
-export async function getVaults(): Promise<string[]> {
-    return await callView("get_vaults");
-}
-
-export async function getMarkets(vaultAddress: string) {
-    const vaultScVal = nativeToScVal(vaultAddress, { type: "address" });
-
-    return await callView("get_markets", [vaultScVal]);
+    return events;
 }
