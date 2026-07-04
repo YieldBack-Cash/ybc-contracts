@@ -1,5 +1,5 @@
 use crate::curve::{calc_trade, compute_rate_anchor, get_exchange_rate_from_trade};
-use crate::transfers::{get_deposit_amounts, transfer_a, transfer_b, transfer_pt_from_pool_to_user, transfer_pt_from_user_to_pool, transfer_v_from_user_to_pool, transfer_v_from_pool_to_user};
+use crate::transfers::{get_deposit_amounts, transfer_pt_from_pool_to_user, transfer_pt_from_user_to_pool, transfer_v_from_user_to_pool, transfer_v_from_pool_to_user};
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
 use num_integer::Roots;
@@ -107,8 +107,8 @@ impl AmmInterface for LiquidityPool {
         let v_in_shares = convert_assets_to_vault_shares(&e, v_in_assets);
         assert!(v_in_shares <= v_in_max, "in amount is over max");
 
-        transfer_v_from_user_to_pool(&e, &to, v_in_shares);
-        transfer_pt_from_pool_to_user(&e, &to, pt_out);
+        transfer_v_from_user_to_pool(&e, &market.token_b, &to, v_in_shares);
+        transfer_pt_from_pool_to_user(&e, &market.token_a, &to, pt_out);
 
         // reserve_b stays in vault shares for LP accounting.
         market.reserve_b += v_in_shares;
@@ -194,8 +194,8 @@ impl AmmInterface for LiquidityPool {
 
         assert!(new_reserve_a > 0 && new_reserve_b > 0, "new reserves must be strictly positive");
 
-        transfer_pt_from_user_to_pool(&e, &to, pt_in);
-        transfer_v_from_pool_to_user(&e, &to, v_out_shares);
+        transfer_pt_from_user_to_pool(&e, &market.token_a, &to, pt_in);
+        transfer_v_from_pool_to_user(&e, &market.token_b, &to, v_out_shares);
 
         market.reserve_a = new_reserve_a;
         market.reserve_b = new_reserve_b;
@@ -463,8 +463,8 @@ impl AmmInterface for LiquidityPool {
         }
 
         burn_shares(&e, &to, share_amount);
-        transfer_a(&e, to.clone(), out_a);
-        transfer_b(&e, to, out_b);
+        transfer_pt_from_pool_to_user(&e, &market.token_a, &to, out_a);
+        transfer_v_from_pool_to_user(&e, &market.token_b, &to, out_b);
 
         market.reserve_a = balance_a - out_a;
         market.reserve_b = balance_b - out_b;

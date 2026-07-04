@@ -1,5 +1,14 @@
 use crate::math;
 
+/// Bounds on the post-trade pool proportion PT / (PT + V).
+///
+/// The upper bound mirrors Pendle's `MAX_MARKET_PROPORTION` (96%): near p = 1 the
+/// `ln(p / (1 - p))` term diverges and PT prices above face value. The lower bound
+/// guards the V-heavy side, where integer truncation drives `proportion` (and then
+/// the ratio fed to `ln_fp`) to zero, which would panic and brick the pool.
+pub(crate) const MIN_PROPORTION: i128 = math::FP_SCALE / 100; // 0.01
+pub(crate) const MAX_PROPORTION: i128 = 96 * math::FP_SCALE / 100; // 0.96
+
 /// Computes the curve anchor such that the AMM prices at `last_implied_rate` at the current reserves.
 ///
 /// Mirrors Pendle's `_getRateAnchor`:
@@ -115,8 +124,8 @@ pub(crate) fn get_exchange_rate_from_trade(
         / denom;
 
     assert!(
-        proportion > 0 && proportion < math::FP_SCALE,
-        "proportion must be between 0 and 1"
+        proportion >= MIN_PROPORTION && proportion <= MAX_PROPORTION,
+        "trade pushes pool proportion out of bounds"
     );
 
     let one_minus_p = math::FP_SCALE - proportion;
@@ -238,4 +247,47 @@ pub(crate) fn calc_trade(
     let net_v_to_reserve = (net_v_fee * reserve_fee_percent) / 100;
 
     (net_v_to_account, net_v_fee, net_v_to_reserve)
+}
+
+#[cfg(test)]
+mod proportion_bounds_tests {
+    use super::*;
+
+    const RESERVE: i128 = 100_000_000; // 10 units at 1e7 scale
+    const RATE_SCALAR: i128 = 5 * math::FP_SCALE;
+    const RATE_ANCHOR: i128 = 11_000_000; // 1.1
+
+    #[test]
+    fn balanced_trade_within_bounds_succeeds() {
+        let rate = get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, 1_000_000);
+        assert!(rate > 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "trade pushes pool proportion out of bounds")]
+    fn trade_draining_pt_below_min_proportion_panics() {
+        // Post-trade PT = 500_000 vs V = 100_000_000 → proportion ≈ 0.5%, below the 1% floor.
+        // Without the bound this proportion truncates toward zero and panics inside ln_fp instead.
+        get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 500_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "trade pushes pool proportion out of bounds")]
+    fn trade_pushing_pt_above_max_proportion_panics() {
+        // User sells PT in: post-trade PT = 2.5e9 vs V = 1e8 → proportion ≈ 96.2%, above the 96% cap.
+        get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, -2_400_000_000);
+    }
+
+    #[test]
+    fn trade_near_min_proportion_boundary_succeeds() {
+        // Post-trade PT = 1_100_000 vs V = 100_000_000 → proportion ≈ 1.09%, just above the floor.
+        let rate = get_exchange_rate_from_trade(
+            RESERVE,
+            RESERVE,
+            RATE_SCALAR,
+            RATE_ANCHOR,
+            RESERVE - 1_100_000,
+        );
+        assert!(rate > 0);
+    }
 }
