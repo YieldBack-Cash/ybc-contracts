@@ -39,9 +39,8 @@ pub trait YieldManagerTrait {
     fn get_yield_token(env: Env) -> Address;
     fn get_maturity(env: Env) -> u64;
 
-    /// Returns the current exchange rate. Before maturity this also refreshes and
-    /// persists the stored rate from the vault as a side effect (the rate can only
-    /// increase, and locks permanently once maturity is reached).
+    /// Returns the current exchange rate. The rate can only
+    /// increase, and locks permanently once maturity is reached.
     fn get_exchange_rate(env: Env) -> i128;
     fn deposit(env: Env, from: Address, shares_amount: i128) -> Result<(), YieldManagerError>;
     fn redeem(env: Env, from: Address, amount: i128) -> Result<(), YieldManagerError>;

@@ -18,6 +18,14 @@ pub enum DataKey {
     TotalSupply,
 }
 
+/// Extends the instance TTL. Call once per entrypoint so the contract's own
+/// config (admin, metadata, total supply) doesn't expire from inactivity.
+pub fn extend_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
 // Admin functions
 pub fn read_administrator(e: &Env) -> Address {
     let key = DataKey::Admin;

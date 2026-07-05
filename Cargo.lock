@@ -1975,6 +1975,7 @@ dependencies = [
  "mock_vault",
  "principal_token",
  "soroban-sdk",
+ "soroban-token-sdk",
  "vault_interface",
  "yield_manager",
  "yield_manager_interface",

@@ -1,6 +1,7 @@
 use soroban_sdk::{
     contract, contractimpl, token::TokenInterface, Address, Env, MuxedAddress, String,
 };
+use soroban_token_sdk::events::{Burn, Mint, Transfer};
 use yield_manager_interface::YieldManagerClient;
 use crate::storage;
 
@@ -101,6 +102,14 @@ impl TokenInterface for YieldToken {
 
         storage::set_balance(&env, &from, from_balance - amount);
         storage::set_balance(&env, &to, to_balance + amount);
+
+        Transfer {
+            from,
+            to,
+            to_muxed_id: to_muxed.id(),
+            amount,
+        }
+        .publish(&env);
     }
 
     fn transfer_from(
@@ -130,6 +139,8 @@ impl TokenInterface for YieldToken {
 
         let total_supply = storage::get_total_supply(&env);
         storage::set_total_supply(&env, total_supply - amount);
+
+        Burn { from, amount }.publish(&env);
     }
 
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
@@ -184,6 +195,8 @@ impl YieldTokenTrait for YieldToken {
 
         let total_supply = storage::get_total_supply(&env);
         storage::set_total_supply(&env, total_supply + amount);
+
+        Mint { to, to_muxed_id: None, amount }.publish(&env);
     }
 
     fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128) {
@@ -203,6 +216,8 @@ impl YieldTokenTrait for YieldToken {
         let to_balance = storage::get_balance(&env, &to);
         storage::set_balance(&env, &from, from_balance - amount);
         storage::set_balance(&env, &to, to_balance + amount);
+
+        Transfer { from, to, to_muxed_id: None, amount }.publish(&env);
     }
 
     fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
@@ -222,6 +237,8 @@ impl YieldTokenTrait for YieldToken {
 
         let total_supply = storage::get_total_supply(&env);
         storage::set_total_supply(&env, total_supply - amount);
+
+        Burn { from, amount }.publish(&env);
     }
 
     fn user_index(env: Env, address: Address) -> i128 {
