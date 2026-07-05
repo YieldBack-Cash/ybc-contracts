@@ -164,7 +164,7 @@ impl YieldManagerTrait for YieldManager {
         Ok(())
     }
 
-    fn redeem(env: Env, from: Address, amount: i128) -> Result<(), YieldManagerError> {
+    fn redeem_combined(env: Env, from: Address, amount: i128) -> Result<(), YieldManagerError> {
         from.require_auth();
         storage::extend_instance_ttl(&env);
 

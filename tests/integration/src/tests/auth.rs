@@ -44,11 +44,11 @@ fn test_ym_deposit_requires_depositor_auth() {
     );
 }
 
-// ── redeem (yield manager) ────────────────────────────────────────────────────
+// ── redeem_combined (yield manager) ───────────────────────────────────────────
 
-/// YM.redeem must require auth from the redeemer.
+/// YM.redeem_combined must require auth from the redeemer.
 #[test]
-fn test_ym_redeem_requires_redeemer_auth() {
+fn test_ym_redeem_combined_requires_redeemer_auth() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
     f.vault.mint(&f.user, &10_000_000);
@@ -57,14 +57,14 @@ fn test_ym_redeem_requires_redeemer_auth() {
     let pt_balance = f.pt_balance(&f.user);
     f.env.invoke_contract::<()>(
         &f.yield_manager,
-        &Symbol::new(&f.env, "redeem"),
+        &Symbol::new(&f.env, "redeem_combined"),
         (&f.user, pt_balance).into_val(&f.env),
     );
 
     let auths = f.env.auths();
     assert!(
         auths.iter().any(|(addr, _)| *addr == f.user),
-        "redeem must require auth from the redeemer"
+        "redeem_combined must require auth from the redeemer"
     );
 }
 

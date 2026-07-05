@@ -43,7 +43,7 @@ pub trait YieldManagerTrait {
     /// increase, and locks permanently once maturity is reached.
     fn get_exchange_rate(env: Env) -> i128;
     fn deposit(env: Env, from: Address, shares_amount: i128) -> Result<(), YieldManagerError>;
-    fn redeem(env: Env, from: Address, amount: i128) -> Result<(), YieldManagerError>;
+    fn redeem_combined(env: Env, from: Address, amount: i128) -> Result<(), YieldManagerError>;
     fn distribute_yield(env: Env, to: Address, shares_amount: i128) -> Result<(), YieldManagerError>;
     fn redeem_principal(env: Env, from: Address, pt_amount: i128) -> Result<(), YieldManagerError>;
 }

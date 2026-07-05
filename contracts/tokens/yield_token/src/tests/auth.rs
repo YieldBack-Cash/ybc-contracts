@@ -102,7 +102,7 @@ fn test_transfer_with_rate_without_admin_auth_reverts() {
 }
 
 /// With both the sender's and the yield manager's auth present (the only way
-/// this function is invoked in practice, via YieldManager::redeem /
+/// this function is invoked in practice, via YieldManager::redeem_combined /
 /// on_flash_receive_v), transfer_with_rate succeeds.
 #[test]
 fn test_transfer_with_rate_with_from_and_admin_auth_succeeds() {

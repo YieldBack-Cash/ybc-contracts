@@ -4,12 +4,12 @@ use super::fixture::{IntegrationFixture, ONE_YEAR_SECS};
 
 const SCALAR_7: i128 = 10_000_000;
 
-// ── early exit (redeem PT+YT → vault shares before maturity) ─────────────────
+// ── early exit (redeem_combined PT+YT → vault shares before maturity) ────────
 
 /// Depositing X shares and immediately redeeming the same PT amount returns
 /// exactly X vault shares at the initial 1.0 exchange rate.
 #[test]
-fn test_redeem_returns_vault_shares() {
+fn test_redeem_combined_returns_vault_shares() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
 
@@ -22,7 +22,7 @@ fn test_redeem_returns_vault_shares() {
 
     f.env.invoke_contract::<()>(
         &f.yield_manager,
-        &Symbol::new(&f.env, "redeem"),
+        &Symbol::new(&f.env, "redeem_combined"),
         (&f.user, pt).into_val(&f.env),
     );
 
@@ -38,7 +38,7 @@ fn test_redeem_returns_vault_shares() {
 /// A partial redeem burns the specified PT+YT and returns a proportional
 /// share of vault tokens, leaving the remainder intact.
 #[test]
-fn test_partial_redeem() {
+fn test_partial_redeem_combined() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
 
@@ -51,7 +51,7 @@ fn test_partial_redeem() {
 
     f.env.invoke_contract::<()>(
         &f.yield_manager,
-        &Symbol::new(&f.env, "redeem"),
+        &Symbol::new(&f.env, "redeem_combined"),
         (&f.user, redeem_pt).into_val(&f.env),
     );
 
@@ -63,10 +63,10 @@ fn test_partial_redeem() {
     );
 }
 
-/// redeem must panic after maturity — use redeem_principal instead.
+/// redeem_combined must panic after maturity — use redeem_principal instead.
 #[test]
 #[should_panic]
-fn test_redeem_after_maturity_panics() {
+fn test_redeem_combined_after_maturity_panics() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
 
@@ -76,7 +76,7 @@ fn test_redeem_after_maturity_panics() {
 
     f.env.invoke_contract::<()>(
         &f.yield_manager,
-        &Symbol::new(&f.env, "redeem"),
+        &Symbol::new(&f.env, "redeem_combined"),
         (&f.user, SCALAR_7).into_val(&f.env),
     );
 }
