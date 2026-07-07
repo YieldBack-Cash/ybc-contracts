@@ -123,92 +123,14 @@ impl FactoryTrait for Factory {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        let wasm_hashes = storage::get_wasm_hashes(&env);
-
-        let ym_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.ym,
-                (
-                    env.current_contract_address(),
-                    vault.clone(),
-                    vault_type,
-                    maturity,
-                ),
-            );
-
-        let pt_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.pt,
-                (
-                    ym_addr.clone(),
-                    String::from_str(&env, "Principal Token"),
-                    String::from_str(&env, "PT"),
-                    7u32,
-                ),
-            );
-
-        let yt_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.yt,
-                (
-                    ym_addr.clone(),
-                    String::from_str(&env, "Yield Token"),
-                    String::from_str(&env, "YT"),
-                    7u32,
-                ),
-            );
-
-        let ym_client = YieldManagerClient::new(&env, &ym_addr);
-        ym_client.set_token_contracts(&pt_addr, &yt_addr);
-
-        storage::register_vault(&env, &vault);
-        storage::set_current_yield_manager(&env, &vault, &ym_addr);
-        storage::set_current_pt_token(&env, &vault, &pt_addr);
-        storage::set_current_yt_token(&env, &vault, &yt_addr);
-
-        ym_addr
+        Self::deploy_yield_manager_internal(env, vault, vault_type, maturity)
     }
 
     fn deploy_pool(env: Env, vault: Address, vault_share_token: Address) -> Address {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        let wasm_hashes = storage::get_wasm_hashes(&env);
-
-        let ym_addr =
-            storage::get_current_yield_manager(&env, &vault).expect("No yield manager for vault");
-        let ym_client = YieldManagerClient::new(&env, &ym_addr);
-
-        let pool_addr = env
-            .deployer()
-            .with_current_contract(next_salt(&env))
-            .deploy_v2(
-                wasm_hashes.amm,
-                (ym_client.get_principal_token(), vault_share_token),
-            );
-
-        storage::set_current_pool(&env, &vault, &pool_addr);
-
-        storage::push_market(
-            &env,
-            &vault,
-            Market {
-                ym: ym_addr,
-                pt: ym_client.get_principal_token(),
-                yt: ym_client.get_yield_token(),
-                maturity: ym_client.get_maturity(),
-                vault: vault.clone(),
-                pool: pool_addr.clone(),
-            },
-        );
-
-        pool_addr
+        Self::deploy_pool_internal(env, vault, vault_share_token)
     }
 
     fn create_market(
@@ -222,8 +144,9 @@ impl FactoryTrait for Factory {
         admin.require_auth();
 
         let ym_address =
-            Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, maturity);
-        let pool_address = Self::deploy_pool(env.clone(), vault.clone(), vault_share_token);
+            Self::deploy_yield_manager_internal(env.clone(), vault.clone(), vault_type, maturity);
+        let pool_address =
+            Self::deploy_pool_internal(env.clone(), vault.clone(), vault_share_token);
 
         let market = Market {
             ym: ym_address,
@@ -315,6 +238,9 @@ impl FactoryTrait for Factory {
         vault_share_token: Address,
         new_maturity: u64,
     ) -> bool {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+
         let current_ym = match storage::get_current_yield_manager(&env, &vault) {
             Some(ym) => ym,
             None => return false,
@@ -335,9 +261,13 @@ impl FactoryTrait for Factory {
             vault: vault.clone(),
         };
 
-        let new_ym =
-            Self::deploy_yield_manager(env.clone(), vault.clone(), vault_type, new_maturity);
-        let new_pool = Self::deploy_pool(env.clone(), vault.clone(), vault_share_token);
+        let new_ym = Self::deploy_yield_manager_internal(
+            env.clone(),
+            vault.clone(),
+            vault_type,
+            new_maturity,
+        );
+        let new_pool = Self::deploy_pool_internal(env.clone(), vault.clone(), vault_share_token);
 
         let new_market = Market {
             ym: new_ym,
@@ -356,5 +286,98 @@ impl FactoryTrait for Factory {
         .publish(&env);
 
         true
+    }
+}
+
+impl Factory {
+    fn deploy_yield_manager_internal(
+        env: Env,
+        vault: Address,
+        vault_type: VaultType,
+        maturity: u64,
+    ) -> Address {
+        let wasm_hashes = storage::get_wasm_hashes(&env);
+
+        let ym_addr = env
+            .deployer()
+            .with_current_contract(next_salt(&env))
+            .deploy_v2(
+                wasm_hashes.ym,
+                (
+                    env.current_contract_address(),
+                    vault.clone(),
+                    vault_type,
+                    maturity,
+                ),
+            );
+
+        let pt_addr = env
+            .deployer()
+            .with_current_contract(next_salt(&env))
+            .deploy_v2(
+                wasm_hashes.pt,
+                (
+                    ym_addr.clone(),
+                    String::from_str(&env, "Principal Token"),
+                    String::from_str(&env, "PT"),
+                    7u32,
+                ),
+            );
+
+        let yt_addr = env
+            .deployer()
+            .with_current_contract(next_salt(&env))
+            .deploy_v2(
+                wasm_hashes.yt,
+                (
+                    ym_addr.clone(),
+                    String::from_str(&env, "Yield Token"),
+                    String::from_str(&env, "YT"),
+                    7u32,
+                ),
+            );
+
+        let ym_client = YieldManagerClient::new(&env, &ym_addr);
+        ym_client.set_token_contracts(&pt_addr, &yt_addr);
+
+        storage::register_vault(&env, &vault);
+        storage::set_current_yield_manager(&env, &vault, &ym_addr);
+        storage::set_current_pt_token(&env, &vault, &pt_addr);
+        storage::set_current_yt_token(&env, &vault, &yt_addr);
+
+        ym_addr
+    }
+
+    fn deploy_pool_internal(env: Env, vault: Address, vault_share_token: Address) -> Address {
+        let wasm_hashes = storage::get_wasm_hashes(&env);
+
+        let ym_addr =
+            storage::get_current_yield_manager(&env, &vault).expect("No yield manager for vault");
+        let ym_client = YieldManagerClient::new(&env, &ym_addr);
+
+        let pool_addr = env
+            .deployer()
+            .with_current_contract(next_salt(&env))
+            .deploy_v2(
+                wasm_hashes.amm,
+                (ym_client.get_principal_token(), vault_share_token),
+            );
+
+        storage::set_current_pool(&env, &vault, &pool_addr);
+
+        storage::push_market(
+            &env,
+            &vault,
+            Market {
+                ym: ym_addr,
+                pt: ym_client.get_principal_token(),
+                yt: ym_client.get_yield_token(),
+                maturity: ym_client.get_maturity(),
+                vault: vault.clone(),
+                pool: pool_addr.clone(),
+            },
+        );
+
+        pool_addr
     }
 }
