@@ -26,6 +26,17 @@ mod yt_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_token.wasm");
 }
 
+mod amm_wasm {
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/amm.wasm");
+}
+
+// Default AMM curve parems for tests. Mirrors contracts/amm/amm/src/tests/fixture.rs
+// so a factory-deployed pool behaves the same as the AMM crate's own test fixture
+const SCALAR_ROOT: i128 = 250_000_000; // 25.0 moderate curve steepness
+const FEE_RATE_ROOT: i128 = 500_000; // 0.05, 5% annualized fee root
+const INITIAL_ANCHOR: i128 = 11_000_000; // 1.1, 10% initial implied rate anchor
+const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1, 10% starting implied rate
+
 struct FactoryTest {
     env: Env,
     admin: Address,
@@ -59,8 +70,7 @@ impl FactoryTest {
         let pt_hash = env.deployer().upload_contract_wasm(pt_wasm::WASM);
         let yt_hash = env.deployer().upload_contract_wasm(yt_wasm::WASM);
 
-        // AMM is under development — use a placeholder hash for now
-        let amm_hash = ym_hash.clone();
+        let amm_hash = env.deployer().upload_contract_wasm(amm_wasm::WASM);
 
         let wasm_hashes = WasmHashes {
             pt: pt_hash,
@@ -226,6 +236,26 @@ fn test_deposit_through_factory_deployed_contracts() {
 }
 
 #[test]
+fn test_create_market_deploys_working_pool() {
+    let test = FactoryTest::setup();
+    let maturity = test.env.ledger().timestamp() + 1000;
+
+    let market = test.factory.create_market(
+        &test.vault_addr,
+        &VaultType::Vault4626,
+        &maturity,
+        &test.vault_addr,
+        &SCALAR_ROOT,
+        &INITIAL_ANCHOR,
+        &FEE_RATE_ROOT,
+        &LAST_IMPLIED_RATE,
+    );
+
+    let pool_client = amm_wasm::Client::new(&test.env, &market.pool);
+    assert_eq!(pool_client.get_reserves(), (0, 0));
+}
+
+#[test]
 fn test_rollover_before_maturity_returns_false() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
@@ -236,6 +266,10 @@ fn test_rollover_before_maturity_returns_false() {
         &VaultType::Vault4626,
         &test.vault_addr,
         &(maturity + 2000),
+        &SCALAR_ROOT,
+        &INITIAL_ANCHOR,
+        &FEE_RATE_ROOT,
+        &LAST_IMPLIED_RATE,
     );
     assert!(!rolled);
 }
@@ -249,6 +283,10 @@ fn test_rollover_with_no_deployment_returns_false() {
         &VaultType::Vault4626,
         &test.vault_addr,
         &5000u64,
+        &SCALAR_ROOT,
+        &INITIAL_ANCHOR,
+        &FEE_RATE_ROOT,
+        &LAST_IMPLIED_RATE,
     );
     assert!(!rolled);
 }
@@ -301,7 +339,14 @@ fn test_rollover_after_expiry_emits_event() {
 
     test.factory
         .deploy_yield_manager(&test.vault_addr, &VaultType::Vault4626, &maturity);
-    test.factory.deploy_pool(&test.vault_addr, &test.vault_addr);
+    test.factory.deploy_pool(
+        &test.vault_addr,
+        &test.vault_addr,
+        &SCALAR_ROOT,
+        &INITIAL_ANCHOR,
+        &FEE_RATE_ROOT,
+        &LAST_IMPLIED_RATE,
+    );
 
     let old_market = Market {
         ym: test
@@ -323,8 +368,16 @@ fn test_rollover_after_expiry_emits_event() {
         &VaultType::Vault4626,
         &test.vault_addr,
         &new_maturity,
+        &SCALAR_ROOT,
+        &INITIAL_ANCHOR,
+        &FEE_RATE_ROOT,
+        &LAST_IMPLIED_RATE,
     );
     assert!(rolled);
+
+    // we capture events immediately
+    let events = test.env.events().all();
+    let raw = events.events();
 
     let new_market = Market {
         ym: test
@@ -344,8 +397,6 @@ fn test_rollover_after_expiry_emits_event() {
         new_market,
     };
 
-    let events = test.env.events().all();
-    let raw = events.events();
     assert_eq!(raw.len(), 1);
     assert_eq!(raw[0], expected.to_xdr(&test.env, &test.factory_addr));
 }
