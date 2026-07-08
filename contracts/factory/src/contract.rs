@@ -65,13 +65,25 @@ pub trait FactoryTrait {
         vault_type: VaultType,
         maturity: u64,
     ) -> Address;
-    fn deploy_pool(env: Env, vault: Address, vault_share_token: Address) -> Address;
+    fn deploy_pool(
+        env: Env,
+        vault: Address,
+        vault_share_token: Address,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
+    ) -> Address;
     fn create_market(
         env: Env,
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
         vault_share_token: Address,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
     ) -> Market;
 
     fn get_vaults(env: Env) -> Vec<Address>;
@@ -89,6 +101,10 @@ pub trait FactoryTrait {
         vault_type: VaultType,
         vault_share_token: Address,
         new_maturity: u64,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
     ) -> bool;
 
     fn set_admin(env: Env, new_admin: Address);
@@ -126,11 +142,27 @@ impl FactoryTrait for Factory {
         Self::deploy_yield_manager_internal(env, vault, vault_type, maturity)
     }
 
-    fn deploy_pool(env: Env, vault: Address, vault_share_token: Address) -> Address {
+    fn deploy_pool(
+        env: Env,
+        vault: Address,
+        vault_share_token: Address,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
+    ) -> Address {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
-        Self::deploy_pool_internal(env, vault, vault_share_token)
+        Self::deploy_pool_internal(
+            env,
+            vault,
+            vault_share_token,
+            scalar_root,
+            initial_anchor,
+            fee_rate_root,
+            last_implied_rate,
+        )
     }
 
     fn create_market(
@@ -139,14 +171,25 @@ impl FactoryTrait for Factory {
         vault_type: VaultType,
         maturity: u64,
         vault_share_token: Address,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
     ) -> Market {
         let admin = storage::get_admin(&env);
         admin.require_auth();
 
         let ym_address =
             Self::deploy_yield_manager_internal(env.clone(), vault.clone(), vault_type, maturity);
-        let pool_address =
-            Self::deploy_pool_internal(env.clone(), vault.clone(), vault_share_token);
+        let pool_address = Self::deploy_pool_internal(
+            env.clone(),
+            vault.clone(),
+            vault_share_token,
+            scalar_root,
+            initial_anchor,
+            fee_rate_root,
+            last_implied_rate,
+        );
 
         let market = Market {
             ym: ym_address,
@@ -237,6 +280,10 @@ impl FactoryTrait for Factory {
         vault_type: VaultType,
         vault_share_token: Address,
         new_maturity: u64,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
     ) -> bool {
         let admin = storage::get_admin(&env);
         admin.require_auth();
@@ -267,7 +314,15 @@ impl FactoryTrait for Factory {
             vault_type,
             new_maturity,
         );
-        let new_pool = Self::deploy_pool_internal(env.clone(), vault.clone(), vault_share_token);
+        let new_pool = Self::deploy_pool_internal(
+            env.clone(),
+            vault.clone(),
+            vault_share_token,
+            scalar_root,
+            initial_anchor,
+            fee_rate_root,
+            last_implied_rate,
+        );
 
         let new_market = Market {
             ym: new_ym,
@@ -348,7 +403,15 @@ impl Factory {
         ym_addr
     }
 
-    fn deploy_pool_internal(env: Env, vault: Address, vault_share_token: Address) -> Address {
+    fn deploy_pool_internal(
+        env: Env,
+        vault: Address,
+        vault_share_token: Address,
+        scalar_root: i128,
+        initial_anchor: i128,
+        fee_rate_root: i128,
+        last_implied_rate: i128,
+    ) -> Address {
         let wasm_hashes = storage::get_wasm_hashes(&env);
 
         let ym_addr =
@@ -360,7 +423,15 @@ impl Factory {
             .with_current_contract(next_salt(&env))
             .deploy_v2(
                 wasm_hashes.amm,
-                (ym_client.get_principal_token(), vault_share_token),
+                (
+                    ym_client.get_principal_token(),
+                    vault_share_token,
+                    ym_client.get_maturity(),
+                    scalar_root,
+                    initial_anchor,
+                    fee_rate_root,
+                    last_implied_rate,
+                ),
             );
 
         storage::set_current_pool(&env, &vault, &pool_addr);
