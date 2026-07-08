@@ -1,4 +1,5 @@
 use crate::storage;
+use soroban_sdk::token::TokenClient;
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Vec,
 };
@@ -121,6 +122,57 @@ fn next_salt(env: &Env) -> BytesN<32> {
     let mut buf = Bytes::new(env);
     buf.extend_from_array(&counter.to_be_bytes());
     env.crypto().keccak256(&buf).into()
+}
+
+const MAX_TOKEN_STRING_LEN: usize = 64;
+// Builds "<prefix><vault-symbol>" or "<prefix><vault-symbol>-<maturity>" as
+// a soroban_sdk::String. Manual byte-buffer construction since this is a
+// #![no_std] contract with no alloc/format! available.
+pub(crate) fn build_token_string(
+    env: &Env,
+    prefix: &str,
+    vault_symbol: &String,
+    maturity: Option<u64>,
+) -> String {
+    let mut buffer = [0u8; MAX_TOKEN_STRING_LEN];
+    let mut position = 0usize;
+
+    let prefix_bytes = prefix.as_bytes();
+    buffer[position..position + prefix_bytes.len()].copy_from_slice(prefix_bytes);
+    position += prefix_bytes.len();
+
+    let symbol_len = vault_symbol.len() as usize;
+    assert!(
+        position + symbol_len <= MAX_TOKEN_STRING_LEN,
+        "vault symbol too long for token name"
+    );
+    vault_symbol.copy_into_slice(&mut buffer[position..position + symbol_len]);
+    position += symbol_len;
+
+    if let Some(maturity) = maturity {
+        buffer[position] = b'-';
+        position += 1;
+
+        let digits_start = position;
+        if maturity == 0 {
+            buffer[position] = b'0';
+            position += 1;
+        } else {
+            let mut value = maturity;
+            while value > 0 {
+                assert!(
+                    position < MAX_TOKEN_STRING_LEN,
+                    "token name exceeds max length"
+                );
+                buffer[position] = b'0' + (value % 10) as u8;
+                value /= 10;
+                position += 1;
+            }
+            buffer[digits_start..position].reverse();
+        }
+    }
+
+    String::from_bytes(env, &buffer[..position])
 }
 
 #[contractimpl]
@@ -352,6 +404,7 @@ impl Factory {
         maturity: u64,
     ) -> Address {
         let wasm_hashes = storage::get_wasm_hashes(&env);
+        let vault_symbol = TokenClient::new(&env, &vault).symbol();
 
         let ym_addr = env
             .deployer()
@@ -373,8 +426,8 @@ impl Factory {
                 wasm_hashes.pt,
                 (
                     ym_addr.clone(),
-                    String::from_str(&env, "Principal Token"),
-                    String::from_str(&env, "PT"),
+                    build_token_string(&env, "PT-", &vault_symbol, Some(maturity)),
+                    build_token_string(&env, "PT-", &vault_symbol, None),
                     7u32,
                 ),
             );
@@ -386,8 +439,8 @@ impl Factory {
                 wasm_hashes.yt,
                 (
                     ym_addr.clone(),
-                    String::from_str(&env, "Yield Token"),
-                    String::from_str(&env, "YT"),
+                    build_token_string(&env, "YT-", &vault_symbol, Some(maturity)),
+                    build_token_string(&env, "YT-", &vault_symbol, None),
                     7u32,
                 ),
             );

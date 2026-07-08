@@ -180,12 +180,16 @@ fn test_deployed_pt_metadata() {
 
     let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
     let pt_token = TokenClient::new(&test.env, &pt_addr);
+    let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
 
     assert_eq!(
         pt_token.name(),
-        String::from_str(&test.env, "Principal Token")
+        crate::contract::build_token_string(&test.env, "PT-", &vault_symbol, Some(maturity))
     );
-    assert_eq!(pt_token.symbol(), String::from_str(&test.env, "PT"));
+    assert_eq!(
+        pt_token.symbol(),
+        crate::contract::build_token_string(&test.env, "PT-", &vault_symbol, None)
+    );
     assert_eq!(pt_token.decimals(), 7);
 }
 
@@ -197,9 +201,16 @@ fn test_deployed_yt_metadata() {
 
     let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
     let yt_token = TokenClient::new(&test.env, &yt_addr);
+    let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
 
-    assert_eq!(yt_token.name(), String::from_str(&test.env, "Yield Token"));
-    assert_eq!(yt_token.symbol(), String::from_str(&test.env, "YT"));
+    assert_eq!(
+        yt_token.name(),
+        crate::contract::build_token_string(&test.env, "YT-", &vault_symbol, Some(maturity))
+    );
+    assert_eq!(
+        yt_token.symbol(),
+        crate::contract::build_token_string(&test.env, "YT-", &vault_symbol, None)
+    );
     assert_eq!(yt_token.decimals(), 7);
 }
 
