@@ -2,7 +2,9 @@ use soroban_sdk::{contracttype, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]
-pub struct TokenMetadata {
+pub struct YieldTokenMetadata {
+    // renamed distinctly from soroban_token_sdk::metadata::TokenMetadata
+    // since a shared name breaks contractimport! for anyone importing this wasm.
     pub name: String,
     pub symbol: String,
     pub decimal: u32,
@@ -51,11 +53,15 @@ pub fn get_admin(env: &Env) -> Address {
 
 // Token metadata
 pub fn set_metadata(env: &Env, name: String, symbol: String, decimal: u32) {
-    let metadata = TokenMetadata { name, symbol, decimal };
+    let metadata = YieldTokenMetadata {
+        name,
+        symbol,
+        decimal,
+    };
     env.storage().instance().set(&METADATA_KEY, &metadata);
 }
 
-pub fn get_metadata(env: &Env) -> TokenMetadata {
+pub fn get_metadata(env: &Env) -> YieldTokenMetadata {
     env.storage()
         .instance()
         .get(&METADATA_KEY)
@@ -68,27 +74,28 @@ pub fn set_total_supply(env: &Env, supply: i128) {
 }
 
 pub fn get_total_supply(env: &Env) -> i128 {
-    env.storage()
-        .instance()
-        .get(&TOTAL_SUPPLY_KEY)
-        .unwrap_or(0)
+    env.storage().instance().get(&TOTAL_SUPPLY_KEY).unwrap_or(0)
 }
 
 // User balance
 pub fn set_balance(env: &Env, address: &Address, balance: i128) {
     let key = DataKey::Balance(address.clone());
     env.storage().persistent().set(&key, &balance);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn get_balance(env: &Env, address: &Address) -> i128 {
     let key = DataKey::Balance(address.clone());
     if let Some(balance) = env.storage().persistent().get(&key) {
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
         balance
     } else {
         0
@@ -99,17 +106,21 @@ pub fn get_balance(env: &Env, address: &Address) -> i128 {
 pub fn set_user_index(env: &Env, address: &Address, index: i128) {
     let key = DataKey::UserIndex(address.clone());
     env.storage().persistent().set(&key, &index);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn get_user_index(env: &Env, address: &Address) -> i128 {
     let key = DataKey::UserIndex(address.clone());
     if let Some(index) = env.storage().persistent().get(&key) {
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
         index
     } else {
         0
@@ -120,17 +131,21 @@ pub fn get_user_index(env: &Env, address: &Address) -> i128 {
 pub fn set_accrued_yield(env: &Env, address: &Address, amount: i128) {
     let key = DataKey::AccruedYield(address.clone());
     env.storage().persistent().set(&key, &amount);
-    env.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn get_accrued_yield(env: &Env, address: &Address) -> i128 {
     let key = DataKey::AccruedYield(address.clone());
     if let Some(amount) = env.storage().persistent().get(&key) {
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
         amount
     } else {
         0
