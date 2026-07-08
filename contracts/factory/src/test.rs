@@ -227,6 +227,14 @@ fn test_deposit_through_factory_deployed_contracts() {
     let shares = 1_000_0000i128;
     test.mint_vault_shares(&test.user1, shares);
 
+    let vault_client = MockVaultClient::new(&test.env, &test.vault_addr);
+    vault_client.approve(
+        &test.user1,
+        &ym_addr,
+        &shares,
+        &(test.env.ledger().sequence() + 1000),
+    );
+
     // Deposit through the factory-deployed yield manager
     let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
     ym_client.deposit(&test.user1, &shares);
