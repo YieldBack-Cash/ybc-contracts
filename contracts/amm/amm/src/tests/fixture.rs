@@ -67,9 +67,7 @@ impl<'a> AmmFixture<'a> {
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 
-        // Set vault exchange rate to 1 (1 share = 1 asset unit, unscaled).
-        // The mock default is 1e7 which makes reserve_b_assets overflow proportion checks.
-        vault.set_exchange_rate(&1);
+        vault.set_exchange_rate(&1_000_0000);
 
         // Fund admin and user.
         pt.mint(&admin, &1_000_000_000);

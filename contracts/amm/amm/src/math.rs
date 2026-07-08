@@ -11,7 +11,7 @@ pub const FP_SCALE: i128 = 10_000_000; // 1e7
 ///
 /// # Panics
 /// Panics if `x <= 0`.
-pub fn ln_fp(x: i128, scale: i128) -> i128 { // todo: as the pool becomes more V heavy, this function will break
+pub fn ln_fp(x: i128, scale: i128) -> i128 { // callers must keep x well above 0; curve.rs bounds the pool proportion so the ratio fed here never truncates to zero
     assert!(x > 0, "ln undefined for non-positive values");
 
     // ln(2) × SCALE, precomputed: 0.693147... × scale

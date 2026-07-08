@@ -60,19 +60,19 @@ fn test_deposit_without_from_auth_reverts() {
     );
 }
 
-// ── redeem ────────────────────────────────────────────────────────────────────
+// ── redeem_combined ─────────────────────────────────────────────────────────────
 
-/// YM.redeem requires the redeemer to authorize the call.
+/// YM.redeem_combined requires the redeemer to authorize the call.
 #[test]
 #[should_panic]
-fn test_redeem_without_from_auth_reverts() {
+fn test_redeem_combined_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, _vault, ym_addr) = register_ym(&env);
     let user = Address::generate(&env);
 
     env.invoke_contract::<()>(
         &ym_addr,
-        &Symbol::new(&env, "redeem"),
+        &Symbol::new(&env, "redeem_combined"),
         (&user, 1_000_000i128).into_val(&env),
     );
 }
