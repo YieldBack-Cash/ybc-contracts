@@ -44,6 +44,7 @@ describe("decodeFactoryEvent", () => {
     it("decodes market_created", () => {
         const vault = addr();
         const market: Market = {
+            name: "Test Market",
             ym: addr(),
             pt: addr(),
             yt: addr(),
@@ -72,6 +73,7 @@ describe("decodeFactoryEvent", () => {
     it("decodes market_rolled_over", () => {
         const vault = addr();
         const oldMarket: Market = {
+            name: "Old Market",
             ym: addr(),
             pt: addr(),
             yt: addr(),
@@ -80,6 +82,7 @@ describe("decodeFactoryEvent", () => {
             vault,
         };
         const newMarket: Market = {
+            name: "New Market",
             ym: addr(),
             pt: addr(),
             yt: addr(),

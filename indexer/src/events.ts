@@ -2,6 +2,7 @@ import { scValToNative } from "@stellar/stellar-sdk";
 import type { rpc } from "@stellar/stellar-sdk";
 
 export interface Market {
+    name: string;
     ym: string;
     pt: string;
     yt: string;

@@ -1,8 +1,12 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import { PrismaClient, Market } from "@prisma/client";
 
 const app = express();
+app.use(
+    cors({ origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:3000" }),
+);
 const prisma = new PrismaClient();
 
 const NOW = BigInt(Math.floor(Date.now() / 1000));
@@ -53,6 +57,23 @@ app.get("/status", async (req, res) => {
         lastPolled: state?.lastPolled ?? null,
         lastLedger: state?.lastLedger ?? null,
     });
+});
+
+app.get("/events", async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const events = await prisma.factoryEvent.findMany({
+        orderBy: { ledger: "desc" },
+        take: limit,
+    });
+    res.json(events);
+});
+
+app.get("/vaults/:address/events", async (req, res) => {
+    const events = await prisma.factoryEvent.findMany({
+        where: { vault: req.params.address },
+        orderBy: { ledger: "desc" },
+    });
+    res.json(events);
 });
 
 app.listen(3001, () => console.log("YBC API running on :3001"));

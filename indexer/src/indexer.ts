@@ -3,7 +3,6 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import type { rpc } from "@stellar/stellar-sdk";
 import { DecodedFactoryEvent, decodeFactoryEvent } from "./events";
 import { getCurrentLedger, getFactoryEvents } from "./stellar";
-import { decode } from "querystring";
 
 const prisma = new PrismaClient();
 
@@ -36,6 +35,7 @@ async function applyEvent(
                     data: {
                         id: `${decoded.vault}:${decoded.market.maturity}`,
                         vault: decoded.vault,
+                        name: decoded.market.name,
                         ym: decoded.market.ym,
                         pt: decoded.market.pt,
                         yt: decoded.market.yt,
@@ -50,6 +50,7 @@ async function applyEvent(
                     data: {
                         id: `${decoded.vault}:${decoded.newMarket.maturity}`,
                         vault: decoded.vault,
+                        name: decoded.newMarket.name,
                         ym: decoded.newMarket.ym,
                         pt: decoded.newMarket.pt,
                         yt: decoded.newMarket.yt,
@@ -86,7 +87,9 @@ export async function syncFactoryEvents() {
         create: { id: 1 },
     });
 
-    const startLedger = state.lastLedger ?? (await getCurrentLedger());
+    const startLedger = state.lastLedger
+        ? state.lastLedger + 1
+        : await getCurrentLedger();
     const rawEvents = await getFactoryEvents(startLedger);
 
     console.log(

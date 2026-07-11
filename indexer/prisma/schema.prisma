@@ -26,6 +26,7 @@ model Vault {
 model Market {
   id        String   @id
   vault     String
+  name      String
   ym        String
   pt        String
   yt        String
