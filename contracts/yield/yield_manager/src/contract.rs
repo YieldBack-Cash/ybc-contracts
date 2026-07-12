@@ -1,4 +1,5 @@
 use soroban_sdk::{token, Address, Env};
+use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, RedeemCombined, RedeemPrincipal, TokenContractsSet};
 use crate::storage;
 use amm_interface::{FlashSwapReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
@@ -95,6 +96,8 @@ impl YieldManagerTrait for YieldManager {
 
         storage::set_principal_token(&env, &pt_addr);
         storage::set_yield_token(&env, &yt_addr);
+
+        TokenContractsSet { pt: pt_addr, yt: yt_addr }.publish(&env);
         Ok(())
     }
 
@@ -161,6 +164,8 @@ impl YieldManagerTrait for YieldManager {
 
         let yt_client = YieldTokenClient::new(&env, &yt_addr);
         yt_client.mint(&from, &mint_amount, &exchange_rate);
+
+        Deposit { from, shares_amount, mint_amount, exchange_rate }.publish(&env);
         Ok(())
     }
 
@@ -205,6 +210,8 @@ impl YieldManagerTrait for YieldManager {
         // Return the corresponding vault shares.
         token::Client::new(&env, &vault_addr)
             .transfer(&env.current_contract_address(), &from, &shares_to_return);
+
+        RedeemCombined { from, amount, shares_returned: shares_to_return, exchange_rate }.publish(&env);
         Ok(())
     }
 
@@ -223,7 +230,7 @@ impl YieldManagerTrait for YieldManager {
             return Ok(());
         }
 
-        YieldManager::update_exchange_rate(&env);
+        let exchange_rate = YieldManager::update_exchange_rate(&env);
 
         // Transfer vault shares from yield manager to user
         let vault_addr = storage::get_vault(&env);
@@ -233,6 +240,8 @@ impl YieldManagerTrait for YieldManager {
             &to,
             &shares_amount,
         );
+
+        DistributeYield { to, shares_amount, exchange_rate }.publish(&env);
         Ok(())
     }
 
@@ -278,6 +287,8 @@ impl YieldManagerTrait for YieldManager {
             &from,
             &shares_to_return,
         );
+
+        RedeemPrincipal { from, pt_amount, shares_returned: shares_to_return, exchange_rate }.publish(&env);
         Ok(())
     }
 }
@@ -329,6 +340,8 @@ impl FlashSwapReceiver for YieldManager {
         pt_client.transfer(&ym, &amm, &pt_to_repay);
 
         assert_eq!(pt_client.balance(&ym), 0, "YM leaked PT");
+
+        FlashDeposit { user, amm, v_in, pt_borrowed, yt_minted, exchange_rate }.publish(&env);
     }
 }
 
@@ -376,5 +389,7 @@ impl FlashSwapVReceiver for YieldManager {
 
         vault_client.transfer(&ym, &amm, &v_owed);
         vault_client.transfer(&ym, &user, &v_to_user);
+
+        FlashRedeem { user, amm, pt_borrowed, v_owed, v_to_user, exchange_rate }.publish(&env);
     }
 }

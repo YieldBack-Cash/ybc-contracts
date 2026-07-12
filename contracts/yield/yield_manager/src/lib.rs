@@ -2,6 +2,7 @@
 
 mod storage;
 mod contract;
+mod events;
 
 #[cfg(test)]
 mod tests;

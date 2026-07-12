@@ -2,6 +2,7 @@ use amm_interface::AmmClient;
 use yield_manager_interface::YieldManagerClient;
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Env};
 
+use crate::events::{RoutedYtBuy, RoutedYtSell};
 use crate::storage::{extend_instance_ttl, get_amm, get_ym, set_amm, set_ym};
 
 #[contractclient(name = "RouterClient")]
@@ -59,6 +60,8 @@ impl RouterInterface for RouterContract {
 
         AmmClient::new(&e, &get_amm(&e))
             .flash_swap_pt(&get_ym(&e), &pt_to_borrow, &to, &v_in, &min_yt_out);
+
+        RoutedYtBuy { to, v_in, min_yt_out, pt_to_borrow, exchange_rate }.publish(&e);
     }
 
     fn swap_yt_for_v(e: Env, to: Address, yt_in: i128, min_v_out: i128) {
@@ -71,6 +74,8 @@ impl RouterInterface for RouterContract {
         // The YM is the callback receiver — it pulls YT from the user, burns PT+YT, and repays the AMM.
         AmmClient::new(&e, &get_amm(&e))
             .flash_swap_v(&get_ym(&e), &yt_in, &to, &min_v_out);
+
+        RoutedYtSell { to, yt_in, min_v_out }.publish(&e);
     }
 
     fn deposit(e: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128) {

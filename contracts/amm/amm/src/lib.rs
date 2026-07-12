@@ -2,6 +2,7 @@
 
 mod contract;
 mod curve;
+mod events;
 mod math;
 mod transfers;
 mod storage;

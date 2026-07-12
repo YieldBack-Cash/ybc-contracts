@@ -1,4 +1,5 @@
 use crate::curve::{calc_trade, compute_rate_anchor, get_exchange_rate_from_trade};
+use crate::events::{Deposit, FlashSwapPt, FlashSwapV, PoolInit, SwapPtForV, SwapVForPt, Withdraw};
 use crate::transfers::{get_deposit_amounts, transfer_pt_from_pool_to_user, transfer_pt_from_user_to_pool, transfer_v_from_user_to_pool, transfer_v_from_pool_to_user};
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
@@ -41,8 +42,8 @@ let now = e.ledger().timestamp();
         assert!(initial_anchor > 0, "initial_anchor must be positive");
 
         put_market_state(&e, &MarketState {
-            token_a,
-            token_b,
+            token_a: token_a.clone(),
+            token_b: token_b.clone(),
             reserve_a: 0,
             reserve_b: 0,
             expiry_ts,
@@ -52,6 +53,17 @@ let now = e.ledger().timestamp();
             fee_rate_root,
         });
         put_total_shares(&e, 0);
+
+        PoolInit {
+            token_a,
+            token_b,
+            expiry_ts,
+            scalar_root,
+            initial_anchor,
+            fee_rate_root,
+            last_implied_rate,
+        }
+        .publish(&e);
     }
 }
 
@@ -127,6 +139,16 @@ impl AmmInterface for LiquidityPool {
             crate::math::exchange_rate_to_implied_rate(new_exchange_rate, years);
 
         put_market_state(&e, &market);
+
+        SwapVForPt {
+            to,
+            v_in: v_in_shares,
+            pt_out,
+            new_implied_rate: market.last_implied_rate,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
     }
 
     /// Sell an exact amount of PT into the pool and receive vault shares.
@@ -214,6 +236,16 @@ impl AmmInterface for LiquidityPool {
             crate::math::exchange_rate_to_implied_rate(ex_rate, t_years);
 
         put_market_state(&e, &market);
+
+        SwapPtForV {
+            to,
+            pt_in,
+            v_out: v_out_shares,
+            new_implied_rate: market.last_implied_rate,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
     }
 
     /// Flash-lends PT to a receiver, calls its callback, then enforces the invariant.
@@ -275,6 +307,17 @@ impl AmmInterface for LiquidityPool {
             crate::math::exchange_rate_to_implied_rate(new_exchange_rate, years);
 
         put_market_state(&e, &market);
+
+        FlashSwapPt {
+            receiver,
+            user,
+            pt_borrowed: pt_to_borrow,
+            v_in,
+            new_implied_rate: market.last_implied_rate,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
     }
 
     /// Flash-lends PT to a receiver and is repaid in vault shares (V).
@@ -367,6 +410,17 @@ impl AmmInterface for LiquidityPool {
             crate::math::exchange_rate_to_implied_rate(new_exchange_rate, years);
 
         put_market_state(&e, &market);
+
+        FlashSwapV {
+            receiver,
+            user,
+            pt_borrowed: pt_to_borrow,
+            v_owed: v_owed_shares,
+            new_implied_rate: market.last_implied_rate,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
     }
 
     /// Deposits tokens into the pool and mints shares. Deposit ratio must match
@@ -430,6 +484,16 @@ impl AmmInterface for LiquidityPool {
         market.reserve_a = balance_a;
         market.reserve_b = balance_b;
         put_market_state(&e, &market);
+
+        Deposit {
+            to,
+            amount_a,
+            amount_b,
+            shares_minted: shares_to_mint,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
     }
 
     /// Burns pool shares and withdraws a proportional amount of both tokens.
@@ -475,6 +539,16 @@ impl AmmInterface for LiquidityPool {
         market.reserve_a = balance_a - out_a;
         market.reserve_b = balance_b - out_b;
         put_market_state(&e, &market);
+
+        Withdraw {
+            to,
+            share_amount,
+            amount_a: out_a,
+            amount_b: out_b,
+            new_reserve_a: market.reserve_a,
+            new_reserve_b: market.reserve_b,
+        }
+        .publish(&e);
 
         (out_a, out_b)
     }
