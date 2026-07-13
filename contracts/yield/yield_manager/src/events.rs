@@ -49,9 +49,9 @@ pub struct FlashDeposit {
     pub user: Address,
     #[topic]
     pub amm: Address,
-    pub v_in: i128,
-    pub pt_borrowed: i128,
-    pub yt_minted: i128,
+    pub yt_out: i128,
+    pub v_to_mint: i128,
+    pub user_cost: i128,
     pub exchange_rate: i128,
 }
 

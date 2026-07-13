@@ -161,7 +161,7 @@ fn test_router_swap_v_for_yt_requires_user_auth() {
     let env = Env::default();
     let f = seeded(&env);
 
-    f.router_swap_v_for_yt(&f.user, 1_000_000, 1);
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
 
     let auths = env.auths();
     assert!(

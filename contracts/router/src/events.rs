@@ -4,10 +4,8 @@ use soroban_sdk::{contractevent, Address};
 pub struct RoutedYtBuy {
     #[topic]
     pub to: Address,
-    pub v_in: i128,
-    pub min_yt_out: i128,
-    pub pt_to_borrow: i128,
-    pub exchange_rate: i128,
+    pub yt_out: i128,
+    pub max_v_in: i128,
 }
 
 #[contractevent(topics = ["routed_yt_sell"], data_format = "vec")]

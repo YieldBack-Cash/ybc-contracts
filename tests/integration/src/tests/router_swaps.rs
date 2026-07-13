@@ -108,17 +108,22 @@ fn test_router_swap_v_for_yt() {
     let yt_before = f.yt_balance(&f.user);
     let v_before = f.vault.balance(&f.user);
 
-    let v_in = 1_000_000i128;
-    f.router_swap_v_for_yt(&f.user, v_in, 1);
+    let yt_out = 1_000_000i128;
+    f.router_swap_v_for_yt(&f.user, yt_out, 1_000_000);
 
-    // User spent V and received YT (1:1 at this rate).
-    assert_eq!(f.yt_balance(&f.user), yt_before + v_in, "user's YT increases by v_in");
-    assert_eq!(v_before - f.vault.balance(&f.user), v_in, "user spent exactly v_in V");
+    // User received exactly yt_out YT and paid only the YT price — far below face value.
+    assert_eq!(f.yt_balance(&f.user), yt_before + yt_out, "user's YT increases by yt_out");
+    let v_spent = v_before - f.vault.balance(&f.user);
+    assert!(v_spent > 0, "user spent some V");
+    assert!(v_spent < yt_out, "user paid the YT price, well below face value");
 
-    // Pool: PT reserve grew by the minted PT; V reserve unchanged (user's V went to the YM).
+    // Pool bought the PT and paid V for it (mirror of the sell path).
     let (pt_res, v_res) = f.pool.get_reserves();
-    assert_eq!(pt_res, POOL_PT + v_in, "pool absorbed the minted PT");
-    assert_eq!(v_res, POOL_V, "pool V reserve unchanged");
+    assert_eq!(pt_res, POOL_PT + yt_out, "pool PT reserve grew by the bought PT");
+    assert!(v_res < POOL_V, "pool paid V for the PT");
+
+    // Conservation: mint cost (yt_out at the 1:1 YM rate) = user's payment + pool's payment.
+    assert_eq!(v_spent + (POOL_V - v_res), yt_out, "mint cost split between user and pool");
 }
 
 // ── swap_v_for_yt edge cases ──────────────────────────────────────────────────
@@ -128,8 +133,8 @@ fn test_router_swap_v_for_yt() {
 fn test_router_swap_v_for_yt_slippage_reverts() {
     let env = Env::default();
     let f = seeded(&env);
-    // min_yt_out far above what 1M V can produce.
-    f.router_swap_v_for_yt(&f.user, 1_000_000, 999_999_999);
+    // max_v_in below the actual YT price for 1M YT.
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1);
 }
 
 #[test]
@@ -137,7 +142,7 @@ fn test_router_swap_v_for_yt_slippage_reverts() {
 fn test_router_swap_v_for_yt_zero_reverts() {
     let env = Env::default();
     let f = seeded(&env);
-    f.router_swap_v_for_yt(&f.user, 0, 1);
+    f.router_swap_v_for_yt(&f.user, 0, 1_000_000);
 }
 
 #[test]
@@ -146,7 +151,28 @@ fn test_router_swap_v_for_yt_expired_reverts() {
     let env = Env::default();
     let f = seeded(&env);
     f.advance_time(ONE_YEAR_SECS + 1);
-    f.router_swap_v_for_yt(&f.user, 1_000_000, 1);
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
+}
+
+/// Buying YT still prices correctly after the vault rate rises: the user receives exactly
+/// `yt_out` YT and pays a positive cost below face, confirming the asset↔share conversions
+/// stay consistent between the AMM curve and the YM's rate-based mint math at a non-unit rate.
+#[test]
+fn test_router_swap_v_for_yt_higher_vault_rate() {
+    let env = Env::default();
+    let f = seeded(&env);
+    f.vault.set_exchange_rate(&20_000_000); // 2.0 in SCALAR_7 — doubles the vault rate
+
+    let yt_before = f.yt_balance(&f.user);
+    let v_before = f.vault.balance(&f.user);
+
+    let yt_out = 10_000_000i128;
+    f.router_swap_v_for_yt(&f.user, yt_out, 10_000_000);
+
+    assert_eq!(f.yt_balance(&f.user), yt_before + yt_out, "user receives exactly yt_out YT");
+    let v_spent = v_before - f.vault.balance(&f.user);
+    assert!(v_spent > 0, "user pays a positive YT price");
+    assert!(v_spent < yt_out, "cost stays below face value");
 }
 
 #[test]
@@ -166,10 +192,20 @@ fn test_router_buy_then_sell_yt_round_trip() {
     let f = seeded(&env);
 
     let yt_before = f.yt_balance(&f.user);
-    f.router_swap_v_for_yt(&f.user, 1_000_000, 1);
-    assert_eq!(f.yt_balance(&f.user), yt_before + 1_000_000);
+    let v_before = f.vault.balance(&f.user);
 
-    // Sell the YT we just bought; should succeed and reduce YT back toward the start.
+    // Buy 1M YT — cost is the YT price, not the face value (this is the fix under test).
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
+    assert_eq!(f.yt_balance(&f.user), yt_before + 1_000_000);
+    let v_spent = v_before - f.vault.balance(&f.user);
+    assert!(v_spent < 1_000_000, "buying YT costs the YT price, well below face");
+
+    // Sell the YT back.
     f.router_swap_yt_for_v(&f.user, 1_000_000, 1);
     assert_eq!(f.yt_balance(&f.user), yt_before, "YT returns to its pre-trade balance");
+
+    // A buy-then-sell round trip costs only the spread/fees — not a large loss, and never a profit.
+    let net_v_loss = v_before - f.vault.balance(&f.user);
+    assert!(net_v_loss >= 0, "round trip must not profit the user");
+    assert!(net_v_loss < v_spent, "user recovers most of the YT price selling back");
 }

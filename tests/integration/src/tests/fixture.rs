@@ -70,7 +70,7 @@ impl<'a> IntegrationFixture<'a> {
         // PT is token_a, vault shares are token_b
         let pool_addr = env.register(
             LiquidityPool,
-            (&pt_addr, &vault_addr, maturity, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE),
+            (&pt_addr, &vault_addr, maturity, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE, &ym_addr),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 
@@ -126,12 +126,13 @@ impl<'a> IntegrationFixture<'a> {
         self.env.ledger().with_mut(|l| l.timestamp += seconds);
     }
 
-    /// Router: buy YT by spending vault shares (V→YT via flash_swap_pt).
-    pub fn router_swap_v_for_yt(&self, to: &Address, v_in: i128, min_yt_out: i128) {
+    /// Router: buy exactly `yt_out` YT, spending at most `max_v_in` vault shares
+    /// (V→YT via flash_swap_pt).
+    pub fn router_swap_v_for_yt(&self, to: &Address, yt_out: i128, max_v_in: i128) {
         self.env.invoke_contract::<()>(
             &self.router,
             &Symbol::new(&self.env, "swap_v_for_yt"),
-            (to, v_in, min_yt_out).into_val(&self.env),
+            (to, yt_out, max_v_in).into_val(&self.env),
         );
     }
 

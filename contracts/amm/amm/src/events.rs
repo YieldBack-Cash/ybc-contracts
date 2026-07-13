@@ -41,8 +41,8 @@ pub struct FlashSwapPt {
     pub receiver: Address,
     #[topic]
     pub user: Address,
-    pub pt_borrowed: i128,
-    pub v_in: i128,
+    pub pt_bought: i128,
+    pub v_paid: i128,
     pub new_implied_rate: i128,
     pub new_reserve_a: i128,
     pub new_reserve_b: i128,

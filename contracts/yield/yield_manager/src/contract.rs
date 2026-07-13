@@ -1,7 +1,7 @@
 use soroban_sdk::{token, Address, Env};
 use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, RedeemCombined, RedeemPrincipal, TokenContractsSet};
 use crate::storage;
-use amm_interface::{FlashSwapReceiver, FlashSwapVReceiver};
+use amm_interface::{FlashSwapPtReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
 use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType, YieldManagerError};
@@ -295,8 +295,8 @@ impl YieldManagerTrait for YieldManager {
 
 #[cfg(feature = "contract")]
 #[contractimpl]
-impl FlashSwapReceiver for YieldManager {
-    fn on_flash_receive(env: Env, pt_borrowed: i128, user: Address, v_in: i128, min_yt_out: i128, amm: Address) {
+impl FlashSwapPtReceiver for YieldManager {
+    fn on_flash_receive_pt(env: Env, yt_out: i128, v_from_pool: i128, user: Address, max_v_in: i128, amm: Address) {
         storage::extend_instance_ttl(&env);
 
         if !storage::is_initialized(&env) {
@@ -316,32 +316,39 @@ impl FlashSwapReceiver for YieldManager {
         let exchange_rate = YieldManager::update_exchange_rate(&env);
         assert!(exchange_rate > 0, "exchange rate is zero");
 
-        let yt_minted = v_in
-            .checked_mul(exchange_rate)
-            .expect("overflow computing yt_minted")
-            / SCALAR_7;
-        assert!(yt_minted >= min_yt_out, "yt below minimum");
+        // Vault shares needed to mint yt_out PT+YT (inverse of deposit's mint math).
+        let v_to_mint = yt_out
+            .checked_mul(SCALAR_7)
+            .expect("overflow computing v_to_mint")
+            / exchange_rate;
 
-        // Pull vault shares from user directly into YM.
+        // The pool advanced `v_from_pool` as its payment for the yt_out PT it is buying;
+        // the user tops up the remainder (the YT price). Guard both against underpricing
+        // and against exceeding the user's slippage bound.
+        let user_cost = v_to_mint
+            .checked_sub(v_from_pool)
+            .expect("underflow computing user_cost");
+        assert!(user_cost > 0, "non-positive YT cost");
+        assert!(user_cost <= max_v_in, "cost exceeds max_v_in");
+
+        // Pull only the user's top-up; combined with the pool's advance the YM now holds
+        // v_to_mint V backing the freshly minted position.
         // user is an account address so user.require_auth() resolves without callbacks.
-        vault_client.transfer(&user, &ym, &v_in);
+        vault_client.transfer(&user, &ym, &user_cost);
 
-        // Mint PT to YM (repays AMM) and YT to user.
+        // Mint yt_out PT to YM (delivered to the pool below) and yt_out YT to the user.
         // YM is the direct caller of both mint functions so admin.require_auth() is satisfied.
         let principal_client = PrincipalTokenClient::new(&env, &pt_addr);
         let yt_token_client = YieldTokenClient::new(&env, &yt_addr);
-        principal_client.mint(&ym, &yt_minted);
-        yt_token_client.mint(&user, &yt_minted, &exchange_rate);
+        principal_client.mint(&ym, &yt_out);
+        yt_token_client.mint(&user, &yt_out, &exchange_rate);
 
-        // Repay AMM with borrowed PT plus all newly minted PT.
-        let pt_to_repay = pt_borrowed
-            .checked_add(yt_minted)
-            .expect("overflow computing pt_to_repay");
-        pt_client.transfer(&ym, &amm, &pt_to_repay);
+        // Deliver the PT to the pool — repayment for the advanced V.
+        pt_client.transfer(&ym, &amm, &yt_out);
 
         assert_eq!(pt_client.balance(&ym), 0, "YM leaked PT");
 
-        FlashDeposit { user, amm, v_in, pt_borrowed, yt_minted, exchange_rate }.publish(&env);
+        FlashDeposit { user, amm, yt_out, v_to_mint, user_cost, exchange_rate }.publish(&env);
     }
 }
 

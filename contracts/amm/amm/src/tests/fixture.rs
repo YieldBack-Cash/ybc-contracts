@@ -27,6 +27,9 @@ pub struct AmmFixture<'a> {
     pub pool: LiquidityPoolClient<'a>,
     pub admin: Address,
     pub user: Address,
+    /// The pool's trusted flash-swap receiver. Flash tests deploy their mock
+    /// receiver at this address via `env.register_at` so it is accepted by the pool.
+    pub ym: Address,
 }
 
 impl<'a> AmmFixture<'a> {
@@ -58,12 +61,17 @@ impl<'a> AmmFixture<'a> {
 
         assert!(pt_addr < vault_addr, "counter addresses must be sequential");
 
+        // Trusted flash-swap receiver. Held as a plain address here; flash tests
+        // deploy a mock receiver at this address (via `env.register_at`) so the
+        // pool accepts it, while other tests never touch the flash entrypoints.
+        let ym = Address::generate(env);
+
         // AMM pool.
         let now    = env.ledger().timestamp();
         let expiry = now + ONE_YEAR_SECS;
         let pool_addr = env.register(
             LiquidityPool,
-            (pt_addr.clone(), vault_addr.clone(), expiry, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE),
+            (pt_addr.clone(), vault_addr.clone(), expiry, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE, ym.clone()),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 
@@ -75,7 +83,7 @@ impl<'a> AmmFixture<'a> {
         vault.mint(&admin, &1_000_000_000);
         vault.mint(&user,  &1_000_000_000);
 
-        AmmFixture { env: env.clone(), pt, vault, pool, admin, user }
+        AmmFixture { env: env.clone(), pt, vault, pool, admin, user, ym }
     }
 
     pub fn set_time(&self, ts: u64) {
