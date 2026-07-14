@@ -28,6 +28,14 @@ app.get("/markets", async (req, res) => {
     res.json(markets.map(toMarketJson));
 });
 
+app.get("/markets/:id/events", async (req, res) => {
+    const events = await prisma.marketEvent.findMany({
+        where: { market: req.params.id },
+        orderBy: { ledger: "desc" },
+    });
+    res.json(events);
+});
+
 app.get("/vaults/:address/markets", async (req, res) => {
     const markets = await prisma.market.findMany({
         where: { vault: req.params.address },

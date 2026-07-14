@@ -37,6 +37,19 @@ model Market {
   vaultRef  Vault    @relation(fields: [vault], references: [address])
 }
 
+model MarketEvent {
+  id             String   @id
+  ledger         Int
+  ledgerClosedAt DateTime
+  source         String
+  type           String
+  txHash         String?
+  contractId     String
+  market         String
+  payload        Json
+  createdAt      DateTime @default(now())
+}
+
 model FactoryEvent {
   id             String   @id
   ledger         Int

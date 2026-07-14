@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Queue, Worker } from "bullmq";
-import { syncFactoryEvents } from "./indexer";
+import { syncEvents } from "./indexer";
 
 const connection = {
     host: "localhost",
@@ -9,15 +9,19 @@ const connection = {
 
 const queue = new Queue("ybc-indexer", { connection });
 
-new Worker(
+const worker = new Worker(
     "ybc-indexer",
     async () => {
-        await syncFactoryEvents();
+        await syncEvents();
     },
     {
         connection,
     },
 );
+
+worker.on("failed", (job, err) => {
+    console.error(`[sync failed] ${err.message}`);
+});
 
 async function start() {
     await queue.add(
