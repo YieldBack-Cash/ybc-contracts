@@ -241,6 +241,7 @@ impl<'a> BlendFixture<'a> {
                 INITIAL_ANCHOR,
                 FEE_RATE_ROOT,
                 LAST_IMPLIED_RATE,
+                &ym_addr,
             ),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);

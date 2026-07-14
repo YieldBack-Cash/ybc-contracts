@@ -1,7 +1,7 @@
 use amm_interface::AmmClient;
-use yield_manager_interface::YieldManagerClient;
 use soroban_sdk::{contract, contractclient, contractimpl, Address, Env};
 
+use crate::events::{RoutedYtBuy, RoutedYtSell};
 use crate::storage::{extend_instance_ttl, get_amm, get_ym, set_amm, set_ym};
 
 #[contractclient(name = "RouterClient")]
@@ -9,7 +9,7 @@ pub trait RouterInterface {
     fn get_amm(env: Env) -> Address;
     fn swap_v_for_pt(env: Env, to: Address, pt_out: i128, v_in_max: i128);
     fn swap_pt_for_v(env: Env, to: Address, pt_in: i128, min_v_out: i128);
-    fn swap_v_for_yt(env: Env, to: Address, v_in: i128, min_yt_out: i128);
+    fn swap_v_for_yt(env: Env, to: Address, yt_out: i128, max_v_in: i128);
     fn swap_yt_for_v(env: Env, to: Address, yt_in: i128, min_v_out: i128);
     fn deposit(env: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128);
     fn withdraw(env: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128);
@@ -47,18 +47,19 @@ impl RouterInterface for RouterContract {
         AmmClient::new(&e, &get_amm(&e)).swap_pt_for_v(&to, &pt_in, &min_v_out);
     }
 
-    fn swap_v_for_yt(e: Env, to: Address, v_in: i128, min_yt_out: i128) {
+    fn swap_v_for_yt(e: Env, to: Address, yt_out: i128, max_v_in: i128) {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(v_in > 0, "v_in must be positive");
-        assert!(min_yt_out > 0, "min_yt_out must be positive");
+        assert!(yt_out > 0, "yt_out must be positive");
+        assert!(max_v_in > 0, "max_v_in must be positive");
 
-        let ym_client = YieldManagerClient::new(&e, &get_ym(&e));
-        let exchange_rate = ym_client.get_exchange_rate();
-        let pt_to_borrow = v_in * exchange_rate / 10_000_000;
-
+        // The AMM prices the yt_out PT the pool buys and advances the V; the YM mints
+        // yt_out (PT+YT), gives the user the YT, and returns the PT. The user pays only
+        // the difference (the YT price), bounded by max_v_in.
         AmmClient::new(&e, &get_amm(&e))
-            .flash_swap_pt(&get_ym(&e), &pt_to_borrow, &to, &v_in, &min_yt_out);
+            .flash_swap_pt(&get_ym(&e), &yt_out, &to, &max_v_in);
+
+        RoutedYtBuy { to, yt_out, max_v_in }.publish(&e);
     }
 
     fn swap_yt_for_v(e: Env, to: Address, yt_in: i128, min_v_out: i128) {
@@ -71,6 +72,8 @@ impl RouterInterface for RouterContract {
         // The YM is the callback receiver — it pulls YT from the user, burns PT+YT, and repays the AMM.
         AmmClient::new(&e, &get_amm(&e))
             .flash_swap_v(&get_ym(&e), &yt_in, &to, &min_v_out);
+
+        RoutedYtSell { to, yt_in, min_v_out }.publish(&e);
     }
 
     fn deposit(e: Env, to: Address, desired_a: i128, min_a: i128, desired_b: i128, min_b: i128) {

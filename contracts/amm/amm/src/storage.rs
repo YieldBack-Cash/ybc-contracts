@@ -20,6 +20,9 @@ pub enum DataKey {
     TotalShares,
     Shares(Address),
     MarketState,
+    /// Trusted flash-swap receiver (the yield manager). Only this address may be
+    /// passed as `receiver` to `flash_swap_pt` / `flash_swap_v`.
+    Ym,
 }
 
 // Storage TTL constants
@@ -44,6 +47,14 @@ pub fn get_market_state(e: &Env) -> MarketState {
 
 pub fn put_market_state(e: &Env, state: &MarketState) {
     e.storage().instance().set(&DataKey::MarketState, state);
+}
+
+pub fn set_ym(e: &Env, ym: &Address) {
+    e.storage().instance().set(&DataKey::Ym, ym);
+}
+
+pub fn get_ym(e: &Env) -> Address {
+    e.storage().instance().get(&DataKey::Ym).unwrap()
 }
 
 pub fn get_token_a(e: &Env) -> Address {

@@ -1,7 +1,8 @@
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::testutils::Address as _;
 
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
-use amm_interface::{FlashSwapReceiver, FlashSwapVReceiver};
+use amm_interface::{AmmClient, FlashSwapPtReceiver, FlashSwapVReceiver};
 
 // ── Mock flash-V receiver ────────────────────────────────────────────────────
 //
@@ -67,13 +68,14 @@ impl MockFlashPtReceiver {
 }
 
 #[contractimpl]
-impl FlashSwapReceiver for MockFlashPtReceiver {
-    fn on_flash_receive(e: Env, pt_borrowed: i128, _user: Address, _v_in: i128, _min_yt_out: i128, amm: Address) {
+impl FlashSwapPtReceiver for MockFlashPtReceiver {
+    fn on_flash_receive_pt(e: Env, yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, amm: Address) {
         let pt_token: Address = e.storage().instance().get(&PT_TOK).unwrap();
         let repay_ok: bool = e.storage().instance().get(&REPAY_OK).unwrap();
         let me = e.current_contract_address();
 
-        let amount = if repay_ok { pt_borrowed } else { pt_borrowed - 1 };
+        // Deliver the bought PT to the pool (repay_ok=false under-delivers by 1 → pool reverts).
+        let amount = if repay_ok { yt_out } else { yt_out - 1 };
         token::Client::new(&e, &pt_token).transfer(&me, &amm, &amount);
     }
 }
@@ -81,7 +83,9 @@ impl FlashSwapReceiver for MockFlashPtReceiver {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn v_receiver(f: &AmmFixture, mode: u32) -> Address {
-    let addr = f.env.register(
+    // Deploy at the pool's trusted receiver address so `flash_swap_v` accepts it.
+    let addr = f.env.register_at(
+        &f.ym,
         MockFlashVReceiver,
         (f.pool.address.clone(), f.vault.address.clone(), f.pt.address.clone(), mode),
     );
@@ -91,10 +95,16 @@ fn v_receiver(f: &AmmFixture, mode: u32) -> Address {
 }
 
 fn pt_receiver(f: &AmmFixture, repay_ok: bool) -> Address {
-    f.env.register(
+    // Deploy at the pool's trusted receiver address so `flash_swap_pt` accepts it.
+    let addr = f.env.register_at(
+        &f.ym,
         MockFlashPtReceiver,
         (f.pool.address.clone(), f.pt.address.clone(), repay_ok),
-    )
+    );
+    // Fund it with PT so it can deliver the bought PT to the pool (stands in for the YM
+    // minting it — the pool only observes the PT arriving).
+    f.pt.mint(&addr, &1_000_000_000);
+    addr
 }
 
 // ── flash_swap_v ─────────────────────────────────────────────────────────────
@@ -187,30 +197,93 @@ fn test_flash_swap_v_expired_reverts() {
 // ── flash_swap_pt ────────────────────────────────────────────────────────────
 
 #[test]
-fn test_flash_swap_pt_repaid_keeps_pt_reserve() {
+fn test_flash_swap_pt_buys_pt_and_pays_v() {
     let env = Env::default();
     env.mock_all_auths();
     let f = AmmFixture::new(&env);
     f.deposit(&f.admin, 100_000_000, 100_000_000);
 
     let receiver = pt_receiver(&f, true);
-    let (pt_res_before, _) = f.pool.get_reserves();
+    let (pt_res_before, v_res_before) = f.pool.get_reserves();
 
-    f.pool.flash_swap_pt(&receiver, &1_000_000i128, &f.user, &1i128, &1i128);
+    let yt_out = 1_000_000i128;
+    f.pool.flash_swap_pt(&receiver, &yt_out, &f.user, &1_000_000_000i128);
 
-    let (pt_res_after, _) = f.pool.get_reserves();
-    // Mock repays exactly what it borrowed (no minted PT), so the reserve is unchanged.
-    assert_eq!(pt_res_after, pt_res_before);
+    let (pt_res_after, v_res_after) = f.pool.get_reserves();
+    // The pool bought exactly yt_out PT and paid V for it.
+    assert_eq!(pt_res_after, pt_res_before + yt_out, "pool PT reserve grows by the bought PT");
+    assert!(v_res_after < v_res_before, "pool paid V for the PT");
+    // PT trades below par, so the V paid is below the face amount.
+    assert!(v_res_before - v_res_after < yt_out, "V paid is below face value");
 }
 
 #[test]
 #[should_panic]
-fn test_flash_swap_pt_under_repay_reverts() {
+fn test_flash_swap_pt_under_deliver_reverts() {
     let env = Env::default();
     env.mock_all_auths();
     let f = AmmFixture::new(&env);
     f.deposit(&f.admin, 100_000_000, 100_000_000);
 
+    // Receiver delivers one less PT than the pool bought → the exact-PT invariant reverts.
     let receiver = pt_receiver(&f, false);
-    f.pool.flash_swap_pt(&receiver, &1_000_000i128, &f.user, &1i128, &1i128);
+    f.pool.flash_swap_pt(&receiver, &1_000_000i128, &f.user, &1_000_000_000i128);
+}
+
+// ── Security regressions ─────────────────────────────────────────────────────
+//
+// A receiver that tries to re-enter the pool during its flash callback. Soroban
+// forbids re-entering a contract already on the call stack at the host level, so
+// the nested call fails and the whole flash swap reverts. This test pins that
+// property: the classic flash-callback reentrancy drain is not reachable here.
+
+#[contract]
+pub struct MockReentrantReceiver;
+
+#[contractimpl]
+impl FlashSwapVReceiver for MockReentrantReceiver {
+    fn on_flash_receive_v(e: Env, _pt_borrowed: i128, _v_owed: i128, _user: Address, _min_v_out: i128, amm: Address) {
+        // Attempt to re-enter the pool mid-flash; the host rejects this.
+        let me = e.current_contract_address();
+        AmmClient::new(&e, &amm).swap_pt_for_v(&me, &1i128, &1i128);
+    }
+}
+
+#[test]
+#[should_panic]
+fn test_flash_swap_v_reentrancy_blocked() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    // Deploy the reentrant mock at the pool's trusted receiver address so it passes
+    // the allowlist check and actually reaches the callback — where re-entry is refused.
+    f.env.register_at(&f.ym, MockReentrantReceiver, ());
+    f.pool.flash_swap_v(&f.ym, &1_000_000i128, &f.user, &1i128);
+}
+
+#[test]
+#[should_panic(expected = "trusted yield manager")]
+fn test_flash_swap_v_untrusted_receiver_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    // Any receiver other than the pool's configured ym must be rejected before the callback.
+    let evil = Address::generate(&env);
+    f.pool.flash_swap_v(&evil, &1_000_000i128, &f.user, &1i128);
+}
+
+#[test]
+#[should_panic(expected = "trusted yield manager")]
+fn test_flash_swap_pt_untrusted_receiver_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    let evil = Address::generate(&env);
+    f.pool.flash_swap_pt(&evil, &1_000_000i128, &f.user, &1_000_000_000i128);
 }
