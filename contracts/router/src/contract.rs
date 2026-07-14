@@ -1,5 +1,6 @@
 use amm_interface::AmmClient;
-use soroban_sdk::{contract, contractclient, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractclient, contractimpl, token, Address, Env};
+use yield_manager_interface::YieldManagerClient;
 
 use crate::events::{RoutedYtBuy, RoutedYtSell};
 use crate::storage::{extend_instance_ttl, get_amm, get_ym, set_amm, set_ym};
@@ -68,10 +69,19 @@ impl RouterInterface for RouterContract {
         assert!(yt_in > 0, "yt_in must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
 
-        // Borrow exactly `yt_in` PT so it pairs 1:1 with the user's YT in the YM redeem.
-        // The YM is the callback receiver — it pulls YT from the user, burns PT+YT, and repays the AMM.
+        let ym = get_ym(&e);
+
+        // Move the user's YT into the YM before the flash swap begins. Doing it here —
+        // with the YM not yet on the call stack — lets the YT contract fetch the exchange
+        // rate itself, so the user's signed auth entry is a plain transfer whose args
+        // (from, to, yt_in) are all values the user chose and never drift with pool state.
+        let yt = YieldManagerClient::new(&e, &ym).get_yield_token();
+        token::TokenClient::new(&e, &yt).transfer(&to, &ym, &yt_in);
+
+        // Borrow exactly `yt_in` PT so it pairs 1:1 with the YT now held by the YM.
+        // The YM is the callback receiver — it burns PT+YT and repays the AMM.
         AmmClient::new(&e, &get_amm(&e))
-            .flash_swap_v(&get_ym(&e), &yt_in, &to, &min_v_out);
+            .flash_swap_v(&ym, &yt_in, &to, &min_v_out);
 
         RoutedYtSell { to, yt_in, min_v_out }.publish(&e);
     }

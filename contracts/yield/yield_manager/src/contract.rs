@@ -19,7 +19,7 @@ pub struct YieldManager;
 
 #[cfg(feature = "contract")]
 impl YieldManager {
-    // Helper function to get exchange rate from vault
+    /// Current vault rate, expressed as assets per SCALAR_7 shares (1e7-scaled).
     fn get_vault_exchange_rate(env: &Env) -> i128 {
         let vault_addr = storage::get_vault(env);
         let vault_type = storage::get_vault_type(env);
@@ -37,8 +37,8 @@ impl YieldManager {
         }
     }
 
-    // Refreshes the stored rate before maturity (rate can only increase, and locks
-    // once maturity is reached) and returns the resulting current rate.
+    /// Refreshes the stored rate before maturity (rate can only increase, and locks
+    /// once maturity is reached) and returns the resulting current rate.
     fn update_exchange_rate(env: &Env) -> i128 {
         if storage::is_rate_locked(env) {
             return storage::get_exchange_rate(env);
@@ -89,7 +89,6 @@ impl YieldManagerTrait for YieldManager {
         admin.require_auth();
         storage::extend_instance_ttl(&env);
 
-        // Ensure this can only be called once
         if storage::is_initialized(&env) {
             return Err(YieldManagerError::AlreadyInitialized);
         }
@@ -149,8 +148,8 @@ impl YieldManagerTrait for YieldManager {
             .expect("overflow computing mint_amount")
             / SCALAR_7;
 
-        // Pull vault shares from depositor into YM via transfer_from (YM is the spender — direct
-        // invoker — so no nested require_auth on the depositor's address is needed).
+        // YM is the spender (direct invoker), so transfer_from needs no nested
+        // require_auth on the depositor.
         let vault_token_client = token::Client::new(&env, &vault_addr);
         vault_token_client.transfer_from(
             &env.current_contract_address(),
@@ -201,13 +200,11 @@ impl YieldManagerTrait for YieldManager {
         let yt_addr = storage::get_yield_token(&env);
         let vault_addr = storage::get_vault(&env);
 
-        // Burn equal amounts of PT and YT from the caller.
-        // YT burn passes the exchange_rate hint so the YT contract does not need to call
-        // back into the YM for the rate (which would cause re-entry).
+        // The rate hint stops the YT contract calling back into the YM for it
+        // (re-entry while the YM is on the call stack is rejected by the host).
         token::Client::new(&env, &pt_addr).burn(&from, &amount);
         YieldTokenClient::new(&env, &yt_addr).burn_with_rate(&from, &amount, &exchange_rate);
 
-        // Return the corresponding vault shares.
         token::Client::new(&env, &vault_addr)
             .transfer(&env.current_contract_address(), &from, &shares_to_return);
 
@@ -232,7 +229,6 @@ impl YieldManagerTrait for YieldManager {
 
         let exchange_rate = YieldManager::update_exchange_rate(&env);
 
-        // Transfer vault shares from yield manager to user
         let vault_addr = storage::get_vault(&env);
         let vault_token_client = token::Client::new(&env, &vault_addr);
         vault_token_client.transfer(
@@ -257,7 +253,6 @@ impl YieldManagerTrait for YieldManager {
             return Err(YieldManagerError::InvalidAmount);
         }
 
-        // Check maturity has passed
         let maturity = storage::get_maturity(&env);
         let current_time = env.ledger().timestamp();
         if current_time < maturity {
@@ -276,11 +271,9 @@ impl YieldManagerTrait for YieldManager {
             .expect("overflow computing shares_to_return")
             / exchange_rate;
 
-        // Burn PT tokens from user
         let pt_token_client = token::Client::new(&env, &pt_addr);
         pt_token_client.burn(&from, &pt_amount);
 
-        // Transfer vault shares back to user
         let vault_token_client = token::Client::new(&env, &vault_addr);
         vault_token_client.transfer(
             &env.current_contract_address(),
@@ -312,7 +305,6 @@ impl FlashSwapPtReceiver for YieldManager {
         let vault_client = token::Client::new(&env, &vault_addr);
         let pt_client = token::Client::new(&env, &pt_addr);
 
-        // Fetch exchange rate before any minting.
         let exchange_rate = YieldManager::update_exchange_rate(&env);
         assert!(exchange_rate > 0, "exchange rate is zero");
 
@@ -331,13 +323,17 @@ impl FlashSwapPtReceiver for YieldManager {
         assert!(user_cost > 0, "non-positive YT cost");
         assert!(user_cost <= max_v_in, "cost exceeds max_v_in");
 
-        // Pull only the user's top-up; combined with the pool's advance the YM now holds
-        // v_to_mint V backing the freshly minted position.
-        // user is an account address so user.require_auth() resolves without callbacks.
-        vault_client.transfer(&user, &ym, &user_cost);
+        // Pull the slippage bound and refund the excess: max_v_in is the one amount the
+        // user can sign without it drifting with pool state. The pull must stay here,
+        // authenticated against `user` — it is what stops a direct caller of
+        // flash_swap_pt from minting against the V backing other depositors.
+        vault_client.transfer(&user, &ym, &max_v_in);
+        let refund = max_v_in - user_cost;
+        if refund > 0 {
+            vault_client.transfer(&ym, &user, &refund);
+        }
 
-        // Mint yt_out PT to YM (delivered to the pool below) and yt_out YT to the user.
-        // YM is the direct caller of both mint functions so admin.require_auth() is satisfied.
+        // YM is the direct caller of both mints, satisfying admin.require_auth().
         let principal_client = PrincipalTokenClient::new(&env, &pt_addr);
         let yt_token_client = YieldTokenClient::new(&env, &yt_addr);
         principal_client.mint(&ym, &yt_out);
@@ -378,15 +374,16 @@ impl FlashSwapVReceiver for YieldManager {
         let exchange_rate = YieldManager::update_exchange_rate(&env);
         assert!(exchange_rate > 0, "exchange rate is zero");
 
-        // Pull the user's YT — pairs 1:1 with the PT the AMM lent us.
-        yt_client.transfer_with_rate(&user, &ym, &pt_borrowed, &exchange_rate);
+        // No user pull here: the router moved the user's `pt_borrowed` YT in before the
+        // flash swap began, keeping the exchange rate out of the user's signed auth entry.
 
         let shares_returned = pt_borrowed
             .checked_mul(SCALAR_7)
             .expect("overflow computing shares_returned")
             / exchange_rate;
 
-        // Burn YM's PT and YT (received from AMM + pulled from user).
+        // Burn the redeemed pair: PT lent by the AMM, YT moved in by the router.
+        // Either leg missing fails the burn — which also stops direct callers.
         pt_client.burn(&ym, &pt_borrowed);
         yt_client.burn_with_rate(&ym, &pt_borrowed, &exchange_rate);
 

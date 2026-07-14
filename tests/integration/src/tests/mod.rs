@@ -3,6 +3,7 @@
 mod fixture;
 
 mod auth;
+mod auth_entries;
 mod basic;
 mod router_swaps;
 mod test_amm;
