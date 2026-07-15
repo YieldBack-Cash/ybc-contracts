@@ -17,6 +17,9 @@ members = [
   "tests/integration",
   "tests/blend",
 ]
+# cargo-fuzz crates build with nightly + sanitizer flags; keep them out of
+# normal workspace builds.
+exclude = ["contracts/amm/amm/fuzz"]
 
 [workspace.dependencies]
 soroban-sdk = "25.3.1"

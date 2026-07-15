@@ -1,5 +1,5 @@
 use crate::math::FP_SCALE;
-use crate::storage::{get_market_state, get_balance_b};
+use crate::storage::get_market_state;
 use soroban_sdk::Env;
 use vault_interface::VaultContractClient;
 
@@ -18,9 +18,4 @@ pub(crate) fn convert_assets_to_vault_shares(e: &Env, assets: i128) -> i128 {
     let client = VaultContractClient::new(e, &market.token_b);
     let probe_assets = client.convert_to_assets(&FP_SCALE);
     assets * FP_SCALE / probe_assets
-}
-
-/// Returns the current vault share balance of the pool converted to underlying asset units.
-pub(crate) fn get_asset_balance_b(e: &Env) -> i128 {
-    convert_vault_shares_to_assets(e, get_balance_b(e))
 }

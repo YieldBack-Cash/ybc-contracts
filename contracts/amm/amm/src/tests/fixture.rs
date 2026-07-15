@@ -6,8 +6,6 @@ use mock_vault::MockVaultClient;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-pub const FP: i128 = 10_000_000; // 1e7 fixed-point scale
-
 // Default market params (all 1e7-scaled)
 pub const SCALAR_ROOT: i128 = 250_000_000;   // 25.0 — moderate curve steepness
 pub const FEE_RATE_ROOT: i128 = 500_000;     // 0.05 — 5% annualised fee root

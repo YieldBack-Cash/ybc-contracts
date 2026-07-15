@@ -54,9 +54,8 @@ impl RouterInterface for RouterContract {
         assert!(yt_out > 0, "yt_out must be positive");
         assert!(max_v_in > 0, "max_v_in must be positive");
 
-        // The AMM prices the yt_out PT the pool buys and advances the V; the YM mints
-        // yt_out (PT+YT), gives the user the YT, and returns the PT. The user pays only
-        // the difference (the YT price), bounded by max_v_in.
+        // Flash swap: the YM mints yt_out PT+YT, keeps the PT for the pool, and gives
+        // the user the YT. The user pays only the YT price, bounded by max_v_in.
         AmmClient::new(&e, &get_amm(&e))
             .flash_swap_pt(&get_ym(&e), &yt_out, &to, &max_v_in);
 
@@ -71,10 +70,8 @@ impl RouterInterface for RouterContract {
 
         let ym = get_ym(&e);
 
-        // Move the user's YT into the YM before the flash swap begins. Doing it here —
-        // with the YM not yet on the call stack — lets the YT contract fetch the exchange
-        // rate itself, so the user's signed auth entry is a plain transfer whose args
-        // (from, to, yt_in) are all values the user chose and never drift with pool state.
+        // Transfer the YT before the flash swap so the user's signed auth entry is a
+        // plain transfer with fixed args — nothing that drifts with pool state.
         let yt = YieldManagerClient::new(&e, &ym).get_yield_token();
         token::TokenClient::new(&e, &yt).transfer(&to, &ym, &yt_in);
 
