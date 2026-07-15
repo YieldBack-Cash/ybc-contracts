@@ -217,6 +217,11 @@ impl FactoryTrait for Factory {
         )
     }
 
+    // TODO: support permissionless market creation — drop the admin gate (or add a
+    // separate ungated entry point) so any user can create a market for any vault.
+    // Needs: validation that `vault` is a real vault (not just any token contract),
+    // spam/duplicate-market protection, and a story for who curates what the
+    // frontend/indexer surfaces.
     fn create_market(
         env: Env,
         vault: Address,
@@ -484,6 +489,7 @@ impl Factory {
                     initial_anchor,
                     fee_rate_root,
                     last_implied_rate,
+                    ym_addr.clone(),
                 ),
             );
 

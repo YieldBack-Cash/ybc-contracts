@@ -1,9 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, String};
 
-// TODO: this duplicates soroban_token_sdk::metadata::TokenMetadata, so the
-// compiled spec contains two 'TokenMetadata' entries (`stellar contract build`
-// warns about it, and it can confuse client codegen). Use the SDK type or
-// rename this one.
 #[contracttype]
 #[derive(Clone)]
 pub struct YieldTokenMetadata {

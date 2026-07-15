@@ -394,8 +394,13 @@ fn test_rollover_after_expiry_emits_event() {
     );
     assert!(rolled);
 
-    // we capture events immediately
-    let events = test.env.events().all();
+    // we capture events immediately; the sub-deployed YM/AMM emit their own
+    // init events, so keep only the factory's
+    let events = test
+        .env
+        .events()
+        .all()
+        .filter_by_contract(&test.factory_addr);
     let raw = events.events();
 
     let new_market = Market {
