@@ -15,3 +15,4 @@ principal_token = { path = "../../contracts/tokens/principal_token" }
 router = { path = "../../contracts/router" }
 yield_manager = { path = "../../contracts/yield/yield_manager" }
 yield_token = { path = "../../contracts/tokens/yield_token" }
+proptest = "1"

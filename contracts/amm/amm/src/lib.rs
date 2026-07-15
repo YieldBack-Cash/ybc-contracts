@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 mod contract;
 mod curve;
 mod events;
@@ -7,6 +10,9 @@ mod math;
 mod transfers;
 mod storage;
 mod vault;
+
+#[cfg(any(test, feature = "testutils"))]
+pub mod fuzz_harness;
 
 #[cfg(test)]
 mod tests;

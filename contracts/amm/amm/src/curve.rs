@@ -146,7 +146,11 @@ pub(crate) fn get_exchange_rate_from_trade(
         .checked_add(adjustment)
         .expect("overflow computing exchange rate");
 
-    assert!(exchange_rate > 0, "exchange rate must be positive");
+    // A rate below 1.0 would price PT above face value (negative yield) and,
+    // worse, store a negative implied rate that bricks the pool: every later
+    // compute_rate_anchor call asserts last_implied_rate >= 0. Mirrors
+    // Pendle's MarketExchangeRateBelowOne revert.
+    assert!(exchange_rate >= math::FP_SCALE, "exchange rate must not fall below one");
     exchange_rate
 }
 
@@ -281,13 +285,25 @@ mod proportion_bounds_tests {
     #[test]
     fn trade_near_min_proportion_boundary_succeeds() {
         // Post-trade PT = 1_100_000 vs V = 100_000_000 → proportion ≈ 1.09%, just above the floor.
+        // Uses a flat curve (scalar 50 ≈ default market ~6 months out): with a steep one
+        // the ln adjustment at this proportion drags the exchange rate below 1.0, which
+        // now correctly reverts before the proportion floor is ever reached.
         let rate = get_exchange_rate_from_trade(
             RESERVE,
             RESERVE,
-            RATE_SCALAR,
+            RATE_SCALAR * 10,
             RATE_ANCHOR,
             RESERVE - 1_100_000,
         );
-        assert!(rate > 0);
+        assert!(rate >= math::FP_SCALE);
+    }
+
+    #[test]
+    #[should_panic(expected = "exchange rate must not fall below one")]
+    fn trade_pushing_exchange_rate_below_one_panics() {
+        // Same near-floor drain on the steep curve: ln(p/(1-p))/scalar ≈ -0.9 pulls the
+        // rate to ~0.2. Unguarded, that would store a negative implied rate and brick
+        // the pool; the below-one guard must reject the trade instead.
+        get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 1_100_000);
     }
 }

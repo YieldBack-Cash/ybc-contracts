@@ -25,7 +25,6 @@ pub struct IntegrationFixture<'a> {
     pub yt: Address,
     pub pool: LiquidityPoolClient<'a>,
     pub router: Address,
-    pub maturity: u64,
 }
 
 impl<'a> IntegrationFixture<'a> {
@@ -80,7 +79,7 @@ impl<'a> IntegrationFixture<'a> {
         // ── Fund user ────────────────────────────────────────────────────────
         vault.mint(&user, &1_000_000_000);
 
-        IntegrationFixture { env: env.clone(), admin, user, vault, yield_manager: ym_addr, pt: pt_addr, yt: yt_addr, pool, router: router_addr, maturity }
+        IntegrationFixture { env: env.clone(), admin, user, vault, yield_manager: ym_addr, pt: pt_addr, yt: yt_addr, pool, router: router_addr }
     }
 
     /// Deposit vault shares into yield_manager, returning PT minted.

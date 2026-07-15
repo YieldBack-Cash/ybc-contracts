@@ -230,6 +230,34 @@ fn test_flash_swap_pt_under_deliver_reverts() {
     f.pool.flash_swap_pt(&receiver, &1_000_000i128, &f.user, &1_000_000_000i128);
 }
 
+#[test]
+#[should_panic(expected = "insufficient V liquidity")]
+fn test_flash_swap_pt_insufficient_v_liquidity_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    // Buying 200M YT prices the PT leg at ~165M V — more than the pool's 100M V
+    // reserve can advance. Must revert before any V leaves the pool.
+    let receiver = pt_receiver(&f, true);
+    f.pool.flash_swap_pt(&receiver, &200_000_000i128, &f.user, &1_000_000_000i128);
+}
+
+#[test]
+#[should_panic(expected = "expected pool to pay V for PT")]
+fn test_flash_swap_pt_dust_amount_reverts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    // yt_out = 1 stroop: the curve price truncates to zero V. The pool must refuse
+    // the trade rather than advance nothing and buy PT for free.
+    let receiver = pt_receiver(&f, true);
+    f.pool.flash_swap_pt(&receiver, &1i128, &f.user, &1_000_000_000i128);
+}
+
 // ── Security regressions ─────────────────────────────────────────────────────
 //
 // A receiver that tries to re-enter the pool during its flash callback. Soroban
@@ -261,6 +289,32 @@ fn test_flash_swap_v_reentrancy_blocked() {
     // the allowlist check and actually reaches the callback — where re-entry is refused.
     f.env.register_at(&f.ym, MockReentrantReceiver, ());
     f.pool.flash_swap_v(&f.ym, &1_000_000i128, &f.user, &1i128);
+}
+
+#[contract]
+pub struct MockReentrantPtReceiver;
+
+#[contractimpl]
+impl FlashSwapPtReceiver for MockReentrantPtReceiver {
+    fn on_flash_receive_pt(e: Env, _yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, amm: Address) {
+        // Attempt to re-enter the pool mid-flash; the host rejects this.
+        let me = e.current_contract_address();
+        AmmClient::new(&e, &amm).swap_v_for_pt(&me, &1i128, &1i128);
+    }
+}
+
+#[test]
+#[should_panic]
+fn test_flash_swap_pt_reentrancy_blocked() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let f = AmmFixture::new(&env);
+    f.deposit(&f.admin, 100_000_000, 100_000_000);
+
+    // Same pin as the V side: a trusted receiver re-entering during the PT flash
+    // callback is refused by the host, reverting the whole swap.
+    f.env.register_at(&f.ym, MockReentrantPtReceiver, ());
+    f.pool.flash_swap_pt(&f.ym, &1_000_000i128, &f.user, &1_000_000_000i128);
 }
 
 #[test]
