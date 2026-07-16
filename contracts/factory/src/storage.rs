@@ -12,6 +12,7 @@ enum DataKey {
     CurrentYt(Address),
     CurrentPool(Address),
     Markets(Address),
+    Market(Address, u64),
 }
 
 pub fn set_admin(env: &Env, admin: &Address) {
@@ -119,10 +120,25 @@ pub fn get_markets(env: &Env, vault: &Address) -> Vec<Market> {
         .unwrap_or_else(|| Vec::new(env))
 }
 
+/// Direct lookup of the live market for a (vault, maturity) pair. Redeploying a
+/// pool for the same maturity overwrites this entry, so the latest write wins —
+/// matching the "last record wins" semantics of the `Markets` history list.
+pub fn get_market(env: &Env, vault: &Address, maturity: u64) -> Option<Market> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Market(vault.clone(), maturity))
+}
+
 pub fn push_market(env: &Env, vault: &Address, market: Market) {
+    let maturity = market.maturity;
+
     let mut markets = get_markets(env, vault);
-    markets.push_back(market);
+    markets.push_back(market.clone());
     env.storage()
         .persistent()
         .set(&DataKey::Markets(vault.clone()), &markets);
+
+    env.storage()
+        .persistent()
+        .set(&DataKey::Market(vault.clone(), maturity), &market);
 }

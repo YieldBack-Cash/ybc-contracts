@@ -40,6 +40,7 @@ pub struct IntegrationFixture<'a> {
     pub yt: Address,
     pub pool: LiquidityPoolClient<'a>,
     pub router: Address,
+    pub maturity: u64,
 }
 
 impl<'a> IntegrationFixture<'a> {
@@ -108,6 +109,7 @@ impl<'a> IntegrationFixture<'a> {
             yt: market.yt,
             pool,
             router: router_addr,
+            maturity,
         }
     }
 
@@ -230,31 +232,63 @@ impl<'a> IntegrationFixture<'a> {
     }
 
     /// Router: buy exactly `yt_out` YT, spending at most `max_v_in` vault shares
-    /// (V→YT via flash_swap_pt).
+    /// (V→YT via flash_swap_pt). Targets the fixture's primary market.
     pub fn router_swap_v_for_yt(&self, to: &Address, yt_out: i128, max_v_in: i128) {
-        self.router_swap_v_for_yt_on(&self.vault.address, to, yt_out, max_v_in);
+        self.router_swap_v_for_yt_on(&self.vault.address, self.maturity, to, yt_out, max_v_in);
     }
 
     /// Multi-market variant of `router_swap_v_for_yt`.
-    pub fn router_swap_v_for_yt_on(&self, vault: &Address, to: &Address, yt_out: i128, max_v_in: i128) {
+    pub fn router_swap_v_for_yt_on(
+        &self,
+        vault: &Address,
+        maturity: u64,
+        to: &Address,
+        yt_out: i128,
+        max_v_in: i128,
+    ) {
         self.env.invoke_contract::<()>(
             &self.router,
             &Symbol::new(&self.env, "swap_v_for_yt"),
-            (vault, to, yt_out, max_v_in).into_val(&self.env),
+            (vault, maturity, to, yt_out, max_v_in).into_val(&self.env),
         );
     }
 
-    /// Router: sell YT for vault shares (YT→V via flash_swap_v).
+    /// Router: sell YT for vault shares (YT→V via flash_swap_v). Targets the
+    /// fixture's primary market.
     pub fn router_swap_yt_for_v(&self, to: &Address, yt_in: i128, min_v_out: i128) {
-        self.router_swap_yt_for_v_on(&self.vault.address, to, yt_in, min_v_out);
+        self.router_swap_yt_for_v_on(&self.vault.address, self.maturity, to, yt_in, min_v_out);
     }
 
     /// Multi-market variant of `router_swap_yt_for_v`.
-    pub fn router_swap_yt_for_v_on(&self, vault: &Address, to: &Address, yt_in: i128, min_v_out: i128) {
+    pub fn router_swap_yt_for_v_on(
+        &self,
+        vault: &Address,
+        maturity: u64,
+        to: &Address,
+        yt_in: i128,
+        min_v_out: i128,
+    ) {
         self.env.invoke_contract::<()>(
             &self.router,
             &Symbol::new(&self.env, "swap_yt_for_v"),
-            (vault, to, yt_in, min_v_out).into_val(&self.env),
+            (vault, maturity, to, yt_in, min_v_out).into_val(&self.env),
         );
+    }
+
+    /// Router: exit an expired market — burn `lp_shares`, redeem all PT, claim
+    /// YT yield; everything returns as vault shares.
+    pub fn router_exit_expired(
+        &self,
+        vault: &Address,
+        maturity: u64,
+        to: &Address,
+        lp_shares: i128,
+        min_shares_out: i128,
+    ) -> i128 {
+        self.env.invoke_contract::<i128>(
+            &self.router,
+            &Symbol::new(&self.env, "exit_expired"),
+            (vault, maturity, to, lp_shares, min_shares_out).into_val(&self.env),
+        )
     }
 }

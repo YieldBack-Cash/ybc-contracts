@@ -255,19 +255,33 @@ impl YieldTokenTrait for YieldToken {
         user.require_auth();
         storage::extend_instance_ttl(&env);
 
+        let yield_manager = storage::get_admin(&env);
+        let yield_manager_client = YieldManagerClient::new(&env, &yield_manager);
+
         Self::accrue_yield(&env, &user, None);
 
         let claimable = storage::get_accrued_yield(&env, &user);
-        if claimable == 0 {
-            return 0;
+        if claimable > 0 {
+            storage::set_accrued_yield(&env, &user, 0);
+
+            // Call yield manager (admin) to distribute vault shares
+            yield_manager_client.distribute_yield(&user, &claimable);
         }
 
-        storage::set_accrued_yield(&env, &user, 0);
+        // Past maturity the exchange rate is locked, so the accrual above was
+        // the position's final one — burn the now-worthless YT so it doesn't
+        // linger as dust.
+        if env.ledger().timestamp() >= yield_manager_client.get_maturity() {
+            let balance = storage::get_balance(&env, &user);
+            if balance > 0 {
+                storage::set_balance(&env, &user, 0);
 
-        // Call yield manager (admin) to distribute vault shares
-        let yield_manager = storage::get_admin(&env);
-        let yield_manager_client = YieldManagerClient::new(&env, &yield_manager);
-        yield_manager_client.distribute_yield(&user, &claimable);
+                let total_supply = storage::get_total_supply(&env);
+                storage::set_total_supply(&env, total_supply - balance);
+
+                Burn { from: user, amount: balance }.publish(&env);
+            }
+        }
 
         claimable
     }

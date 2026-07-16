@@ -92,9 +92,18 @@ impl FactoryTest {
         }
     }
 
-    fn deploy_yield_manager(&self, maturity: u64) -> Address {
+    fn create_market(&self, maturity: u64) -> Address {
         self.factory
-            .deploy_yield_manager(&self.vault_addr, &VaultType::Vault4626, &maturity)
+            .create_market(
+                &self.vault_addr,
+                &VaultType::Vault4626,
+                &maturity,
+                &SCALAR_ROOT,
+                &INITIAL_ANCHOR,
+                &FEE_RATE_ROOT,
+                &LAST_IMPLIED_RATE,
+            )
+            .ym
     }
 
     fn mint_vault_shares(&self, to: &Address, amount: i128) {
@@ -130,7 +139,7 @@ fn test_deploy_yield_manager() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.deploy_yield_manager(maturity);
+    let ym_addr = test.create_market(maturity);
 
     // All three addresses should be stored
     assert_eq!(
@@ -159,7 +168,7 @@ fn test_ym_knows_its_tokens() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.deploy_yield_manager(maturity);
+    let ym_addr = test.create_market(maturity);
     let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
     let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
 
@@ -176,7 +185,7 @@ fn test_ym_knows_its_tokens() {
 fn test_deployed_pt_metadata() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
-    test.deploy_yield_manager(maturity);
+    test.create_market(maturity);
 
     let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
     let pt_token = TokenClient::new(&test.env, &pt_addr);
@@ -197,7 +206,7 @@ fn test_deployed_pt_metadata() {
 fn test_deployed_yt_metadata() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
-    test.deploy_yield_manager(maturity);
+    test.create_market(maturity);
 
     let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
     let yt_token = TokenClient::new(&test.env, &yt_addr);
@@ -219,7 +228,7 @@ fn test_deposit_through_factory_deployed_contracts() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.deploy_yield_manager(maturity);
+    let ym_addr = test.create_market(maturity);
     let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
     let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
 
@@ -277,7 +286,7 @@ fn test_create_market_deploys_working_pool() {
 fn test_rollover_before_maturity_returns_false() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
-    test.deploy_yield_manager(maturity);
+    test.create_market(maturity);
 
     let rolled = test.factory.rollover_if_expired(
         &test.vault_addr,
@@ -353,15 +362,7 @@ fn test_rollover_after_expiry_emits_event() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    test.factory
-        .deploy_yield_manager(&test.vault_addr, &VaultType::Vault4626, &maturity);
-    test.factory.deploy_pool(
-        &test.vault_addr,
-        &SCALAR_ROOT,
-        &INITIAL_ANCHOR,
-        &FEE_RATE_ROOT,
-        &LAST_IMPLIED_RATE,
-    );
+    test.create_market(maturity);
 
     let old_market = Market {
         ym: test

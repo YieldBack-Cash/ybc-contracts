@@ -49,7 +49,7 @@ fn test_buy_yt_auth_entry_contains_only_user_chosen_values() {
         invoke: &MockAuthInvoke {
             contract: &f.router,
             fn_name: "swap_v_for_yt",
-            args: (&f.vault.address, &f.user, yt_out, max_v_in).into_val(&env),
+            args: (&f.vault.address, f.maturity, &f.user, yt_out, max_v_in).into_val(&env),
             sub_invokes: &[MockAuthInvoke {
                 contract: &f.vault.address,
                 fn_name: "transfer",
@@ -81,7 +81,7 @@ fn test_buy_yt_auth_entry_wrong_amount_rejected() {
         invoke: &MockAuthInvoke {
             contract: &f.router,
             fn_name: "swap_v_for_yt",
-            args: (&f.vault.address, &f.user, yt_out, max_v_in).into_val(&env),
+            args: (&f.vault.address, f.maturity, &f.user, yt_out, max_v_in).into_val(&env),
             sub_invokes: &[MockAuthInvoke {
                 contract: &f.vault.address,
                 fn_name: "transfer",
@@ -113,7 +113,7 @@ fn test_sell_yt_auth_entry_contains_only_user_chosen_values() {
         invoke: &MockAuthInvoke {
             contract: &f.router,
             fn_name: "swap_yt_for_v",
-            args: (&f.vault.address, &f.user, yt_in, min_v_out).into_val(&env),
+            args: (&f.vault.address, f.maturity, &f.user, yt_in, min_v_out).into_val(&env),
             sub_invokes: &[MockAuthInvoke {
                 contract: &f.yt,
                 fn_name: "transfer",
@@ -143,7 +143,7 @@ fn test_sell_yt_auth_entry_wrong_amount_rejected() {
         invoke: &MockAuthInvoke {
             contract: &f.router,
             fn_name: "swap_yt_for_v",
-            args: (&f.vault.address, &f.user, yt_in, min_v_out).into_val(&env),
+            args: (&f.vault.address, f.maturity, &f.user, yt_in, min_v_out).into_val(&env),
             sub_invokes: &[MockAuthInvoke {
                 contract: &f.yt,
                 fn_name: "transfer",

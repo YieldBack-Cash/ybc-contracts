@@ -25,6 +25,8 @@ pub struct WasmHashes {
     pub amm: BytesN<32>,
 }
 
+
+//TODO: these events can probably get moved somewhere else to clean up space
 #[contractevent(data_format = "single-value")]
 pub struct MarketCreated {
     #[topic]
@@ -60,20 +62,6 @@ pub struct ContractUpgraded {
 pub trait FactoryTrait {
     fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes);
 
-    fn deploy_yield_manager(
-        env: Env,
-        vault: Address,
-        vault_type: VaultType,
-        maturity: u64,
-    ) -> Address;
-    fn deploy_pool(
-        env: Env,
-        vault: Address,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
-    ) -> Address;
     fn create_market(
         env: Env,
         vault: Address,
@@ -87,6 +75,7 @@ pub trait FactoryTrait {
 
     fn get_vaults(env: Env) -> Vec<Address>;
     fn get_markets(env: Env, vault: Address) -> Vec<Market>;
+    fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
 
     fn get_current_yield_manager(env: Env, vault: Address) -> Option<Address>;
     fn get_current_pt_token(env: Env, vault: Address) -> Option<Address>;
@@ -179,39 +168,6 @@ impl FactoryTrait for Factory {
         storage::set_wasm_hashes(&env, &wasm_hashes);
     }
 
-    fn deploy_yield_manager(
-        env: Env,
-        vault: Address,
-        vault_type: VaultType,
-        maturity: u64,
-    ) -> Address {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
-
-        Self::deploy_yield_manager_internal(env, vault, vault_type, maturity)
-    }
-
-    fn deploy_pool(
-        env: Env,
-        vault: Address,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
-    ) -> Address {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
-
-        Self::deploy_pool_internal(
-            env,
-            vault,
-            scalar_root,
-            initial_anchor,
-            fee_rate_root,
-            last_implied_rate,
-        )
-    }
-
     // TODO: support permissionless market creation — drop the admin gate (or add a
     // separate ungated entry point) so any user can create a market for any vault.
     // Needs: validation that `vault` is a real vault (not just any token contract),
@@ -229,6 +185,13 @@ impl FactoryTrait for Factory {
     ) -> Market {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+
+        // Markets are immutable once created: refuse a second market for the same
+        // (vault, maturity) so an existing pool can never be overwritten/orphaned.
+        assert!(
+            storage::get_market(&env, &vault, maturity).is_none(),
+            "market already exists for this vault and maturity"
+        );
 
         let ym_address =
             Self::deploy_yield_manager_internal(env.clone(), vault.clone(), vault_type, maturity);
@@ -302,6 +265,10 @@ impl FactoryTrait for Factory {
 
     fn get_markets(env: Env, vault: Address) -> Vec<Market> {
         storage::get_markets(&env, &vault)
+    }
+
+    fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market> {
+        storage::get_market(&env, &vault, maturity)
     }
 
     fn get_current_yield_manager(env: Env, vault: Address) -> Option<Address> {

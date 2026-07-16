@@ -1312,6 +1312,7 @@ dependencies = [
  "amm-interface",
  "soroban-sdk",
  "yield_manager_interface",
+ "yield_token_interface",
 ]
 
 [[package]]

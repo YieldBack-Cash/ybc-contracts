@@ -1,11 +1,13 @@
-//! The global router serves every market by resolving the vault's *current*
-//! market through the factory on each call. These tests pin the three claims
-//! that design makes:
+//! The global router serves every market by resolving (vault, maturity)
+//! against the factory's market history on each call. These tests pin the
+//! claims that design makes:
 //!
 //! 1. Swaps on one market never touch another market's pool.
-//! 2. After a rollover, the router routes to the new market and leaves the
-//!    expired one untouched.
-//! 3. A vault the factory never deployed for reverts instead of routing.
+//! 2. After a rollover, both the old and new markets stay addressable by
+//!    their maturities, and trading the new one leaves the expired one
+//!    untouched.
+//! 3. A (vault, maturity) pair the factory never deployed for reverts
+//!    instead of routing.
 
 use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal, Symbol};
 
@@ -48,7 +50,7 @@ fn test_router_isolates_markets() {
 
     // Swap on market B: only B's reserves move.
     let a_mid = f.pool.get_reserves();
-    f.router_swap_v_for_yt_on(&vault_b, &f.user, 1_000_000, 1_000_000);
+    f.router_swap_v_for_yt_on(&vault_b, market_b.maturity, &f.user, 1_000_000, 1_000_000);
     assert_ne!(pool_b.get_reserves(), b_before, "market B pool traded");
     assert_eq!(f.pool.get_reserves(), a_mid, "market A pool untouched by market B swap");
 
@@ -62,7 +64,7 @@ fn test_router_isolates_markets() {
 }
 
 #[test]
-fn test_router_follows_rollover() {
+fn test_router_addresses_markets_by_maturity_across_rollover() {
     let env = Env::default();
     let f = seeded(&env);
     let old_pool_addr = f.pool.address.clone();
@@ -72,17 +74,24 @@ fn test_router_follows_rollover() {
     let new_maturity = env.ledger().timestamp() + ONE_YEAR_SECS;
     assert!(f.rollover(&f.vault.address, new_maturity), "rollover must run");
 
-    // The router now resolves the vault to the *new* pool.
-    let resolved = env.invoke_contract::<Address>(
+    // Both markets stay addressable through the router by their maturities.
+    let resolved_old = env.invoke_contract::<Address>(
         &f.router,
         &Symbol::new(&env, "get_amm"),
-        (&f.vault.address,).into_val(&env),
+        (&f.vault.address, f.maturity).into_val(&env),
     );
-    assert_ne!(resolved, old_pool_addr, "router no longer routes to the expired pool");
+    assert_eq!(resolved_old, old_pool_addr, "expired market still resolves by its maturity");
+
+    let resolved_new = env.invoke_contract::<Address>(
+        &f.router,
+        &Symbol::new(&env, "get_amm"),
+        (&f.vault.address, new_maturity).into_val(&env),
+    );
+    assert_ne!(resolved_new, old_pool_addr, "new maturity resolves to a fresh pool");
     assert_eq!(
-        resolved,
+        resolved_new,
         f.factory.get_current_pool(&f.vault.address).unwrap(),
-        "router routes to the factory's current pool"
+        "new maturity resolves to the factory's current pool"
     );
 
     // Seed the new market and swap through the router: the new pool trades,
@@ -90,13 +99,13 @@ fn test_router_follows_rollover() {
     let new_ym = f.factory.get_current_yield_manager(&f.vault.address).unwrap();
     let new_pt = f.factory.get_current_pt_token(&f.vault.address).unwrap();
     f.ym_deposit_to(&f.vault.address, &new_ym, &f.user, YM_DEPOSIT);
-    f.amm_deposit_to(&f.vault.address, &new_pt, &resolved, &f.user, POOL_PT, POOL_V);
+    f.amm_deposit_to(&f.vault.address, &new_pt, &resolved_new, &f.user, POOL_PT, POOL_V);
 
     let old_reserves = f.pool.get_reserves();
-    let new_pool = LiquidityPoolClient::new(&env, &resolved);
+    let new_pool = LiquidityPoolClient::new(&env, &resolved_new);
     let new_before = new_pool.get_reserves();
 
-    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
+    f.router_swap_v_for_yt_on(&f.vault.address, new_maturity, &f.user, 1_000_000, 1_000_000);
 
     assert_ne!(new_pool.get_reserves(), new_before, "post-rollover swap trades the new pool");
     assert_eq!(f.pool.get_reserves(), old_reserves, "expired pool untouched after rollover");
@@ -113,6 +122,20 @@ fn test_router_unknown_vault_reverts() {
     env.invoke_contract::<Address>(
         &f.router,
         &Symbol::new(&env, "get_amm"),
-        (&stranger,).into_val(&env),
+        (&stranger, f.maturity).into_val(&env),
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_router_unknown_maturity_reverts() {
+    let env = Env::default();
+    let f = IntegrationFixture::new(&env);
+
+    // A real vault, but no market ever existed at this maturity.
+    env.invoke_contract::<Address>(
+        &f.router,
+        &Symbol::new(&env, "get_amm"),
+        (&f.vault.address, f.maturity + 1).into_val(&env),
     );
 }

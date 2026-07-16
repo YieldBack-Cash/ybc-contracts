@@ -49,6 +49,9 @@ enum Step {
     RedeemPrincipal { actor: u8, pt_amount: i128 },
     AmmDeposit { actor: u8, pt: i128, v: i128 },
     AmmWithdraw { actor: u8, shares: i128 },
+    /// One-call exit through the router; post-maturity only. Burns LP, redeems
+    /// the actor's whole PT balance, claims YT yield.
+    ExitExpired { actor: u8, lp_shares: i128, min_shares_out: i128 },
     AdvanceTime { secs: u64 },
     RaiseVaultRate { pct: i128 },
 }
@@ -57,9 +60,11 @@ struct RouterHarness<'a> {
     f: IntegrationFixture<'a>,
     actors: Vec<soroban_sdk::Address>,
     vault_rate: i128,
-    /// redeem_principal burns PT without YT, so once one succeeds the
-    /// PT==YT supply invariant weakens to PT<=YT.
-    principal_redeemed: bool,
+    /// PT and YT are minted/burned in pairs until a maturity-only path runs:
+    /// redeem_principal burns PT alone, and a post-maturity claim_yield burns
+    /// the claimer's YT alone. Once either succeeds the supplies decouple in
+    /// both directions and the PT==YT invariant no longer applies.
+    supplies_decoupled: bool,
 }
 
 impl<'a> RouterHarness<'a> {
@@ -82,7 +87,7 @@ impl<'a> RouterHarness<'a> {
             actors.push(actor);
         }
 
-        RouterHarness { f, actors, vault_rate: 10_000_000, principal_redeemed: false }
+        RouterHarness { f, actors, vault_rate: 10_000_000, supplies_decoupled: false }
     }
 
     fn actor(&self, idx: u8) -> soroban_sdk::Address {
@@ -103,11 +108,11 @@ impl<'a> RouterHarness<'a> {
         match step {
             Step::BuyYt { actor, yt_out, max_v_in } => {
                 let who = self.actor(actor);
-                self.try_router("swap_v_for_yt", (&self.f.vault.address, &who, yt_out, max_v_in).into_val(e));
+                self.try_router("swap_v_for_yt", (&self.f.vault.address, self.f.maturity, &who, yt_out, max_v_in).into_val(e));
             }
             Step::SellYt { actor, yt_in, min_v_out } => {
                 let who = self.actor(actor);
-                self.try_router("swap_yt_for_v", (&self.f.vault.address, &who, yt_in, min_v_out).into_val(e));
+                self.try_router("swap_yt_for_v", (&self.f.vault.address, self.f.maturity, &who, yt_in, min_v_out).into_val(e));
             }
             Step::SwapVForPt { actor, pt_out, v_in_max } => {
                 let _ = self.f.pool.try_swap_v_for_pt(&self.actor(actor), &pt_out, &v_in_max);
@@ -143,7 +148,7 @@ impl<'a> RouterHarness<'a> {
                     (&who, pt_amount).into_val(e),
                 );
                 if redeemed.is_ok() {
-                    self.principal_redeemed = true;
+                    self.supplies_decoupled = true;
                 }
             }
             Step::AmmDeposit { actor, pt, v } => {
@@ -163,6 +168,24 @@ impl<'a> RouterHarness<'a> {
             }
             Step::AmmWithdraw { actor, shares } => {
                 let _ = self.f.pool.try_withdraw(&self.actor(actor), &shares, &0, &0);
+            }
+            Step::ExitExpired { actor, lp_shares, min_shares_out } => {
+                let who = self.actor(actor);
+                // An exit redeems the actor's PT (wallet or LP-withdrawn)
+                // without a paired YT burn, and claim_yield burns their YT
+                // without a paired PT burn — either decouples the supplies.
+                let touches_supply = self.f.pt_balance(&who) > 0
+                    || self.f.yt_balance(&who) > 0
+                    || (lp_shares > 0 && self.f.pool.balance_shares(&who) >= lp_shares);
+                let exited = e.try_invoke_contract::<i128, soroban_sdk::Error>(
+                    &self.f.router,
+                    &Symbol::new(e, "exit_expired"),
+                    (&self.f.vault.address, self.f.maturity, &who, lp_shares, min_shares_out)
+                        .into_val(e),
+                );
+                if exited.is_ok() && touches_supply {
+                    self.supplies_decoupled = true;
+                }
             }
             Step::AdvanceTime { secs } => {
                 self.f.advance_time(secs % (MAX_TIME_STEP + 1));
@@ -196,16 +219,17 @@ impl<'a> RouterHarness<'a> {
         assert!(reserve_pt > 0 && reserve_v > 0, "pool drained");
         assert!(f.pool.get_implied_rate() >= 0, "implied rate went negative");
 
-        // 2. PT and YT are minted/burned in pairs everywhere except
-        //    redeem_principal (post-maturity, burns PT alone). So supplies stay
-        //    exactly equal until the first principal redeem, and PT can only
-        //    fall behind YT after it — never ahead.
-        let pt_supply = self.total_supply(&f.pt);
-        let yt_supply = self.total_supply(&f.yt);
-        if self.principal_redeemed {
-            assert!(pt_supply <= yt_supply, "PT supply exceeded YT supply");
-        } else {
-            assert_eq!(pt_supply, yt_supply, "PT and YT supplies diverged");
+        // 2. PT and YT are minted/burned in pairs everywhere except the
+        //    post-maturity paths: redeem_principal burns PT alone and
+        //    claim_yield burns the claimer's YT alone. Supplies stay exactly
+        //    equal until the first such call; afterwards they can diverge in
+        //    either direction, so no relation is asserted.
+        if !self.supplies_decoupled {
+            assert_eq!(
+                self.total_supply(&f.pt),
+                self.total_supply(&f.yt),
+                "PT and YT supplies diverged"
+            );
         }
 
         // 3. The router and YM are pass-throughs for user assets: neither may
@@ -271,7 +295,11 @@ fn step() -> impl Strategy<Value = Step> {
             .prop_map(|(actor, pt_amount)| Step::RedeemPrincipal { actor, pt_amount }),
         (actor.clone(), amount(), amount())
             .prop_map(|(actor, pt, v)| Step::AmmDeposit { actor, pt, v }),
-        (actor, amount()).prop_map(|(actor, shares)| Step::AmmWithdraw { actor, shares }),
+        (actor.clone(), amount())
+            .prop_map(|(actor, shares)| Step::AmmWithdraw { actor, shares }),
+        (actor, amount(), amount()).prop_map(|(actor, lp_shares, min_shares_out)| {
+            Step::ExitExpired { actor, lp_shares, min_shares_out }
+        }),
         time_step().prop_map(|secs| Step::AdvanceTime { secs }),
         (0i128..=100i128).prop_map(|pct| Step::RaiseVaultRate { pct }),
     ]
@@ -311,7 +339,7 @@ proptest! {
         let bought = e.try_invoke_contract::<(), soroban_sdk::Error>(
             &f.router,
             &Symbol::new(e, "swap_v_for_yt"),
-            (&f.vault.address, &f.user, yt, v_before).into_val(e),
+            (&f.vault.address, f.maturity, &f.user, yt, v_before).into_val(e),
         );
         prop_assume!(bought.is_ok());
         prop_assert_eq!(f.yt_balance(&f.user), yt_before + yt);
