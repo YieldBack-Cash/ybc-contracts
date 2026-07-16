@@ -69,7 +69,6 @@ pub trait FactoryTrait {
     fn deploy_pool(
         env: Env,
         vault: Address,
-        vault_share_token: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
@@ -80,7 +79,6 @@ pub trait FactoryTrait {
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        vault_share_token: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
@@ -100,7 +98,6 @@ pub trait FactoryTrait {
         env: Env,
         vault: Address,
         vault_type: VaultType,
-        vault_share_token: Address,
         new_maturity: u64,
         scalar_root: i128,
         initial_anchor: i128,
@@ -197,7 +194,6 @@ impl FactoryTrait for Factory {
     fn deploy_pool(
         env: Env,
         vault: Address,
-        vault_share_token: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
@@ -209,7 +205,6 @@ impl FactoryTrait for Factory {
         Self::deploy_pool_internal(
             env,
             vault,
-            vault_share_token,
             scalar_root,
             initial_anchor,
             fee_rate_root,
@@ -227,7 +222,6 @@ impl FactoryTrait for Factory {
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        vault_share_token: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
@@ -241,7 +235,6 @@ impl FactoryTrait for Factory {
         let pool_address = Self::deploy_pool_internal(
             env.clone(),
             vault.clone(),
-            vault_share_token,
             scalar_root,
             initial_anchor,
             fee_rate_root,
@@ -335,7 +328,6 @@ impl FactoryTrait for Factory {
         env: Env,
         vault: Address,
         vault_type: VaultType,
-        vault_share_token: Address,
         new_maturity: u64,
         scalar_root: i128,
         initial_anchor: i128,
@@ -374,7 +366,6 @@ impl FactoryTrait for Factory {
         let new_pool = Self::deploy_pool_internal(
             env.clone(),
             vault.clone(),
-            vault_share_token,
             scalar_root,
             initial_anchor,
             fee_rate_root,
@@ -464,7 +455,6 @@ impl Factory {
     fn deploy_pool_internal(
         env: Env,
         vault: Address,
-        vault_share_token: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
@@ -483,7 +473,9 @@ impl Factory {
                 wasm_hashes.amm,
                 (
                     ym_client.get_principal_token(),
-                    vault_share_token,
+                    // the vault contract is itself the share token the AMM
+                    // trades against PT
+                    vault.clone(),
                     ym_client.get_maturity(),
                     scalar_root,
                     initial_anchor,

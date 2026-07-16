@@ -209,3 +209,43 @@ fn test_router_buy_then_sell_yt_round_trip() {
     assert!(net_v_loss >= 0, "round trip must not profit the user");
     assert!(net_v_loss < v_spent, "user recovers most of the YT price selling back");
 }
+
+// ── resource usage ────────────────────────────────────────────────────────────
+//
+// The market contracts run as real WASM in this fixture, so metering here
+// closely tracks on-chain costs (the native router/mock-vault portions
+// underestimate slightly). Each test zeroes the meter right before the swap so
+// only the swap itself is measured, mirroring how each on-chain transaction
+// gets its own budget.
+
+/// Soroban per-transaction network limits.
+const NETWORK_TX_CPU_LIMIT: u64 = 100_000_000;
+const NETWORK_TX_MEM_LIMIT: u64 = 40 * 1024 * 1024;
+
+#[test]
+fn test_buy_yt_fits_network_tx_budget() {
+    let env = Env::default();
+    let f = seeded(&env);
+
+    env.cost_estimate().budget().reset_tracker();
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
+
+    let budget = env.cost_estimate().budget();
+    let (cpu, mem) = (budget.cpu_instruction_cost(), budget.memory_bytes_cost());
+    assert!(cpu < NETWORK_TX_CPU_LIMIT, "buy-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit");
+    assert!(mem < NETWORK_TX_MEM_LIMIT, "buy-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit");
+}
+
+#[test]
+fn test_sell_yt_fits_network_tx_budget() {
+    let env = Env::default();
+    let f = seeded(&env);
+
+    env.cost_estimate().budget().reset_tracker();
+    f.router_swap_yt_for_v(&f.user, 1_000_000, 1);
+
+    let budget = env.cost_estimate().budget();
+    let (cpu, mem) = (budget.cpu_instruction_cost(), budget.memory_bytes_cost());
+    assert!(cpu < NETWORK_TX_CPU_LIMIT, "sell-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit");
+    assert!(mem < NETWORK_TX_MEM_LIMIT, "sell-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit");
+}

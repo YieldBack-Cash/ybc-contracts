@@ -5,6 +5,7 @@ mod fixture;
 mod auth;
 mod auth_entries;
 mod basic;
+mod multi_market;
 mod proptests;
 mod router_swaps;
 mod test_amm;

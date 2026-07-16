@@ -263,7 +263,6 @@ fn test_create_market_deploys_working_pool() {
         &test.vault_addr,
         &VaultType::Vault4626,
         &maturity,
-        &test.vault_addr,
         &SCALAR_ROOT,
         &INITIAL_ANCHOR,
         &FEE_RATE_ROOT,
@@ -283,7 +282,6 @@ fn test_rollover_before_maturity_returns_false() {
     let rolled = test.factory.rollover_if_expired(
         &test.vault_addr,
         &VaultType::Vault4626,
-        &test.vault_addr,
         &(maturity + 2000),
         &SCALAR_ROOT,
         &INITIAL_ANCHOR,
@@ -300,7 +298,6 @@ fn test_rollover_with_no_deployment_returns_false() {
     let rolled = test.factory.rollover_if_expired(
         &test.vault_addr,
         &VaultType::Vault4626,
-        &test.vault_addr,
         &5000u64,
         &SCALAR_ROOT,
         &INITIAL_ANCHOR,
@@ -360,7 +357,6 @@ fn test_rollover_after_expiry_emits_event() {
         .deploy_yield_manager(&test.vault_addr, &VaultType::Vault4626, &maturity);
     test.factory.deploy_pool(
         &test.vault_addr,
-        &test.vault_addr,
         &SCALAR_ROOT,
         &INITIAL_ANCHOR,
         &FEE_RATE_ROOT,
@@ -385,7 +381,6 @@ fn test_rollover_after_expiry_emits_event() {
     let rolled = test.factory.rollover_if_expired(
         &test.vault_addr,
         &VaultType::Vault4626,
-        &test.vault_addr,
         &new_maturity,
         &SCALAR_ROOT,
         &INITIAL_ANCHOR,

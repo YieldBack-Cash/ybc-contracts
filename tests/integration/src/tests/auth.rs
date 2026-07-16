@@ -217,7 +217,7 @@ fn test_router_amm_deposit_requires_lp_auth() {
     f.env.invoke_contract::<()>(
         &f.router,
         &Symbol::new(&f.env, "deposit"),
-        (&f.admin, pt_amt, 0i128, v_amt, 0i128).into_val(&f.env),
+        (&f.vault.address, &f.admin, pt_amt, 0i128, v_amt, 0i128).into_val(&f.env),
     );
 
     let auths = f.env.auths();
@@ -241,7 +241,7 @@ fn test_router_amm_withdraw_requires_lp_auth() {
     env.invoke_contract::<(i128, i128)>(
         &f.router,
         &Symbol::new(&env, "withdraw"),
-        (&f.admin, shares, 0i128, 0i128).into_val(&env),
+        (&f.vault.address, &f.admin, shares, 0i128, 0i128).into_val(&env),
     );
 
     let auths = env.auths();

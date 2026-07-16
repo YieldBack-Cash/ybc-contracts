@@ -103,11 +103,11 @@ impl<'a> RouterHarness<'a> {
         match step {
             Step::BuyYt { actor, yt_out, max_v_in } => {
                 let who = self.actor(actor);
-                self.try_router("swap_v_for_yt", (&who, yt_out, max_v_in).into_val(e));
+                self.try_router("swap_v_for_yt", (&self.f.vault.address, &who, yt_out, max_v_in).into_val(e));
             }
             Step::SellYt { actor, yt_in, min_v_out } => {
                 let who = self.actor(actor);
-                self.try_router("swap_yt_for_v", (&who, yt_in, min_v_out).into_val(e));
+                self.try_router("swap_yt_for_v", (&self.f.vault.address, &who, yt_in, min_v_out).into_val(e));
             }
             Step::SwapVForPt { actor, pt_out, v_in_max } => {
                 let _ = self.f.pool.try_swap_v_for_pt(&self.actor(actor), &pt_out, &v_in_max);
@@ -311,7 +311,7 @@ proptest! {
         let bought = e.try_invoke_contract::<(), soroban_sdk::Error>(
             &f.router,
             &Symbol::new(e, "swap_v_for_yt"),
-            (&f.user, yt, v_before).into_val(e),
+            (&f.vault.address, &f.user, yt, v_before).into_val(e),
         );
         prop_assume!(bought.is_ok());
         prop_assert_eq!(f.yt_balance(&f.user), yt_before + yt);
