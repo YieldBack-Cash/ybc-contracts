@@ -69,7 +69,7 @@ fn test_on_flash_receive_v_happy_path() {
     let deposit = 2_000_000i128;
     let pt_borrowed = 1_000_000i128;
     let user2 = setup_flash(&test, deposit, pt_borrowed);
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // exchange_rate = 10_000_000 (1:1) → shares_returned = pt_borrowed = 1_000_000
     let v_owed = 900_000i128;
@@ -102,7 +102,7 @@ fn test_on_flash_receive_v_min_v_out_reverts() {
     let deposit = 2_000_000i128;
     let pt_borrowed = 1_000_000i128;
     let user2 = setup_flash(&test, deposit, pt_borrowed);
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // shares_returned = 1_000_000, v_owed = 900_000 → v_to_user = 100_000
     // min_v_out = 200_000 > 100_000 → must revert
@@ -117,7 +117,7 @@ fn test_on_flash_receive_v_owed_exceeds_redeemed_panics() {
     let deposit = 2_000_000i128;
     let pt_borrowed = 1_000_000i128;
     let user2 = setup_flash(&test, deposit, pt_borrowed);
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // v_owed = 1_100_000 > shares_returned = 1_000_000 → must revert
     invoke_flash_receive_v(&test, pt_borrowed, 1_100_000, &user2, 0, &amm);
@@ -128,7 +128,7 @@ fn test_on_flash_receive_v_owed_exceeds_redeemed_panics() {
 #[test]
 fn test_on_flash_receive_pt_happy_path() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // exchange_rate = 10_000_000 (1:1) → v_to_mint = yt_out = 1_000_000
     let yt_out = 1_000_000i128;
@@ -161,7 +161,7 @@ fn test_on_flash_receive_pt_happy_path() {
 #[should_panic(expected = "cost exceeds max_v_in")]
 fn test_on_flash_receive_pt_cost_exceeds_max_reverts() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     setup_flash_buy(&test, 900_000, 500_000);
 
@@ -173,7 +173,7 @@ fn test_on_flash_receive_pt_cost_exceeds_max_reverts() {
 #[should_panic(expected = "non-positive YT cost")]
 fn test_on_flash_receive_pt_pool_overpay_reverts() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     setup_flash_buy(&test, 1_000_000, 500_000);
 
@@ -185,7 +185,7 @@ fn test_on_flash_receive_pt_pool_overpay_reverts() {
 #[should_panic]
 fn test_on_flash_receive_pt_insufficient_user_v_reverts() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // The callback pulls the full max_v_in (200_000) and refunds the excess, so the
     // user must hold max_v_in for the duration of the call — 150_000 covers the
@@ -198,7 +198,7 @@ fn test_on_flash_receive_pt_insufficient_user_v_reverts() {
 #[test]
 fn test_on_flash_receive_pt_higher_rate() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // rate 2.0 → v_to_mint = yt_out / 2 = 500_000
     test.set_vault_exchange_rate(20_000_000);
@@ -229,7 +229,7 @@ fn test_on_flash_receive_pt_higher_rate() {
 #[should_panic(expected = "non-positive YT cost")]
 fn test_on_flash_receive_pt_dust_reverts() {
     let test = YieldManagerTest::setup();
-    let amm = Address::generate(&test.env);
+    let amm = test.pool.clone();
 
     // At rate 2.0, yt_out = 1 truncates v_to_mint to 0, so user_cost = -v_from_pool < 0.
     // Dust buys must revert rather than mint PT+YT with no V backing.

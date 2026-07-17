@@ -1,7 +1,8 @@
+use crate::events::{AdminChanged, ContractUpgraded, MarketCreated, WasmHashesUpdated};
 use crate::storage;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
 };
 use yield_manager_interface::{VaultType, YieldManagerClient};
 
@@ -23,32 +24,6 @@ pub struct WasmHashes {
     pub yt: BytesN<32>,
     pub ym: BytesN<32>,
     pub amm: BytesN<32>,
-}
-
-
-//TODO: these events can probably get moved somewhere else to clean up space
-#[contractevent(data_format = "single-value")]
-pub struct MarketCreated {
-    #[topic]
-    pub vault: Address,
-    pub market: Market,
-}
-
-#[contractevent]
-pub struct AdminChanged {
-    pub old_admin: Address,
-    pub new_admin: Address,
-}
-
-#[contractevent]
-pub struct WasmHashesUpdated {
-    pub old_hashes: WasmHashes,
-    pub new_hashes: WasmHashes,
-}
-
-#[contractevent]
-pub struct ContractUpgraded {
-    pub new_wasm_hash: BytesN<32>,
 }
 
 pub trait FactoryTrait {
@@ -75,6 +50,11 @@ pub trait FactoryTrait {
 
 #[contract]
 pub struct Factory;
+
+/// Upper bound on how far in the future a market may mature (10 years in
+/// seconds). Generous for any realistic fixed-yield product; mainly catches
+/// unit mistakes like passing milliseconds.
+const MAX_MATURITY_HORIZON: u64 = 10 * 365 * 24 * 60 * 60;
 
 fn next_salt(env: &Env) -> BytesN<32> {
     let counter = storage::get_salt_counter(env);
@@ -159,6 +139,18 @@ impl FactoryTrait for Factory {
     ) -> Market {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+        storage::extend_instance_ttl(&env);
+
+        // Fail early with a clear message rather than deep inside the AMM
+        // constructor. The upper bound guards against fat-fingered timestamps
+        // (e.g. milliseconds instead of seconds) creating a market that can
+        // never mature.
+        let now = env.ledger().timestamp();
+        assert!(maturity > now, "maturity must be in the future");
+        assert!(
+            maturity <= now + MAX_MATURITY_HORIZON,
+            "maturity too far in the future"
+        );
 
         // Markets are immutable once created: refuse a second market for the same
         // (vault, maturity) so an existing pool can never be overwritten/orphaned.
@@ -193,6 +185,7 @@ impl FactoryTrait for Factory {
     fn set_admin(env: Env, new_admin: Address) {
         let old_admin = storage::get_admin(&env);
         old_admin.require_auth();
+        storage::extend_instance_ttl(&env);
 
         storage::set_admin(&env, &new_admin);
 
@@ -206,6 +199,7 @@ impl FactoryTrait for Factory {
     fn set_wasm_hashes(env: Env, new_hashes: WasmHashes) {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+        storage::extend_instance_ttl(&env);
 
         let old_hashes = storage::get_wasm_hashes(&env);
         storage::set_wasm_hashes(&env, &new_hashes);
@@ -220,6 +214,7 @@ impl FactoryTrait for Factory {
     fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+        storage::extend_instance_ttl(&env);
 
         env.deployer()
             .update_current_contract_wasm(new_wasm_hash.clone());
@@ -228,10 +223,12 @@ impl FactoryTrait for Factory {
     }
 
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market> {
+        storage::extend_instance_ttl(&env);
         storage::get_market(&env, &vault, maturity)
     }
 
     fn get_wasm_hashes(env: Env) -> WasmHashes {
+        storage::extend_instance_ttl(&env);
         storage::get_wasm_hashes(&env)
     }
 }
@@ -330,6 +327,8 @@ impl Factory {
                     ym_addr.clone(),
                 ),
             );
+
+        ym_client.set_pool(&pool_addr);
 
         let market = Market {
             ym: ym_addr,

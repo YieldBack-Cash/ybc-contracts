@@ -149,6 +149,39 @@ proptest! {
     }
 }
 
+/// Regression for the round-trip profit `round_trip_never_profits` first found.
+///
+/// Near expiry the fee factor shrinks toward 1.0, so the fee no longer masks
+/// pricing errors. With the proportion denominator tracking the post-trade PT
+/// reserve, buy and sell legs priced against different totals and this exact
+/// input let a buy→sell round trip profit by 6 V units. Kept as an explicit
+/// case in addition to the proptest, which only replays it via its regression
+/// file.
+#[test]
+fn round_trip_does_not_profit_near_expiry() {
+    let reserve_pt = 7_801_411_003i128;
+    let reserve_v = 2_200_397_976i128;
+    let rate_scalar = 11_140_000_000i128;
+    let rate_anchor = 12_864_631i128;
+    let fee_factor = 10_000_243i128; // ~1.0000243 — near-zero fee close to expiry
+    let x = 344_975_319i128;
+
+    // Buy x PT out; user pays v_in.
+    let (net_v, _, _) =
+        calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x);
+    let v_in = -net_v;
+
+    // Sell the same x back at the post-trade reserves.
+    let (net_v_back, _, _) = calc_trade(
+        reserve_pt - x, reserve_v + v_in, rate_scalar, rate_anchor, fee_factor, 0, -x,
+    );
+
+    assert!(
+        net_v_back <= v_in,
+        "round trip profited: paid {v_in} V, got back {net_v_back} V",
+    );
+}
+
 // ── Fixed-point math properties ──────────────────────────────────────────────
 
 proptest! {

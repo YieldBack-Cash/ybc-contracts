@@ -231,15 +231,18 @@ fn test_flash_swap_pt_under_deliver_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient V liquidity")]
-fn test_flash_swap_pt_insufficient_v_liquidity_reverts() {
+#[should_panic(expected = "trade pushes pool proportion out of bounds")]
+fn test_flash_swap_pt_oversized_trade_reverts() {
     let env = Env::default();
     env.mock_all_auths();
     let f = AmmFixture::new(&env);
     f.deposit(&f.admin, 100_000_000, 100_000_000);
 
-    // Buying 200M YT prices the PT leg at ~165M V — more than the pool's 100M V
-    // reserve can advance. Must revert before any V leaves the pool.
+    // Buying 200M YT pushes 200M PT into the pool: post-trade proportion
+    // 300M / 200M exceeds the 96% cap, so the curve rejects the trade before
+    // any V leaves the pool. The V-liquidity assert in flash_swap_pt cannot
+    // fire first: exchange_rate >= 1 means v_paid <= yt_out, so draining the
+    // V reserve would require proportion > 1.
     let receiver = pt_receiver(&f, true);
     f.pool.flash_swap_pt(&receiver, &200_000_000i128, &f.user, &1_000_000_000i128);
 }

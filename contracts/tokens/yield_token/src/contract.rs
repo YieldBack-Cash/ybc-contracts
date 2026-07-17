@@ -59,7 +59,9 @@ impl YieldToken {
                 .checked_mul(current_rate - old_index)
                 .and_then(|v| v.checked_mul(SCALAR_7))
                 .expect("overflow computing pending yield")
-                / (old_index * current_rate);
+                / old_index
+                    .checked_mul(current_rate)
+                    .expect("overflow computing yield denominator");
             let current_accrued = storage::get_accrued_yield(env, user);
             storage::set_accrued_yield(env, user, current_accrued + pending_yield);
             storage::set_user_index(env, user, current_rate);

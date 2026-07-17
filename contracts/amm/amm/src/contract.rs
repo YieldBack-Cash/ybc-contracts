@@ -200,7 +200,7 @@ impl AmmInterface for LiquidityPool {
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0, // reserve_fee_percent — replace when treasury is wired up
+            0, // reserve_fee_percent
             net_pt_to_account,
         );
 
@@ -261,7 +261,7 @@ impl AmmInterface for LiquidityPool {
     /// must end the call with exactly `yt_out` more PT and `v_paid` less V, or it reverts.
     fn flash_swap_pt(e: Env, receiver: Address, yt_out: i128, user: Address, max_v_in: i128) {
         extend_instance_ttl(&e);
-        assert!(receiver == get_ym(&e), "receiver must be the trusted yield manager");
+        assert_eq!(receiver, get_ym(&e), "receiver must be the trusted yield manager");
         assert!(yt_out > 0, "yt_out must be positive");
         assert!(max_v_in > 0, "max_v_in must be positive");
 
@@ -298,6 +298,8 @@ impl AmmInterface for LiquidityPool {
         assert!(net_v_to_account > 0, "expected pool to pay V for PT");
         let v_paid = convert_assets_to_vault_shares(&e, net_v_to_account);
         assert!(v_paid > 0, "v_paid must be positive");
+        // Backstop only: exchange_rate >= 1 caps v_paid at yt_out, so exceeding the
+        // V reserve would need proportion > 1 — calc_trade's proportion cap fires first.
         assert!(market.reserve_b > v_paid, "insufficient V liquidity");
 
         let pt_balance_before = get_balance_a(&e);
@@ -356,7 +358,7 @@ impl AmmInterface for LiquidityPool {
     /// in the redeem), so `reserve_a` falls by `pt_to_borrow`.
     fn flash_swap_v(e: Env, receiver: Address, pt_to_borrow: i128, user: Address, min_v_out: i128) {
         extend_instance_ttl(&e);
-        assert!(receiver == get_ym(&e), "receiver must be the trusted yield manager");
+        assert_eq!(receiver, get_ym(&e), "receiver must be the trusted yield manager");
         assert!(pt_to_borrow > 0, "pt_to_borrow must be positive");
         assert!(min_v_out > 0, "min_v_out must be positive");
 
@@ -412,10 +414,7 @@ impl AmmInterface for LiquidityPool {
 
         let pt_balance_after = get_balance_a(&e);
         let v_balance_after = get_balance_b(&e);
-        assert!(
-            pt_balance_after == pt_balance_before - pt_to_borrow,
-            "flash swap: lent PT must be consumed by the redeem"
-        );
+        assert_eq!(pt_balance_after, pt_balance_before - pt_to_borrow, "flash swap: lent PT must be consumed by the redeem");
         assert!(
             v_balance_after >= v_balance_before + v_owed_shares,
             "flash swap: V not fully repaid"
@@ -472,6 +471,9 @@ impl AmmInterface for LiquidityPool {
 
         let mut market = get_market_state(&e);
 
+        let now = e.ledger().timestamp();
+        assert!(now < market.expiry_ts, "market expired");
+
         let (amount_a, amount_b) =
             get_deposit_amounts(desired_a, min_a, desired_b, min_b, market.reserve_a, market.reserve_b);
 
@@ -501,10 +503,21 @@ impl AmmInterface for LiquidityPool {
 
         let shares_to_mint = new_total_shares - total_shares;
         if total_shares == zero {
+            // First deposit: `sqrt(a*b)` must exceed the dead-burn, otherwise the
+            // subtraction below underflows (or mints the depositor zero/negative
+            // shares) — a silent loss of the entire initial deposit.
+            assert!(
+                shares_to_mint > MINIMUM_LIQUIDITY,
+                "initial deposit too small: would mint zero shares after minimum liquidity burn"
+            );
             let burn_address = Address::from_str(&e, BURN_ADDRESS);
             mint_shares(&e, &burn_address, MINIMUM_LIQUIDITY);
             mint_shares(&e, &to, shares_to_mint - MINIMUM_LIQUIDITY);
         } else {
+            // Floor division can round the minted amount all the way to zero when
+            // the pool holds few shares against large reserves (e.g. after heavy
+            // one-sided swap volume). Reject rather than take the tokens for free.
+            assert!(shares_to_mint > 0, "deposit too small: would mint zero shares");
             mint_shares(&e, &to, shares_to_mint);
         }
 

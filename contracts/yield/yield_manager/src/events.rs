@@ -8,6 +8,12 @@ pub struct TokenContractsSet {
     pub yt: Address,
 }
 
+#[contractevent(topics = ["pool_set"])]
+pub struct PoolSet {
+    #[topic]
+    pub pool: Address,
+}
+
 #[contractevent(topics = ["deposit"], data_format = "vec")]
 pub struct Deposit {
     #[topic]

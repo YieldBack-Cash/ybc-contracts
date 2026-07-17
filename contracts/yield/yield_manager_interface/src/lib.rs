@@ -19,6 +19,7 @@ pub enum YieldManagerError {
     MaturityReached = 4,
     MaturityNotReached = 5,
     ExchangeRateZero = 6,
+    PoolAlreadySet = 7,
 }
 
 /// Trait defining the interface for the Yield Manager contract.
@@ -34,6 +35,11 @@ pub trait YieldManagerTrait {
     );
 
     fn set_token_contracts(env: Env, pt_addr: Address, yt_addr: Address) -> Result<(), YieldManagerError>;
+
+    /// Registers the AMM pool trusted to drive the flash-swap callbacks.
+    /// One-shot: can only be set once, by the admin.
+    fn set_pool(env: Env, pool: Address) -> Result<(), YieldManagerError>;
+    fn get_pool(env: Env) -> Address;
     fn get_vault(env: Env) -> Address;
     fn get_principal_token(env: Env) -> Address;
     fn get_yield_token(env: Env) -> Address;

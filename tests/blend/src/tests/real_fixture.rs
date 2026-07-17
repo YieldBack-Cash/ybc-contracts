@@ -101,7 +101,6 @@ pub struct RealBlendFixture<'a> {
     pub yield_manager: Address,
     pub pt: Address,
     pub yt: Address,
-    pub maturity: u64,
 }
 
 impl<'a> RealBlendFixture<'a> {
@@ -225,7 +224,6 @@ impl<'a> RealBlendFixture<'a> {
             yield_manager: ym_addr,
             pt: pt_addr,
             yt: yt_addr,
-            maturity,
         }
     }
 

@@ -11,13 +11,13 @@ use mock_vault::{MockVault, MockVaultClient};
 
 pub struct YieldManagerTest {
     pub env: Env,
-    pub admin: Address,
     pub user1: Address,
     pub user2: Address,
     pub vault_addr: Address,
     pub yield_manager: Address,
     pub pt: Address,
     pub yt: Address,
+    pub pool: Address,
     pub maturity: u64,
 }
 
@@ -71,15 +71,22 @@ impl YieldManagerTest {
             (&pt_id, &yt_id).into_val(&env),
         );
 
+        let pool_addr = Address::generate(&env);
+        env.invoke_contract::<()>(
+            &yield_manager_id,
+            &Symbol::new(&env, "set_pool"),
+            (&pool_addr,).into_val(&env),
+        );
+
         YieldManagerTest {
             env,
-            admin,
             user1,
             user2,
             vault_addr,
             yield_manager: yield_manager_id,
             pt: pt_id,
             yt: yt_id,
+            pool: pool_addr,
             maturity,
         }
     }

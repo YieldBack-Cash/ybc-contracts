@@ -1,6 +1,6 @@
 use crate::YieldToken;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::Address as _,
     token::TokenClient,
     Address, Env, IntoVal, String, Symbol,
 };
@@ -20,8 +20,6 @@ pub struct YieldTokenTest<'a> {
     pub vault_address: Address,
     pub yield_manager: Address,
     pub yield_token: Address,
-    pub pt: Address,
-    pub maturity: u64,
 }
 
 impl<'a> YieldTokenTest<'a> {
@@ -96,8 +94,6 @@ impl<'a> YieldTokenTest<'a> {
             vault_address,
             yield_manager: yield_manager_id,
             yield_token: yt_id,
-            pt: pt_id,
-            maturity,
         }
     }
 
@@ -131,12 +127,6 @@ impl<'a> YieldTokenTest<'a> {
             &Symbol::new(&self.env, "accrued_yield"),
             (user,).into_val(&self.env),
         )
-    }
-
-    pub fn advance_time(&self, seconds: u64) {
-        self.env.ledger().with_mut(|li| {
-            li.timestamp += seconds;
-        });
     }
 
     pub fn get_exchange_rate(&self) -> i128 {

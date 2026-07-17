@@ -11,6 +11,7 @@ pub enum DataKey {
     Maturity,
     ExchangeRate,
     RateLocked,
+    Pool,
 }
 
 // Storage TTL constants
@@ -125,4 +126,20 @@ pub fn set_rate_locked(env: &Env) {
 pub fn is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::PrincipalToken)
         && env.storage().instance().has(&DataKey::YieldToken)
+}
+
+// Trusted AMM pool address (immutable after being set once).
+pub fn set_pool(env: &Env, pool: &Address) {
+    env.storage().instance().set(&DataKey::Pool, pool);
+}
+
+pub fn get_pool(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Pool)
+        .expect("Pool not set")
+}
+
+pub fn is_pool_set(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::Pool)
 }

@@ -22,6 +22,9 @@ pub struct Market {
 }
 
 /// Minimal view of the factory: just enough to resolve a single market.
+/// The trait itself is never implemented or called — it exists only as the
+/// source for the generated FactoryViewClient, which dead_code can't see.
+#[allow(dead_code)]
 #[contractclient(name = "FactoryViewClient")]
 pub trait FactoryView {
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;

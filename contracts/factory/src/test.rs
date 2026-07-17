@@ -1,7 +1,8 @@
 #![cfg(test)]
 
 use crate::{
-    contract::{ContractUpgraded, Market, MarketCreated, WasmHashesUpdated},
+    contract::Market,
+    events::{ContractUpgraded, MarketCreated, WasmHashesUpdated},
     Factory, FactoryClient, WasmHashes,
 };
 use mock_vault::{MockVault, MockVaultClient};
@@ -39,7 +40,6 @@ const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1, 10% starting implied rate
 
 struct FactoryTest {
     env: Env,
-    admin: Address,
     user1: Address,
     factory_addr: Address,
     factory: FactoryClient<'static>,
@@ -84,7 +84,6 @@ impl FactoryTest {
 
         FactoryTest {
             env,
-            admin,
             user1,
             factory_addr,
             factory,
@@ -126,6 +125,35 @@ fn test_getters_before_deployment() {
     let maturity = test.env.ledger().timestamp() + 1000;
 
     assert!(test.factory.get_market(&test.vault_addr, &maturity).is_none());
+}
+
+#[test]
+#[should_panic(expected = "maturity must be in the future")]
+fn test_create_market_past_maturity_panics() {
+    let test = FactoryTest::setup();
+    test.advance_time(1000);
+    let maturity = test.env.ledger().timestamp() - 1;
+
+    test.create_market(maturity);
+}
+
+#[test]
+#[should_panic(expected = "maturity must be in the future")]
+fn test_create_market_maturity_now_panics() {
+    let test = FactoryTest::setup();
+    let maturity = test.env.ledger().timestamp();
+
+    test.create_market(maturity);
+}
+
+#[test]
+#[should_panic(expected = "maturity too far in the future")]
+fn test_create_market_maturity_beyond_horizon_panics() {
+    let test = FactoryTest::setup();
+    // e.g. a milliseconds-instead-of-seconds mistake lands far past 10 years
+    let maturity = test.env.ledger().timestamp() + 11 * 365 * 24 * 60 * 60;
+
+    test.create_market(maturity);
 }
 
 #[test]

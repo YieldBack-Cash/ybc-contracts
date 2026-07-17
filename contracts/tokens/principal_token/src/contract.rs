@@ -92,6 +92,8 @@ impl TokenInterface for PrincipalToken {
 
     fn burn_from(env: Env, spender: Address, from: Address, amount: i128) {
         spender.require_auth();
+        let admin = read_administrator(&env);
+        admin.require_auth();
 
         extend_instance_ttl(&env);
 

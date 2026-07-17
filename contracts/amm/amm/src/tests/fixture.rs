@@ -99,4 +99,24 @@ impl<'a> AmmFixture<'a> {
         self.vault.approve(from, &self.pool.address, &v_amount, &expiry_ledger);
         self.pool.deposit(from, &pt_amount, &0, &v_amount, &0);
     }
+
+    /// Approve and sell an exact amount of PT into the pool for V.
+    pub fn swap_pt_for_v(&self, from: &Address, pt_in: i128, min_v_out: i128) {
+        let expiry_ledger = self.env.ledger().sequence() + 1000;
+        self.pt.approve(from, &self.pool.address, &pt_in, &expiry_ledger);
+        self.pool.swap_pt_for_v(from, &pt_in, &min_v_out);
+    }
+
+    /// Approve and buy an exact amount of PT out of the pool, paying V.
+    pub fn swap_v_for_pt(&self, from: &Address, pt_out: i128, v_in_max: i128) {
+        let expiry_ledger = self.env.ledger().sequence() + 1000;
+        self.vault.approve(from, &self.pool.address, &v_in_max, &expiry_ledger);
+        self.pool.swap_v_for_pt(from, &pt_out, &v_in_max);
+    }
+
+    /// Total LP shares outstanding = the sole depositor's balance plus the dead burn.
+    /// Valid only in tests where `admin` is the only non-burn shareholder.
+    pub fn total_shares_admin_only(&self) -> i128 {
+        self.pool.balance_shares(&self.admin) + 100
+    }
 }

@@ -113,8 +113,11 @@ pub(crate) fn get_exchange_rate_from_trade(
 
     assert!(numerator > 0, "post-trade PT reserve must be positive");
 
-    // proportion = post_trade_pt / (post_trade_pt + total_v)
-    let denom = numerator
+    // proportion = post_trade_pt / (total_pt + total_v)
+    // The denominator is the pre-trade reserve sum, so buy and sell legs price
+    // against the same total. Mirrors Pendle's _getExchangeRate; using the
+    // post-trade PT here instead leaks value to round-trip trades.
+    let denom = total_pt
         .checked_add(total_v)
         .expect("overflow computing total pool value");
 
@@ -123,6 +126,10 @@ pub(crate) fn get_exchange_rate_from_trade(
         .expect("overflow scaling proportion")
         / denom;
 
+    // With the pre-trade denominator, proportion is not bounded below 1.0 by
+    // construction: a PT-in trade larger than the pool total pushes it past
+    // FP_SCALE, which would make one_minus_p negative. The MAX_PROPORTION bound
+    // is what excludes that state — do not loosen it.
     assert!(
         proportion >= MIN_PROPORTION && proportion <= MAX_PROPORTION,
         "trade pushes pool proportion out of bounds"
@@ -284,16 +291,15 @@ mod proportion_bounds_tests {
 
     #[test]
     fn trade_near_min_proportion_boundary_succeeds() {
-        // Post-trade PT = 1_100_000 vs V = 100_000_000 → proportion ≈ 1.09%, just above the floor.
-        // Uses a flat curve (scalar 50 ≈ default market ~6 months out): with a steep one
-        // the ln adjustment at this proportion drags the exchange rate below 1.0, which
-        // now correctly reverts before the proportion floor is ever reached.
+        // Post-trade PT = 2_200_000 over the fixed 200_000_000 denominator → proportion
+        // 1.1%, just above the floor. Uses a flat curve (scalar 50): the ln adjustment
+        // at this proportion is ≈ -0.09, keeping the exchange rate above 1.0.
         let rate = get_exchange_rate_from_trade(
             RESERVE,
             RESERVE,
             RATE_SCALAR * 10,
             RATE_ANCHOR,
-            RESERVE - 1_100_000,
+            RESERVE - 2_200_000,
         );
         assert!(rate >= math::FP_SCALE);
     }
@@ -301,9 +307,10 @@ mod proportion_bounds_tests {
     #[test]
     #[should_panic(expected = "exchange rate must not fall below one")]
     fn trade_pushing_exchange_rate_below_one_panics() {
-        // Same near-floor drain on the steep curve: ln(p/(1-p))/scalar ≈ -0.9 pulls the
-        // rate to ~0.2. Unguarded, that would store a negative implied rate and brick
-        // the pool; the below-one guard must reject the trade instead.
-        get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 1_100_000);
+        // Post-trade PT = 20_000_000 → proportion 10%, well within bounds, but on the
+        // steep curve (scalar 5) ln(p/(1-p))/scalar ≈ -0.44 pulls the rate to ~0.66.
+        // Unguarded, that would store a negative implied rate and brick the pool;
+        // the below-one guard must reject the trade instead.
+        get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 20_000_000);
     }
 }

@@ -1,5 +1,5 @@
 use soroban_sdk::{token, Address, Env};
-use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, RedeemCombined, RedeemPrincipal, TokenContractsSet};
+use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, PoolSet, RedeemCombined, RedeemPrincipal, TokenContractsSet};
 use crate::storage;
 use amm_interface::{FlashSwapPtReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
@@ -100,6 +100,26 @@ impl YieldManagerTrait for YieldManager {
         Ok(())
     }
 
+    fn set_pool(env: Env, pool: Address) -> Result<(), YieldManagerError> {
+        let admin = storage::get_admin(&env);
+        admin.require_auth();
+        storage::extend_instance_ttl(&env);
+
+        if storage::is_pool_set(&env) {
+            return Err(YieldManagerError::PoolAlreadySet);
+        }
+
+        storage::set_pool(&env, &pool);
+
+        PoolSet { pool }.publish(&env);
+        Ok(())
+    }
+
+    fn get_pool(env: Env) -> Address {
+        storage::extend_instance_ttl(&env);
+        storage::get_pool(&env)
+    }
+
     fn get_vault(env: Env) -> Address {
         storage::extend_instance_ttl(&env);
         storage::get_vault(&env)
@@ -135,6 +155,13 @@ impl YieldManagerTrait for YieldManager {
 
         if shares_amount <= 0 {
             return Err(YieldManagerError::InvalidAmount);
+        }
+
+        // Minting into a matured market is pointless at best: PT would mint at
+        // the locked rate but redeem at the live rate, losing the difference.
+        let maturity = storage::get_maturity(&env);
+        if env.ledger().timestamp() >= maturity {
+            return Err(YieldManagerError::MaturityReached);
         }
 
         let exchange_rate = YieldManager::update_exchange_rate(&env);
@@ -262,10 +289,17 @@ impl YieldManagerTrait for YieldManager {
         let vault_addr = storage::get_vault(&env);
         let pt_addr = storage::get_principal_token(&env);
 
-        let exchange_rate = YieldManager::update_exchange_rate(&env);
-        if exchange_rate == 0 {
+        let locked_rate = YieldManager::update_exchange_rate(&env);
+        if locked_rate == 0 {
             return Err(YieldManagerError::ExchangeRateZero);
         }
+
+        // Redeem at the live vault rate so PT always pays exactly face value
+        // in assets; the shares that keep appreciating after maturity stay in
+        // the YM as protocol surplus. Floored at the locked rate so a vault
+        // rate dip can't pay out more shares than were reserved at maturity.
+        let exchange_rate = YieldManager::get_vault_exchange_rate(&env).max(locked_rate);
+
         let shares_to_return = pt_amount
             .checked_mul(SCALAR_7)
             .expect("overflow computing shares_to_return")
@@ -295,6 +329,12 @@ impl FlashSwapPtReceiver for YieldManager {
         if !storage::is_initialized(&env) {
             panic!("Token contracts not initialized");
         }
+
+        // Only the registered pool may drive this callback. This succeeds without a
+        // signature when the pool contract is the call's direct invoker (the same
+        // mechanism that lets the YM satisfy admin.require_auth() on PT/YT below) —
+        // a direct caller impersonating the pool has no way to satisfy this.
+        storage::get_pool(&env).require_auth();
 
         let ym = env.current_contract_address();
 
@@ -357,6 +397,9 @@ impl FlashSwapVReceiver for YieldManager {
         if !storage::is_initialized(&env) {
             panic!("Token contracts not initialized");
         }
+
+        // Only the registered pool may drive this callback — see on_flash_receive_pt.
+        storage::get_pool(&env).require_auth();
 
         let ym = env.current_contract_address();
 
