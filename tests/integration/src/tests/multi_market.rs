@@ -1,11 +1,10 @@
 //! The global router serves every market by resolving (vault, maturity)
-//! against the factory's market history on each call. These tests pin the
-//! claims that design makes:
+//! against the factory on each call. These tests pin the claims that design
+//! makes:
 //!
 //! 1. Swaps on one market never touch another market's pool.
-//! 2. After a rollover, both the old and new markets stay addressable by
-//!    their maturities, and trading the new one leaves the expired one
-//!    untouched.
+//! 2. A single vault can host several markets at different maturities at once,
+//!    and each stays addressable by its maturity — including after one expires.
 //! 3. A (vault, maturity) pair the factory never deployed for reverts
 //!    instead of routing.
 
@@ -64,17 +63,22 @@ fn test_router_isolates_markets() {
 }
 
 #[test]
-fn test_router_addresses_markets_by_maturity_across_rollover() {
+fn test_markets_stay_addressable_by_maturity_after_one_expires() {
     let env = Env::default();
     let f = seeded(&env);
     let old_pool_addr = f.pool.address.clone();
 
-    // Expire the market and roll it over.
-    f.advance_time(ONE_YEAR_SECS + 1);
-    let new_maturity = env.ledger().timestamp() + ONE_YEAR_SECS;
-    assert!(f.rollover(&f.vault.address, new_maturity), "rollover must run");
+    // A second, longer-dated market on the same vault, created while the first
+    // is still active.
+    let later = f.maturity + ONE_YEAR_SECS;
+    let market2 = f.create_market_on_vault(&f.vault.address, later);
+    f.ym_deposit_to(&f.vault.address, &market2.ym, &f.user, YM_DEPOSIT);
+    f.amm_deposit_to(&f.vault.address, &market2.pt, &market2.pool, &f.user, POOL_PT, POOL_V);
 
-    // Both markets stay addressable through the router by their maturities.
+    // Let the first market expire; the second is still active.
+    f.advance_time(ONE_YEAR_SECS + 1);
+
+    // Both remain addressable through the router by their maturities.
     let resolved_old = env.invoke_contract::<Address>(
         &f.router,
         &Symbol::new(&env, "get_amm"),
@@ -85,30 +89,51 @@ fn test_router_addresses_markets_by_maturity_across_rollover() {
     let resolved_new = env.invoke_contract::<Address>(
         &f.router,
         &Symbol::new(&env, "get_amm"),
-        (&f.vault.address, new_maturity).into_val(&env),
+        (&f.vault.address, later).into_val(&env),
     );
-    assert_ne!(resolved_new, old_pool_addr, "new maturity resolves to a fresh pool");
-    assert_eq!(
-        resolved_new,
-        f.factory.get_current_pool(&f.vault.address).unwrap(),
-        "new maturity resolves to the factory's current pool"
-    );
+    assert_eq!(resolved_new, market2.pool, "later maturity resolves to its own pool");
 
-    // Seed the new market and swap through the router: the new pool trades,
-    // the expired pool's reserves never move.
-    let new_ym = f.factory.get_current_yield_manager(&f.vault.address).unwrap();
-    let new_pt = f.factory.get_current_pt_token(&f.vault.address).unwrap();
-    f.ym_deposit_to(&f.vault.address, &new_ym, &f.user, YM_DEPOSIT);
-    f.amm_deposit_to(&f.vault.address, &new_pt, &resolved_new, &f.user, POOL_PT, POOL_V);
-
+    // Trade the still-active market; the expired pool's reserves never move.
     let old_reserves = f.pool.get_reserves();
-    let new_pool = LiquidityPoolClient::new(&env, &resolved_new);
+    let new_pool = LiquidityPoolClient::new(&env, &market2.pool);
     let new_before = new_pool.get_reserves();
 
-    f.router_swap_v_for_yt_on(&f.vault.address, new_maturity, &f.user, 1_000_000, 1_000_000);
+    f.router_swap_v_for_yt_on(&f.vault.address, later, &f.user, 1_000_000, 1_000_000);
 
-    assert_ne!(new_pool.get_reserves(), new_before, "post-rollover swap trades the new pool");
-    assert_eq!(f.pool.get_reserves(), old_reserves, "expired pool untouched after rollover");
+    assert_ne!(new_pool.get_reserves(), new_before, "swap trades the active market");
+    assert_eq!(f.pool.get_reserves(), old_reserves, "expired pool untouched");
+}
+
+#[test]
+fn test_two_concurrent_markets_same_vault_different_maturities() {
+    let env = Env::default();
+    let f = seeded(&env); // primary market at f.maturity, already seeded
+
+    // A second market on the SAME vault at a later maturity. Both are unexpired,
+    // so they are active at the same time.
+    let later = f.maturity + ONE_YEAR_SECS;
+    let market2 = f.create_market_on_vault(&f.vault.address, later);
+    assert_ne!(f.pool.address, market2.pool, "second market gets its own pool");
+    assert_ne!(f.yield_manager, market2.ym, "second market gets its own YM");
+
+    // Seed the second market too.
+    f.ym_deposit_to(&f.vault.address, &market2.ym, &f.user, YM_DEPOSIT);
+    f.amm_deposit_to(&f.vault.address, &market2.pt, &market2.pool, &f.user, POOL_PT, POOL_V);
+
+    let pool2 = LiquidityPoolClient::new(&env, &market2.pool);
+    let a_before = f.pool.get_reserves();
+    let b_before = pool2.get_reserves();
+
+    // Trade the first market via the router: only its pool moves.
+    f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
+    assert_ne!(f.pool.get_reserves(), a_before, "first market traded");
+    assert_eq!(pool2.get_reserves(), b_before, "second market untouched by first-market swap");
+
+    // Trade the second market via the router: only its pool moves.
+    let a_mid = f.pool.get_reserves();
+    f.router_swap_v_for_yt_on(&f.vault.address, later, &f.user, 1_000_000, 1_000_000);
+    assert_ne!(pool2.get_reserves(), b_before, "second market traded");
+    assert_eq!(f.pool.get_reserves(), a_mid, "first market untouched by second-market swap");
 }
 
 #[test]

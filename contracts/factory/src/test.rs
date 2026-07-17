@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use crate::{
-    contract::{ContractUpgraded, Market, MarketRolledOver, WasmHashesUpdated},
+    contract::{ContractUpgraded, Market, MarketCreated, WasmHashesUpdated},
     Factory, FactoryClient, WasmHashes,
 };
 use mock_vault::{MockVault, MockVaultClient};
@@ -92,18 +92,16 @@ impl FactoryTest {
         }
     }
 
-    fn create_market(&self, maturity: u64) -> Address {
-        self.factory
-            .create_market(
-                &self.vault_addr,
-                &VaultType::Vault4626,
-                &maturity,
-                &SCALAR_ROOT,
-                &INITIAL_ANCHOR,
-                &FEE_RATE_ROOT,
-                &LAST_IMPLIED_RATE,
-            )
-            .ym
+    fn create_market(&self, maturity: u64) -> Market {
+        self.factory.create_market(
+            &self.vault_addr,
+            &VaultType::Vault4626,
+            &maturity,
+            &SCALAR_ROOT,
+            &INITIAL_ANCHOR,
+            &FEE_RATE_ROOT,
+            &LAST_IMPLIED_RATE,
+        )
     }
 
     fn mint_vault_shares(&self, to: &Address, amount: i128) {
@@ -125,13 +123,9 @@ impl FactoryTest {
 #[test]
 fn test_getters_before_deployment() {
     let test = FactoryTest::setup();
+    let maturity = test.env.ledger().timestamp() + 1000;
 
-    assert_eq!(
-        test.factory.get_current_yield_manager(&test.vault_addr),
-        None
-    );
-    assert_eq!(test.factory.get_current_pt_token(&test.vault_addr), None);
-    assert_eq!(test.factory.get_current_yt_token(&test.vault_addr), None);
+    assert!(test.factory.get_market(&test.vault_addr, &maturity).is_none());
 }
 
 #[test]
@@ -139,24 +133,21 @@ fn test_deploy_yield_manager() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.create_market(maturity);
+    let market = test.create_market(maturity);
 
-    // All three addresses should be stored
-    assert_eq!(
-        test.factory.get_current_yield_manager(&test.vault_addr),
-        Some(ym_addr.clone())
-    );
-    assert!(test
+    // The market is retrievable by (vault, maturity) and carries all four
+    // contract addresses.
+    let stored = test
         .factory
-        .get_current_pt_token(&test.vault_addr)
-        .is_some());
-    assert!(test
-        .factory
-        .get_current_yt_token(&test.vault_addr)
-        .is_some());
+        .get_market(&test.vault_addr, &maturity)
+        .unwrap();
+    assert_eq!(stored.ym, market.ym);
+    assert_eq!(stored.pt, market.pt);
+    assert_eq!(stored.yt, market.yt);
+    assert_eq!(stored.pool, market.pool);
 
     // Deployed YM should point at the correct vault
-    let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
+    let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
     assert_eq!(ym_client.get_vault(), test.vault_addr);
 
     // Deployed YM should have the correct maturity
@@ -168,27 +159,24 @@ fn test_ym_knows_its_tokens() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.create_market(maturity);
-    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
-    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
+    let market = test.create_market(maturity);
 
-    let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
+    let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
 
     // YM should know about PT
-    assert_eq!(ym_client.get_principal_token(), pt_addr);
+    assert_eq!(ym_client.get_principal_token(), market.pt);
 
     // YM should know about YT
-    assert_eq!(ym_client.get_yield_token(), yt_addr);
+    assert_eq!(ym_client.get_yield_token(), market.yt);
 }
 
 #[test]
 fn test_deployed_pt_metadata() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
-    test.create_market(maturity);
+    let market = test.create_market(maturity);
 
-    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
-    let pt_token = TokenClient::new(&test.env, &pt_addr);
+    let pt_token = TokenClient::new(&test.env, &market.pt);
     let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
 
     assert_eq!(
@@ -206,10 +194,9 @@ fn test_deployed_pt_metadata() {
 fn test_deployed_yt_metadata() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
-    test.create_market(maturity);
+    let market = test.create_market(maturity);
 
-    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
-    let yt_token = TokenClient::new(&test.env, &yt_addr);
+    let yt_token = TokenClient::new(&test.env, &market.yt);
     let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
 
     assert_eq!(
@@ -228,9 +215,7 @@ fn test_deposit_through_factory_deployed_contracts() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let ym_addr = test.create_market(maturity);
-    let pt_addr = test.factory.get_current_pt_token(&test.vault_addr).unwrap();
-    let yt_addr = test.factory.get_current_yt_token(&test.vault_addr).unwrap();
+    let market = test.create_market(maturity);
 
     // Mint vault shares to user
     let shares = 1_000_0000i128;
@@ -239,20 +224,20 @@ fn test_deposit_through_factory_deployed_contracts() {
     let vault_client = MockVaultClient::new(&test.env, &test.vault_addr);
     vault_client.approve(
         &test.user1,
-        &ym_addr,
+        &market.ym,
         &shares,
         &(test.env.ledger().sequence() + 1000),
     );
 
     // Deposit through the factory-deployed yield manager
-    let ym_client = ym_wasm::Client::new(&test.env, &ym_addr);
+    let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
     ym_client.deposit(&test.user1, &shares);
 
     // PT and YT should have been minted
-    let pt_balance = TokenClient::new(&test.env, &pt_addr).balance(&test.user1);
+    let pt_balance = TokenClient::new(&test.env, &market.pt).balance(&test.user1);
     assert!(pt_balance > 0);
 
-    let yt_balance = TokenClient::new(&test.env, &yt_addr).balance(&test.user1);
+    let yt_balance = TokenClient::new(&test.env, &market.yt).balance(&test.user1);
     assert!(yt_balance > 0);
 
     // Both should be equal (shares * exchange_rate)
@@ -260,7 +245,7 @@ fn test_deposit_through_factory_deployed_contracts() {
 
     // Yield manager should hold the vault shares
     let vault_token = TokenClient::new(&test.env, &test.vault_addr);
-    assert_eq!(vault_token.balance(&ym_addr), shares);
+    assert_eq!(vault_token.balance(&market.ym), shares);
 }
 
 #[test]
@@ -283,37 +268,35 @@ fn test_create_market_deploys_working_pool() {
 }
 
 #[test]
-fn test_rollover_before_maturity_returns_false() {
+fn test_second_market_same_vault_different_maturity_coexists() {
     let test = FactoryTest::setup();
-    let maturity = test.env.ledger().timestamp() + 1000;
-    test.create_market(maturity);
+    let m1 = test.env.ledger().timestamp() + 1000;
+    let m2 = m1 + 5000;
 
-    let rolled = test.factory.rollover_if_expired(
-        &test.vault_addr,
-        &VaultType::Vault4626,
-        &(maturity + 2000),
-        &SCALAR_ROOT,
-        &INITIAL_ANCHOR,
-        &FEE_RATE_ROOT,
-        &LAST_IMPLIED_RATE,
-    );
-    assert!(!rolled);
+    let market1 = test.create_market(m1);
+    let market2 = test.create_market(m2);
+
+    // Two independent markets on the same vault, each its own set of contracts.
+    assert_ne!(market1.ym, market2.ym);
+    assert_ne!(market1.pool, market2.pool);
+    assert_ne!(market1.pt, market2.pt);
+    assert_ne!(market1.yt, market2.yt);
+
+    // Both remain independently retrievable by their maturities — creating the
+    // second did not overwrite the first.
+    assert_eq!(test.factory.get_market(&test.vault_addr, &m1).unwrap().pool, market1.pool);
+    assert_eq!(test.factory.get_market(&test.vault_addr, &m2).unwrap().pool, market2.pool);
 }
 
 #[test]
-fn test_rollover_with_no_deployment_returns_false() {
+#[should_panic(expected = "market already exists for this vault and maturity")]
+fn test_duplicate_market_same_maturity_panics() {
     let test = FactoryTest::setup();
-
-    let rolled = test.factory.rollover_if_expired(
-        &test.vault_addr,
-        &VaultType::Vault4626,
-        &5000u64,
-        &SCALAR_ROOT,
-        &INITIAL_ANCHOR,
-        &FEE_RATE_ROOT,
-        &LAST_IMPLIED_RATE,
-    );
-    assert!(!rolled);
+    let maturity = test.env.ledger().timestamp() + 1000;
+    test.create_market(maturity);
+    // A second market for the same (vault, maturity) must be rejected so the
+    // existing pool can never be overwritten or orphaned.
+    test.create_market(maturity);
 }
 
 #[test]
@@ -358,64 +341,25 @@ fn test_upgrade_emits_event() {
 }
 
 #[test]
-fn test_rollover_after_expiry_emits_event() {
+fn test_create_market_emits_event() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    test.create_market(maturity);
+    let market = test.create_market(maturity);
 
-    let old_market = Market {
-        ym: test
-            .factory
-            .get_current_yield_manager(&test.vault_addr)
-            .unwrap(),
-        pt: test.factory.get_current_pt_token(&test.vault_addr).unwrap(),
-        yt: test.factory.get_current_yt_token(&test.vault_addr).unwrap(),
-        pool: test.factory.get_current_pool(&test.vault_addr).unwrap(),
-        maturity,
+    let expected = MarketCreated {
         vault: test.vault_addr.clone(),
+        market,
     };
 
-    test.advance_time(1500); // past maturity
-    let new_maturity = test.env.ledger().timestamp() + 1000;
-
-    let rolled = test.factory.rollover_if_expired(
-        &test.vault_addr,
-        &VaultType::Vault4626,
-        &new_maturity,
-        &SCALAR_ROOT,
-        &INITIAL_ANCHOR,
-        &FEE_RATE_ROOT,
-        &LAST_IMPLIED_RATE,
-    );
-    assert!(rolled);
-
-    // we capture events immediately; the sub-deployed YM/AMM emit their own
-    // init events, so keep only the factory's
+    // The sub-deployed YM/PT/YT/AMM emit their own init events, so keep only the
+    // factory's — there should be exactly one: MarketCreated.
     let events = test
         .env
         .events()
         .all()
         .filter_by_contract(&test.factory_addr);
     let raw = events.events();
-
-    let new_market = Market {
-        ym: test
-            .factory
-            .get_current_yield_manager(&test.vault_addr)
-            .unwrap(),
-        pt: test.factory.get_current_pt_token(&test.vault_addr).unwrap(),
-        yt: test.factory.get_current_yt_token(&test.vault_addr).unwrap(),
-        pool: test.factory.get_current_pool(&test.vault_addr).unwrap(),
-        maturity: new_maturity,
-        vault: test.vault_addr.clone(),
-    };
-
-    let expected = MarketRolledOver {
-        vault: test.vault_addr.clone(),
-        old_market,
-        new_market,
-    };
 
     assert_eq!(raw.len(), 1);
     assert_eq!(raw[0], expected.to_xdr(&test.env, &test.factory_addr));

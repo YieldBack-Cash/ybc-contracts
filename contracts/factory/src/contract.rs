@@ -1,7 +1,7 @@
 use crate::storage;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Vec,
+    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
 };
 use yield_manager_interface::{VaultType, YieldManagerClient};
 
@@ -35,14 +35,6 @@ pub struct MarketCreated {
 }
 
 #[contractevent]
-pub struct MarketRolledOver {
-    #[topic]
-    pub vault: Address,
-    pub old_market: Market,
-    pub new_market: Market,
-}
-
-#[contractevent]
 pub struct AdminChanged {
     pub old_admin: Address,
     pub new_admin: Address,
@@ -73,26 +65,8 @@ pub trait FactoryTrait {
         last_implied_rate: i128,
     ) -> Market;
 
-    fn get_vaults(env: Env) -> Vec<Address>;
-    fn get_markets(env: Env, vault: Address) -> Vec<Market>;
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
-
-    fn get_current_yield_manager(env: Env, vault: Address) -> Option<Address>;
-    fn get_current_pt_token(env: Env, vault: Address) -> Option<Address>;
-    fn get_current_yt_token(env: Env, vault: Address) -> Option<Address>;
-    fn get_current_pool(env: Env, vault: Address) -> Option<Address>;
     fn get_wasm_hashes(env: Env) -> WasmHashes;
-
-    fn rollover_if_expired(
-        env: Env,
-        vault: Address,
-        vault_type: VaultType,
-        new_maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
-    ) -> bool;
 
     fn set_admin(env: Env, new_admin: Address);
     fn set_wasm_hashes(env: Env, new_hashes: WasmHashes);
@@ -188,30 +162,24 @@ impl FactoryTrait for Factory {
 
         // Markets are immutable once created: refuse a second market for the same
         // (vault, maturity) so an existing pool can never be overwritten/orphaned.
+        // Different maturities on the same vault ARE allowed — they coexist as
+        // independent, concurrently-tradeable markets, each keyed by its maturity.
         assert!(
             storage::get_market(&env, &vault, maturity).is_none(),
             "market already exists for this vault and maturity"
         );
 
-        let ym_address =
+        let ym_addr =
             Self::deploy_yield_manager_internal(env.clone(), vault.clone(), vault_type, maturity);
-        let pool_address = Self::deploy_pool_internal(
+        let market = Self::deploy_pool_internal(
             env.clone(),
             vault.clone(),
+            ym_addr,
             scalar_root,
             initial_anchor,
             fee_rate_root,
             last_implied_rate,
         );
-
-        let market = Market {
-            ym: ym_address,
-            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
-            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
-            pool: pool_address,
-            maturity,
-            vault: vault.clone(),
-        };
 
         MarketCreated {
             vault: vault.clone(),
@@ -259,103 +227,12 @@ impl FactoryTrait for Factory {
         ContractUpgraded { new_wasm_hash }.publish(&env);
     }
 
-    fn get_vaults(env: Env) -> Vec<Address> {
-        storage::get_vaults(&env)
-    }
-
-    fn get_markets(env: Env, vault: Address) -> Vec<Market> {
-        storage::get_markets(&env, &vault)
-    }
-
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market> {
         storage::get_market(&env, &vault, maturity)
     }
 
-    fn get_current_yield_manager(env: Env, vault: Address) -> Option<Address> {
-        storage::get_current_yield_manager(&env, &vault)
-    }
-
-    fn get_current_pt_token(env: Env, vault: Address) -> Option<Address> {
-        storage::get_current_pt_token(&env, &vault)
-    }
-
-    fn get_current_yt_token(env: Env, vault: Address) -> Option<Address> {
-        storage::get_current_yt_token(&env, &vault)
-    }
-
-    fn get_current_pool(env: Env, vault: Address) -> Option<Address> {
-        storage::get_current_pool(&env, &vault)
-    }
-
     fn get_wasm_hashes(env: Env) -> WasmHashes {
         storage::get_wasm_hashes(&env)
-    }
-
-    fn rollover_if_expired(
-        env: Env,
-        vault: Address,
-        vault_type: VaultType,
-        new_maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
-    ) -> bool {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
-
-        let current_ym = match storage::get_current_yield_manager(&env, &vault) {
-            Some(ym) => ym,
-            None => return false,
-        };
-
-        let ym_client = YieldManagerClient::new(&env, &current_ym);
-        if env.ledger().timestamp() < ym_client.get_maturity() {
-            return false;
-        }
-
-        // we capture old market state
-        let old_market = Market {
-            ym: current_ym,
-            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
-            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
-            pool: storage::get_current_pool(&env, &vault).expect("Pool not set"),
-            maturity: ym_client.get_maturity(),
-            vault: vault.clone(),
-        };
-
-        let new_ym = Self::deploy_yield_manager_internal(
-            env.clone(),
-            vault.clone(),
-            vault_type,
-            new_maturity,
-        );
-        let new_pool = Self::deploy_pool_internal(
-            env.clone(),
-            vault.clone(),
-            scalar_root,
-            initial_anchor,
-            fee_rate_root,
-            last_implied_rate,
-        );
-
-        let new_market = Market {
-            ym: new_ym,
-            pt: storage::get_current_pt_token(&env, &vault).expect("PT not set"),
-            yt: storage::get_current_yt_token(&env, &vault).expect("YT not set"),
-            pool: new_pool,
-            maturity: new_maturity,
-            vault: vault.clone(),
-        };
-
-        MarketRolledOver {
-            vault,
-            old_market,
-            new_market,
-        }
-        .publish(&env);
-
-        true
     }
 }
 
@@ -411,27 +288,29 @@ impl Factory {
         let ym_client = YieldManagerClient::new(&env, &ym_addr);
         ym_client.set_token_contracts(&pt_addr, &yt_addr);
 
-        storage::register_vault(&env, &vault);
-        storage::set_current_yield_manager(&env, &vault, &ym_addr);
-        storage::set_current_pt_token(&env, &vault, &pt_addr);
-        storage::set_current_yt_token(&env, &vault, &yt_addr);
-
         ym_addr
     }
 
+    // Deploys the AMM pool for an already-deployed yield manager, records the
+    // market under its (vault, maturity) key, and returns it. Takes `ym_addr`
+    // directly rather than reading a per-vault "current" pointer, so a vault can
+    // host several markets at different maturities without them clobbering
+    // each other.
     fn deploy_pool_internal(
         env: Env,
         vault: Address,
+        ym_addr: Address,
         scalar_root: i128,
         initial_anchor: i128,
         fee_rate_root: i128,
         last_implied_rate: i128,
-    ) -> Address {
+    ) -> Market {
         let wasm_hashes = storage::get_wasm_hashes(&env);
 
-        let ym_addr =
-            storage::get_current_yield_manager(&env, &vault).expect("No yield manager for vault");
         let ym_client = YieldManagerClient::new(&env, &ym_addr);
+        let pt = ym_client.get_principal_token();
+        let yt = ym_client.get_yield_token();
+        let maturity = ym_client.get_maturity();
 
         let pool_addr = env
             .deployer()
@@ -439,11 +318,11 @@ impl Factory {
             .deploy_v2(
                 wasm_hashes.amm,
                 (
-                    ym_client.get_principal_token(),
+                    pt.clone(),
                     // the vault contract is itself the share token the AMM
                     // trades against PT
                     vault.clone(),
-                    ym_client.get_maturity(),
+                    maturity,
                     scalar_root,
                     initial_anchor,
                     fee_rate_root,
@@ -452,21 +331,16 @@ impl Factory {
                 ),
             );
 
-        storage::set_current_pool(&env, &vault, &pool_addr);
+        let market = Market {
+            ym: ym_addr,
+            pt,
+            yt,
+            maturity,
+            vault: vault.clone(),
+            pool: pool_addr,
+        };
+        storage::set_market(&env, &vault, market.clone());
 
-        storage::push_market(
-            &env,
-            &vault,
-            Market {
-                ym: ym_addr,
-                pt: ym_client.get_principal_token(),
-                yt: ym_client.get_yield_token(),
-                maturity: ym_client.get_maturity(),
-                vault: vault.clone(),
-                pool: pool_addr.clone(),
-            },
-        );
-
-        pool_addr
+        market
     }
 }

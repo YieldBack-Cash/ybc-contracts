@@ -28,11 +28,8 @@ fn test_exit_expired_returns_all_value_as_vault_shares() {
     assert!(lp > 0, "user must hold LP shares");
     let v_before = f.vault.balance(&f.user);
 
-    // Expire the market and roll the vault over so the exit provably works on
-    // a market the factory no longer points at.
+    // Expire the market; the exit path operates on it by (vault, maturity).
     f.advance_time(ONE_YEAR_SECS + 1);
-    let new_maturity = env.ledger().timestamp() + ONE_YEAR_SECS;
-    assert!(f.rollover(&f.vault.address, new_maturity), "rollover must run");
 
     let shares_out = f.router_exit_expired(&f.vault.address, f.maturity, &f.user, lp, 1);
 

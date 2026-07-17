@@ -144,13 +144,14 @@ impl<'a> IntegrationFixture<'a> {
         (vault_addr, market)
     }
 
-    /// Rolls the vault's expired market over to `new_maturity` with the same
-    /// AMM params as the fixture market.
-    pub fn rollover(&self, vault: &Address, new_maturity: u64) -> bool {
-        self.factory.rollover_if_expired(
+    /// Create an additional market on an existing vault at `maturity`, using the
+    /// fixture's standard AMM params. Lets a single vault host several markets
+    /// with different maturities at once.
+    pub fn create_market_on_vault(&self, vault: &Address, maturity: u64) -> Market {
+        self.factory.create_market(
             vault,
             &VaultType::Vault4626,
-            &new_maturity,
+            &maturity,
             &SCALAR_ROOT,
             &INITIAL_ANCHOR,
             &FEE_RATE_ROOT,
@@ -289,6 +290,34 @@ impl<'a> IntegrationFixture<'a> {
             &self.router,
             &Symbol::new(&self.env, "exit_expired"),
             (vault, maturity, to, lp_shares, min_shares_out).into_val(&self.env),
+        )
+    }
+
+    /// Claim accrued YT yield for `user`, returning the claimable amount the YT
+    /// contract reports (which is also the vault shares the YM pays out).
+    pub fn yt_claim_yield(&self, user: &Address) -> i128 {
+        self.env.invoke_contract::<i128>(
+            &self.yt,
+            &Symbol::new(&self.env, "claim_yield"),
+            (user,).into_val(&self.env),
+        )
+    }
+
+    /// Redeem `pt_amount` PT for vault shares through the YM (post-maturity).
+    pub fn ym_redeem_principal(&self, user: &Address, pt_amount: i128) {
+        self.env.invoke_contract::<()>(
+            &self.yield_manager,
+            &Symbol::new(&self.env, "redeem_principal"),
+            (user, pt_amount).into_val(&self.env),
+        );
+    }
+
+    /// Current YM exchange rate (refreshes lazily, exactly as a real op would).
+    pub fn ym_exchange_rate(&self) -> i128 {
+        self.env.invoke_contract::<i128>(
+            &self.yield_manager,
+            &Symbol::new(&self.env, "get_exchange_rate"),
+            soroban_sdk::Vec::new(&self.env),
         )
     }
 }

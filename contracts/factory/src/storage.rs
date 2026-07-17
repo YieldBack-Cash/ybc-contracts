@@ -1,17 +1,11 @@
 use crate::contract::{Market, WasmHashes};
-use soroban_sdk::{contracttype, Address, Env, Vec};
+use soroban_sdk::{contracttype, Address, Env};
 
 #[contracttype]
 enum DataKey {
     Admin,
     WasmHashes,
     SaltCounter,
-    Vaults,
-    CurrentYm(Address),
-    CurrentPt(Address),
-    CurrentYt(Address),
-    CurrentPool(Address),
-    Markets(Address),
     Market(Address, u64),
 }
 
@@ -50,94 +44,23 @@ pub fn set_salt_counter(env: &Env, counter: u32) {
         .set(&DataKey::SaltCounter, &counter);
 }
 
-pub fn get_vaults(env: &Env) -> Vec<Address> {
-    env.storage()
-        .persistent()
-        .get(&DataKey::Vaults)
-        .unwrap_or_else(|| Vec::new(env))
-}
-
-pub fn register_vault(env: &Env, vault: &Address) {
-    let mut vaults = get_vaults(env);
-    if !vaults.contains(vault) {
-        vaults.push_back(vault.clone());
-        env.storage().persistent().set(&DataKey::Vaults, &vaults);
-    }
-}
-
-pub fn set_current_yield_manager(env: &Env, vault: &Address, ym: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::CurrentYm(vault.clone()), ym);
-}
-
-pub fn get_current_yield_manager(env: &Env, vault: &Address) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&DataKey::CurrentYm(vault.clone()))
-}
-
-pub fn set_current_pt_token(env: &Env, vault: &Address, pt: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::CurrentPt(vault.clone()), pt);
-}
-
-pub fn get_current_pt_token(env: &Env, vault: &Address) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&DataKey::CurrentPt(vault.clone()))
-}
-
-pub fn set_current_yt_token(env: &Env, vault: &Address, yt: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::CurrentYt(vault.clone()), yt);
-}
-
-pub fn get_current_yt_token(env: &Env, vault: &Address) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&DataKey::CurrentYt(vault.clone()))
-}
-
-pub fn set_current_pool(env: &Env, vault: &Address, pool: &Address) {
-    env.storage()
-        .instance()
-        .set(&DataKey::CurrentPool(vault.clone()), pool);
-}
-
-pub fn get_current_pool(env: &Env, vault: &Address) -> Option<Address> {
-    env.storage()
-        .instance()
-        .get(&DataKey::CurrentPool(vault.clone()))
-}
-
-pub fn get_markets(env: &Env, vault: &Address) -> Vec<Market> {
-    env.storage()
-        .persistent()
-        .get(&DataKey::Markets(vault.clone()))
-        .unwrap_or_else(|| Vec::new(env))
-}
-
-/// Direct lookup of the live market for a (vault, maturity) pair. Redeploying a
-/// pool for the same maturity overwrites this entry, so the latest write wins —
-/// matching the "last record wins" semantics of the `Markets` history list.
+/// Direct lookup of a market by (vault, maturity). Each market is its own
+/// PERSISTENT ledger entry keyed by the pair, so a vault can host any number of
+/// markets at different maturities without them sharing (and eventually
+/// overflowing) a single entry, and none of them bloat the shared contract
+/// instance entry. Redeploying a pool for the same maturity is rejected by
+/// create_market, so an entry, once written, is never overwritten.
+///
+/// There is deliberately no on-chain list of all markets or vaults: enumeration
+/// is served off-chain by the indexer from MarketCreated events.
 pub fn get_market(env: &Env, vault: &Address, maturity: u64) -> Option<Market> {
     env.storage()
         .persistent()
         .get(&DataKey::Market(vault.clone(), maturity))
 }
 
-pub fn push_market(env: &Env, vault: &Address, market: Market) {
+pub fn set_market(env: &Env, vault: &Address, market: Market) {
     let maturity = market.maturity;
-
-    let mut markets = get_markets(env, vault);
-    markets.push_back(market.clone());
-    env.storage()
-        .persistent()
-        .set(&DataKey::Markets(vault.clone()), &markets);
-
     env.storage()
         .persistent()
         .set(&DataKey::Market(vault.clone(), maturity), &market);
