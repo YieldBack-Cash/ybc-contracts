@@ -52,6 +52,14 @@ enum Step {
     /// One-call exit through the router; post-maturity only. Burns LP, redeems
     /// the actor's whole PT balance, claims YT yield.
     ExitExpired { actor: u8, lp_shares: i128, min_shares_out: i128 },
+    /// Claim accrued YT yield directly. Works at any time; post-maturity it also
+    /// burns the claimer's remaining YT.
+    ClaimYield { actor: u8 },
+    /// Transfer YT between two actors. Accrues yield for both sides at their
+    /// own indices, so it stresses the yield-accounting merge path.
+    TransferYt { from: u8, to: u8, amount: i128 },
+    /// Transfer PT between two actors — moves redemption rights around.
+    TransferPt { from: u8, to: u8, amount: i128 },
     AdvanceTime { secs: u64 },
     RaiseVaultRate { pct: i128 },
 }
@@ -187,6 +195,37 @@ impl<'a> RouterHarness<'a> {
                     self.supplies_decoupled = true;
                 }
             }
+            Step::ClaimYield { actor } => {
+                let who = self.actor(actor);
+                // Post-maturity, claim_yield burns the claimer's YT alone, which
+                // decouples the PT==YT supply relation just like redeem_principal.
+                let had_yt = self.f.yt_balance(&who) > 0;
+                let post_maturity = e.ledger().timestamp() >= self.f.maturity;
+                let claimed = e.try_invoke_contract::<i128, soroban_sdk::Error>(
+                    &self.f.yt,
+                    &Symbol::new(e, "claim_yield"),
+                    (&who,).into_val(e),
+                );
+                if claimed.is_ok() && had_yt && post_maturity {
+                    self.supplies_decoupled = true;
+                }
+            }
+            Step::TransferYt { from, to, amount } => {
+                let (from, to) = (self.actor(from), self.actor(to));
+                let _ = e.try_invoke_contract::<(), soroban_sdk::Error>(
+                    &self.f.yt,
+                    &Symbol::new(e, "transfer"),
+                    (&from, &to, amount).into_val(e),
+                );
+            }
+            Step::TransferPt { from, to, amount } => {
+                let (from, to) = (self.actor(from), self.actor(to));
+                let _ = e.try_invoke_contract::<(), soroban_sdk::Error>(
+                    &self.f.pt,
+                    &Symbol::new(e, "transfer"),
+                    (&from, &to, amount).into_val(e),
+                );
+            }
             Step::AdvanceTime { secs } => {
                 self.f.advance_time(secs % (MAX_TIME_STEP + 1));
             }
@@ -203,6 +242,16 @@ impl<'a> RouterHarness<'a> {
         e.invoke_contract::<i128>(
             token,
             &Symbol::new(e, "total_supply"),
+            soroban_sdk::Vec::new(e),
+        )
+    }
+
+    /// Current YM exchange rate (refreshed, like a real op would see it).
+    fn ym_rate(&self) -> i128 {
+        let e = &self.f.env;
+        e.invoke_contract::<i128>(
+            &self.f.yield_manager,
+            &Symbol::new(e, "get_exchange_rate"),
             soroban_sdk::Vec::new(e),
         )
     }
@@ -254,6 +303,24 @@ impl<'a> RouterHarness<'a> {
             NUM_ACTORS as i128 * USER_FUNDS,
             "vault shares not conserved"
         );
+
+        // 5. YM solvency: invariant #4 only proves V is *conserved* across all
+        //    holders — it passes even when the YM over-pays yield, because that
+        //    just moves shares from the YM bucket to a user's. This checks the
+        //    YM bucket itself stays large enough: its shares, valued at the
+        //    current rate, must cover the principal owed to every outstanding
+        //    PT (yield is an additional claim on top, so this is a necessary
+        //    lower bound). A slack absorbs per-redemption floor rounding.
+        const SOLVENCY_SLACK: i128 = 10;
+        let rate = self.ym_rate();
+        let ym_assets = f.vault.balance(&f.yield_manager) * rate / 10_000_000;
+        let pt_owed = self.total_supply(&f.pt);
+        assert!(
+            ym_assets + SOLVENCY_SLACK >= pt_owed,
+            "YM insolvent: {} asset backing cannot cover {} PT principal",
+            ym_assets,
+            pt_owed,
+        );
     }
 }
 
@@ -297,9 +364,14 @@ fn step() -> impl Strategy<Value = Step> {
             .prop_map(|(actor, pt, v)| Step::AmmDeposit { actor, pt, v }),
         (actor.clone(), amount())
             .prop_map(|(actor, shares)| Step::AmmWithdraw { actor, shares }),
-        (actor, amount(), amount()).prop_map(|(actor, lp_shares, min_shares_out)| {
+        (actor.clone(), amount(), amount()).prop_map(|(actor, lp_shares, min_shares_out)| {
             Step::ExitExpired { actor, lp_shares, min_shares_out }
         }),
+        actor.clone().prop_map(|actor| Step::ClaimYield { actor }),
+        (actor.clone(), actor.clone(), amount())
+            .prop_map(|(from, to, amount)| Step::TransferYt { from, to, amount }),
+        (actor.clone(), actor.clone(), amount())
+            .prop_map(|(from, to, amount)| Step::TransferPt { from, to, amount }),
         time_step().prop_map(|secs| Step::AdvanceTime { secs }),
         (0i128..=100i128).prop_map(|pct| Step::RaiseVaultRate { pct }),
     ]

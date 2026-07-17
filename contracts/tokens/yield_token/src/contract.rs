@@ -5,6 +5,8 @@ use soroban_token_sdk::events::{Burn, Mint, Transfer};
 use yield_manager_interface::YieldManagerClient;
 use crate::storage;
 
+const SCALAR_7: i128 = 1_0000000;
+
 fn check_nonnegative_amount(amount: i128) {
     if amount < 0 {
         panic!("negative amount is not allowed: {}", amount)
@@ -46,9 +48,18 @@ impl YieldToken {
         // So current_rate >= old_index is always true
         // This contract only update if rate increased to avoid unnecessary storage writes
         if current_rate > old_index {
-            // Calculate pending yield in vault shares
-            // balance is in token units (scaled by 1e7), rate ratio gives fractional yield
-            let pending_yield = (balance * (current_rate - old_index)) / old_index;
+            // Pending yield, converted to vault SHARES. `balance` is asset-
+            // denominated (minted as shares * rate / SCALAR_7), so the accrued
+            // amount `balance * (current_rate - old_index) / old_index` is in
+            // ASSET units. It is paid out as shares by the yield manager, so
+            // divide by `current_rate` (rescaled by SCALAR_7) to convert assets
+            // to shares at the current price. The trailing division floors, so
+            // the payout rounds down and the yield manager keeps a dust surplus.
+            let pending_yield = balance
+                .checked_mul(current_rate - old_index)
+                .and_then(|v| v.checked_mul(SCALAR_7))
+                .expect("overflow computing pending yield")
+                / (old_index * current_rate);
             let current_accrued = storage::get_accrued_yield(env, user);
             storage::set_accrued_yield(env, user, current_accrued + pending_yield);
             storage::set_user_index(env, user, current_rate);
