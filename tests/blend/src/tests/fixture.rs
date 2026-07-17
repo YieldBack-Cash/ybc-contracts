@@ -15,7 +15,7 @@ const INITIAL_ANCHOR: i128 = 11_000_000;
 const LAST_IMPLIED_RATE: i128 = 1_000_000;
 
 mod fee_vault {
-    soroban_sdk::contractimport!(file = "../../wasms/fee_vault_v2.wasm");
+    soroban_sdk::contractimport!(file = "../../wasms/blend_vault_v2.wasm");
 }
 
 /// Inline mock Blend pool — implements the subset of the Blend pool interface
@@ -186,13 +186,17 @@ impl<'a> BlendFixture<'a> {
             mockpool::register_mock_pool_with_b_rate(env, 1_100_000_000_000);
 
         // ── Fee vault WASM ───────────────────────────────────────────────────
+        // blend_vault_v2 takes the BLND emissions token as its 4th ctor arg
+        // (fee_vault_v2 took an Option<Address> signer here instead). No test
+        // exercises emissions, so a bare SAC address is sufficient.
+        let blnd = env.register_stellar_asset_contract_v2(admin.clone()).address();
         let fee_vault_addr = env.register(
             fee_vault::WASM,
             (
                 admin.clone(),
                 blend_pool.address.clone(),
                 asset.clone(),
-                Option::<Address>::None,
+                blnd,
             ),
         );
         let fee_vault = fee_vault::Client::new(env, &fee_vault_addr);

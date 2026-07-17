@@ -17,7 +17,7 @@ pub const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 pub const ONE_DAY_SECS: u64 = 24 * 3600;
 
 mod fee_vault {
-    soroban_sdk::contractimport!(file = "../../wasms/fee_vault_v2.wasm");
+    soroban_sdk::contractimport!(file = "../../wasms/blend_vault_v2.wasm");
 }
 
 // SEP-40 compatible types — XDR-equivalent to sep-40-oracle's Asset and PriceData.
@@ -108,7 +108,7 @@ impl<'a> RealBlendFixture<'a> {
     /// Deploy the full stack:
     ///
     /// Blend protocol (BlendFixture) → real pool with seeded utilisation
-    ///   → fee vault (fee_vault_v2.wasm) → yield manager → PT / YT
+    ///   → fee vault (blend_vault_v2.wasm) → yield manager → PT / YT
     ///
     /// The fee vault is bootstrapped with a tiny admin deposit so its
     /// `total_shares > 0` before the YM constructor calls `convert_to_assets`.
@@ -179,7 +179,7 @@ impl<'a> RealBlendFixture<'a> {
         // ── Fee vault ────────────────────────────────────────────────────────
         let fee_vault_addr = env.register(
             fee_vault::WASM,
-            (&admin, &pool_addr, &underlying, Option::<Address>::None),
+            (&admin, &pool_addr, &underlying, &blnd),
         );
         let fee_vault_client = fee_vault::Client::new(env, &fee_vault_addr);
 
