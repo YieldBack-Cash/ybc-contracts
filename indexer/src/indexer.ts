@@ -53,21 +53,6 @@ async function applyFactoryEvent(
                 });
                 break;
             }
-            case "market_rolled_over": {
-                await tx.market.create({
-                    data: {
-                        id: `${decoded.vault}:${decoded.newMarket.maturity}`,
-                        vault: decoded.vault,
-                        name: decoded.newMarket.name,
-                        ym: decoded.newMarket.ym,
-                        pt: decoded.newMarket.pt,
-                        yt: decoded.newMarket.yt,
-                        pool: decoded.newMarket.pool,
-                        maturity: decoded.newMarket.maturity,
-                    },
-                });
-                break;
-            }
             case "admin_changed":
             case "wasm_hashes_updated":
             case "contract_upgraded":

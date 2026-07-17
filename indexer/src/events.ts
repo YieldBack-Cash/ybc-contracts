@@ -20,12 +20,6 @@ export interface WasmHashes {
 
 export type DecodedFactoryEvent =
     | { kind: "market_created"; vault: string; market: Market }
-    | {
-          kind: "market_rolled_over";
-          vault: string;
-          oldMarket: Market;
-          newMarket: Market;
-      }
     | { kind: "admin_changed"; oldAdmin: string; newAdmin: string }
     | {
           kind: "wasm_hashes_updated";
@@ -384,13 +378,6 @@ export function decodeFactoryEvent(
                 kind: "market_created",
                 vault: topics[1] as string,
                 market: value as Market,
-            };
-        case "market_rolled_over":
-            return {
-                kind: "market_rolled_over",
-                vault: topics[1] as string,
-                oldMarket: value.old_market as Market,
-                newMarket: value.new_market as Market,
             };
         case "admin_changed":
             return {

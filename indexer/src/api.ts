@@ -9,23 +9,28 @@ app.use(
 );
 const prisma = new PrismaClient();
 
-const NOW = BigInt(Math.floor(Date.now() / 1000));
+// Evaluated per request so `isActive` reflects the current time, not server
+// boot time.
+function nowSecs(): bigint {
+    return BigInt(Math.floor(Date.now() / 1000));
+}
 
-function toMarketJson(market: Market) {
+function toMarketJson(market: Market, now: bigint) {
     return {
         ...market,
         maturity: market.maturity.toString(),
-        isActive: market.maturity > NOW,
+        isActive: market.maturity > now,
     };
 }
 
 app.get("/markets", async (req, res) => {
+    const now = nowSecs();
     const markets = await prisma.market.findMany({
-        where: { maturity: { gt: NOW } },
+        where: { maturity: { gt: now } },
         orderBy: { maturity: "asc" },
     });
 
-    res.json(markets.map(toMarketJson));
+    res.json(markets.map((m) => toMarketJson(m, now)));
 });
 
 app.get("/markets/:id/events", async (req, res) => {
@@ -37,15 +42,17 @@ app.get("/markets/:id/events", async (req, res) => {
 });
 
 app.get("/vaults/:address/markets", async (req, res) => {
+    const now = nowSecs();
     const markets = await prisma.market.findMany({
         where: { vault: req.params.address },
         orderBy: { maturity: "asc" },
     });
 
-    res.json(markets.map(toMarketJson));
+    res.json(markets.map((m) => toMarketJson(m, now)));
 });
 
 app.get("/vaults", async (req, res) => {
+    const now = nowSecs();
     const vaults = await prisma.vault.findMany({
         include: { markets: true },
     });
@@ -53,7 +60,7 @@ app.get("/vaults", async (req, res) => {
     res.json(
         vaults.map((vault) => ({
             ...vault,
-            markets: vault.markets.map(toMarketJson),
+            markets: vault.markets.map((m) => toMarketJson(m, now)),
         })),
     );
 });

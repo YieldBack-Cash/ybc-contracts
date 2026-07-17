@@ -70,51 +70,6 @@ describe("decodeFactoryEvent", () => {
         });
     });
 
-    it("decodes market_rolled_over", () => {
-        const vault = addr();
-        const oldMarket: Market = {
-            name: "Old Market",
-            ym: addr(),
-            pt: addr(),
-            yt: addr(),
-            pool: addr(),
-            maturity: 100n,
-            vault,
-        };
-        const newMarket: Market = {
-            name: "New Market",
-            ym: addr(),
-            pt: addr(),
-            yt: addr(),
-            pool: addr(),
-            maturity: 200n,
-            vault,
-        };
-
-        const event = fixtureEvent(
-            [
-                nativeToScVal("market_rolled_over", { type: "symbol" }),
-                nativeToScVal(vault, { type: "address" }),
-            ],
-            nativeToScVal(
-                { old_market: oldMarket, new_market: newMarket },
-                {
-                    type: {
-                        old_market: ["symbol", marketTypeSpec],
-                        new_market: ["symbol", marketTypeSpec],
-                    },
-                },
-            ),
-        );
-
-        expect(decodeFactoryEvent(event)).toEqual({
-            kind: "market_rolled_over",
-            vault,
-            oldMarket,
-            newMarket,
-        });
-    });
-
     it("decodes admin_changed", () => {
         const oldAdmin = addr();
         const newAdmin = addr();
