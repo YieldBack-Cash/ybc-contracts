@@ -1,0 +1,73 @@
+{
+  "network": "testnet",
+  "wasms": {
+    "principal_token": {
+      "wasm_hash": "d6d036009b1e90fe2893463f2b630cf9c7c28febc2fc14a535002a4c987216a1",
+      "installed_at": "2026-07-18T00:44:49Z"
+    },
+    "yield_token": {
+      "wasm_hash": "8e31f6da00ff4bb12d13daa0beb5e0b6d1202921fb157aa24a5c3a271f3dc10c",
+      "installed_at": "2026-07-18T00:45:19Z"
+    },
+    "yield_manager": {
+      "wasm_hash": "f6bf163df8976720d2b116aebc31651fb4009ea45d259b9cb47dbf2636eb896c",
+      "installed_at": "2026-07-18T00:45:50Z"
+    },
+    "amm": {
+      "wasm_hash": "2fd6f4229fc0f75b90753bbb56637130886aacf5f45ee5a0b545c2a212b3f097",
+      "installed_at": "2026-07-18T00:46:21Z"
+    },
+    "factory": {
+      "wasm_hash": "cc20e1faa1da2086c7ecd913a295ab360ad7d4603d9a089d54d37f31c0e04726",
+      "installed_at": "2026-07-18T00:47:05Z"
+    },
+    "router": {
+      "wasm_hash": "1c297dcc8429500aee92284727900d7843aa41132aa14c1b3f4b4e7032d0ca10",
+      "installed_at": "2026-07-18T00:47:40Z"
+    },
+    "mock_vault": {
+      "wasm_hash": "b9c566baa4c45624a2ca3b97c6ea72010fe72642120c6f317b88c24dc115dcb7",
+      "installed_at": "2026-07-18T00:48:32Z"
+    }
+  },
+  "contracts": {
+    "blend_vault": {
+      "id": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
+      "wasm_hash": "8fd0424a64b8720a1138130b374dba82d1962259f2da7d9d55cc6203eed26c3e",
+      "deployed_at": "2026-07-05T00:35:58Z",
+      "asset": {
+        "symbol": "XLM",
+        "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+      }
+    },
+    "factory": {
+      "id": "CCBJTE33TRK4OA3YC3IMZZW3PTH73G23IAJSF53XAWR5L5IJ7JCJALVV",
+      "deployed_at": "2026-07-18T00:56:00Z",
+      "wasm_hash": "cc20e1faa1da2086c7ecd913a295ab360ad7d4603d9a089d54d37f31c0e04726",
+      "admin": "GBY3LP4JSZMAQGDAIPJIRF6QKA6MNRIJEFEEK3GNB2GA7W4RERE3II3B"
+    },
+    "router": {
+      "id": "CCRCIKK27VDK3NDEKCGCMRR6RALFVPEWTIN6226SDVGZRBFXGBYXXCAO",
+      "deployed_at": "2026-07-18T01:02:00Z",
+      "wasm_hash": "1c297dcc8429500aee92284727900d7843aa41132aa14c1b3f4b4e7032d0ca10",
+      "factory": "CCBJTE33TRK4OA3YC3IMZZW3PTH73G23IAJSF53XAWR5L5IJ7JCJALVV"
+    }
+  },
+  "markets": [
+    {
+      "vault": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
+      "asset": "XLM",
+      "maturity": 1794873600,
+      "maturity_date": "2026-11-17T00:00:00Z",
+      "ym": "CBMRAOFKX3CBROGE6RC64ZCE44GOY2KQPI2JNOJXBQP36ALI2I53YUPB",
+      "pt": "CCD3Z3TR2VNT6PIXIANEOECU6PZ5EKMZKDB2TMLCCBOL2MMGJU7RS5X7",
+      "yt": "CAR6IQ46U67XO35FHNDZGRMVPCEHXES7HFT6UTKBLSABCJWUBD5VJMVU",
+      "pool": "CDMYPHH5JS33HSYSUGQKK7NN3JKZS2DGQ5NW2YQOMS6QNAE5NVXL37BS",
+      "scalar_root": 250000000,
+      "initial_anchor": 11000000,
+      "fee_rate_root": 500000,
+      "last_implied_rate": 13862944,
+      "created_at": "2026-07-18T01:15:00Z"
+    }
+  ]
+}
