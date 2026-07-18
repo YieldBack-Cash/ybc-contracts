@@ -3,7 +3,6 @@ use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, PoolSet
 use crate::storage;
 use amm_interface::{FlashSwapPtReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
-use defindex_interface::DefindexVaultContractClient;
 use yield_manager_interface::{YieldManagerTrait, VaultType, YieldManagerError};
 use principal_token_interface::PrincipalTokenClient;
 use yield_token_interface::YieldTokenClient;
@@ -28,11 +27,6 @@ impl YieldManager {
             VaultType::Vault4626 => {
                 let client = VaultContractClient::new(env, &vault_addr);
                 client.convert_to_assets(&SCALAR_7)
-            }
-            VaultType::VaultDefindex => {
-                let client = DefindexVaultContractClient::new(env, &vault_addr);
-                let asset_amounts = client.get_asset_amounts_per_shares(&SCALAR_7);
-                asset_amounts.get(0).expect("Defindex returned no asset amounts")
             }
         }
     }

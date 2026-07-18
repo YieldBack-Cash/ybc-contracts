@@ -15,7 +15,6 @@ amm-interface = { path = "../../amm/amm-interface" }
 principal_token_interface = { path = "../../tokens/principal_token_interface" }
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
-defindex_interface = { path = "../../../vault/defindex_interface" }
 yield_manager_interface = { path = "../yield_manager_interface" }
 yield_token_interface = { path = "../../tokens/yield_token_interface" }
 

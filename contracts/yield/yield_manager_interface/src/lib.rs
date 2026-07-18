@@ -6,7 +6,6 @@ use soroban_sdk::{contractclient, contracterror, contracttype, Address, Env};
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum VaultType {
     Vault4626 = 0,
-    VaultDefindex = 1
 }
 
 #[contracterror]

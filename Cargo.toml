@@ -12,7 +12,6 @@ members = [
   "contracts/amm/amm-interface",
   "contracts/mocks/mock_vault",
   "vault/vault_interface",
-  "vault/defindex_interface",
   "contracts/router",
   "tests/integration",
   "tests/blend",
