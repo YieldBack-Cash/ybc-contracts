@@ -1,0 +1,38 @@
+{
+    "name": "ybc-indexer",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/scheduler.js",
+        "dev": "tsx src/scheduler.ts",
+        "api": "tsx src/api.ts",
+        "test": "vitest run"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "@prisma/adapter-pg": "^7.8.0",
+        "@prisma/client": "^5.22.0",
+        "@stellar/stellar-sdk": "^16.0.1",
+        "bullmq": "^5.79.1",
+        "cors": "^2.8.6",
+        "express": "^5.2.1",
+        "ioredis": "^5.11.1",
+        "pg": "^8.22.0",
+        "typescript": "^6.0.3"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.6",
+        "@types/node": "^26.0.1",
+        "@types/pg": "^8.20.0",
+        "dotenv": "^17.4.2",
+        "prisma": "^5.22.0",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.22.4",
+        "vitest": "^4.1.9"
+    }
+}

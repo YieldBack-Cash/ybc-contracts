@@ -11,7 +11,7 @@ pub const FP_SCALE: i128 = 10_000_000; // 1e7
 ///
 /// # Panics
 /// Panics if `x <= 0`.
-pub fn ln_fp(x: i128, scale: i128) -> i128 { // todo: as the pool becomes more V heavy, this function will break
+pub fn ln_fp(x: i128, scale: i128) -> i128 { // callers must keep x well above 0; curve.rs bounds the pool proportion so the ratio fed here never truncates to zero
     assert!(x > 0, "ln undefined for non-positive values");
 
     // ln(2) × SCALE, precomputed: 0.693147... × scale
@@ -31,21 +31,21 @@ pub fn ln_fp(x: i128, scale: i128) -> i128 { // todo: as the pool becomes more V
         k -= 1;
     }
 
-    // Taylor series for ln(1 + t) where t = (normalized - scale) / scale
-    // ln(1+t) = t - t²/2 + t³/3 - t⁴/4 + ...
-    // t ∈ [0, 1) here, so series converges quickly (6–8 terms is plenty)
-    let t = normalized - scale; // t scaled by `scale`
-    let mut result: i128 = 0;
-    let mut term = t;           // t^n / scale^(n-1), scaled
+    // Artanh series: ln(y) = 2·artanh(z) = 2·(z + z³/3 + z⁵/5 + ...) where
+    // z = (y - 1)/(y + 1). With y ∈ [1, 2) from normalization, z ≤ 1/3, so each
+    // term shrinks by z² ≤ 1/9 — five terms leave an error under 1e-5, versus
+    // ~6e-2 for a plain 8-term Taylor series near y → 2.
+    let z = (normalized - scale) * scale / (normalized + scale); // scaled
+    let z2 = z * z / scale;
 
-    for n in 1i128..=8 {
-        if n % 2 == 1 {
-            result += term / n;
-        } else {
-            result -= term / n;
-        }
-        term = term / scale * t; // advance: term *= t/scale
+    let mut result: i128 = 0;
+    let mut term = z; // z^n for odd n, scaled
+
+    for n in [1i128, 3, 5, 7, 9] {
+        result += term / n;
+        term = term * z2 / scale;
     }
+    result *= 2;
 
     // Add back the normalization shift: k * ln(2)
     result + k * ln2
@@ -66,11 +66,6 @@ pub fn mul_down(a: i128, b: i128) -> i128 {
 /// Fixed-point divide, rounded down: (a * FP_SCALE) / b
 pub fn div_down(a: i128, b: i128) -> i128 {
     (a * FP_SCALE) / b
-}
-
-/// Fixed-point divide, rounded up: ceil(a * FP_SCALE / b)
-pub fn div_up(a: i128, b: i128) -> i128 {
-    (a * FP_SCALE + b - 1) / b
 }
 
 /// Fixed-point e^x via Taylor series, for non-negative 1e7-scaled x.

@@ -7,7 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-testutils = []
+# Enables the stateful fuzz/property-test harness (src/fuzz_harness.rs) for
+# out-of-crate consumers, i.e. the cargo-fuzz targets in fuzz/.
+testutils = ["soroban-sdk/testutils", "dep:mock_vault"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -15,7 +17,9 @@ soroban-fixed-point-math = { workspace = true }
 amm-interface = { path = "../amm-interface" }
 num-integer = { version = "0.1.46", default-features = false }
 vault_interface = { path = "../../../vault/vault_interface" }
+mock_vault = { path = "../../mocks/mock_vault", optional = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 mock_vault = { path = "../../mocks/mock_vault" }
+proptest = "1"

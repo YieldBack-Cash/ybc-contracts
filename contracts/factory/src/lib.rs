@@ -2,8 +2,9 @@
 
 mod storage;
 mod contract;
+mod events;
 
-pub use contract::{Factory, FactoryClient, FactoryTrait, WasmHashes};
+pub use contract::{Factory, FactoryClient, FactoryTrait, Market, WasmHashes};
 
 #[cfg(test)]
 mod test;

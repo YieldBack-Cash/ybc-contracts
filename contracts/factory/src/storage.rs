@@ -1,87 +1,98 @@
-use soroban_sdk::{Address, Env};
-use crate::contract::WasmHashes;
+use crate::contract::{Market, WasmHashes};
+use soroban_sdk::{contracttype, Address, Env};
 
-// Storage keys
-const ADMIN_KEY: &str = "admin";
-const CURRENT_YIELD_MANAGER_KEY: &str = "cur_ym";
-const CURRENT_PT_TOKEN_KEY: &str = "cur_pt";
-const CURRENT_YT_TOKEN_KEY: &str = "cur_yt";
-const CURRENT_PT_POOL_KEY: &str = "cur_pt_pool";
-const CURRENT_YT_POOL_KEY: &str = "cur_yt_pool";
-const WASM_HASHES_KEY: &str = "wasm_h";
-const SALT_COUNTER_KEY: &str = "salt_ctr";
+#[contracttype]
+enum DataKey {
+    Admin,
+    WasmHashes,
+    SaltCounter,
+    Market(Address, u64),
+}
 
-// Admin functions
+// Storage TTL constants
+pub const DAY_IN_LEDGERS: u32 = 17280;
+pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+/// Extends the instance TTL (admin, wasm hashes, salt counter). Call once per
+/// entrypoint -- if this expires, the factory (and with it market resolution
+/// for the router) is bricked until restored.
+pub fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
 pub fn set_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&ADMIN_KEY, admin);
+    env.storage().instance().set(&DataKey::Admin, admin);
 }
 
 pub fn get_admin(env: &Env) -> Address {
     env.storage()
         .instance()
-        .get(&ADMIN_KEY)
+        .get(&DataKey::Admin)
         .expect("Admin not set")
 }
 
-// Current yield manager
-pub fn set_current_yield_manager(env: &Env, yield_manager: &Address) {
-    env.storage().instance().set(&CURRENT_YIELD_MANAGER_KEY, yield_manager);
-}
-
-pub fn get_current_yield_manager(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_YIELD_MANAGER_KEY)
-}
-
-// Current PT token
-pub fn set_current_pt_token(env: &Env, pt_token: &Address) {
-    env.storage().instance().set(&CURRENT_PT_TOKEN_KEY, pt_token);
-}
-
-pub fn get_current_pt_token(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_PT_TOKEN_KEY)
-}
-
-// Current YT token
-pub fn set_current_yt_token(env: &Env, yt_token: &Address) {
-    env.storage().instance().set(&CURRENT_YT_TOKEN_KEY, yt_token);
-}
-
-pub fn get_current_yt_token(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_YT_TOKEN_KEY)
-}
-
-// Current PT pool
-pub fn set_current_pt_pool(env: &Env, pt_pool: &Address) {
-    env.storage().instance().set(&CURRENT_PT_POOL_KEY, pt_pool);
-}
-
-pub fn get_current_pt_pool(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_PT_POOL_KEY)
-}
-
-// Current YT pool
-pub fn set_current_yt_pool(env: &Env, yt_pool: &Address) {
-    env.storage().instance().set(&CURRENT_YT_POOL_KEY, yt_pool);
-}
-
-pub fn get_current_yt_pool(env: &Env) -> Option<Address> {
-    env.storage().instance().get(&CURRENT_YT_POOL_KEY)
-}
-
-// WASM hashes
 pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
-    env.storage().instance().set(&WASM_HASHES_KEY, hashes);
+    env.storage().instance().set(&DataKey::WasmHashes, hashes);
 }
 
 pub fn get_wasm_hashes(env: &Env) -> WasmHashes {
-    env.storage().instance().get(&WASM_HASHES_KEY).expect("WASM hashes not set")
+    env.storage()
+        .instance()
+        .get(&DataKey::WasmHashes)
+        .expect("WASM hashes not set")
 }
 
-// Deploy counter - increments with each contract deployment for unique salts
 pub fn get_salt_counter(env: &Env) -> u32 {
-    env.storage().instance().get(&SALT_COUNTER_KEY).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::SaltCounter)
+        .unwrap_or(0)
 }
 
 pub fn set_salt_counter(env: &Env, counter: u32) {
-    env.storage().instance().set(&SALT_COUNTER_KEY, &counter);
+    env.storage()
+        .instance()
+        .set(&DataKey::SaltCounter, &counter);
+}
+
+/// Direct lookup of a market by (vault, maturity). Each market is its own
+/// PERSISTENT ledger entry keyed by the pair, so a vault can host any number of
+/// markets at different maturities without them sharing (and eventually
+/// overflowing) a single entry, and none of them bloat the shared contract
+/// instance entry. Redeploying a pool for the same maturity is rejected by
+/// create_market, so an entry, once written, is never overwritten.
+///
+/// There is deliberately no on-chain list of all markets or vaults: enumeration
+/// is served off-chain by the indexer from MarketCreated events.
+pub fn get_market(env: &Env, vault: &Address, maturity: u64) -> Option<Market> {
+    let key = DataKey::Market(vault.clone(), maturity);
+    let market = env.storage().persistent().get(&key);
+    // Reads don't auto-extend TTL, and the router resolves every operation
+    // through this lookup — renew on read so any activity keeps the market
+    // entry alive.
+    if market.is_some() {
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+    market
+}
+
+pub fn set_market(env: &Env, vault: &Address, market: Market) {
+    let maturity = market.maturity;
+    let key = DataKey::Market(vault.clone(), maturity);
+    env.storage().persistent().set(&key, &market);
+    env.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }

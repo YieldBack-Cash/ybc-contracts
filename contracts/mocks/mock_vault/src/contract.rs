@@ -3,6 +3,8 @@ use stellar_tokens::fungible::{Base, FungibleToken};
 use stellar_tokens::fungible::burnable::FungibleBurnable;
 use crate::storage;
 
+const SCALAR_7: i128 = 1_0000000;
+
 pub trait MockVaultTrait {
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
@@ -38,7 +40,7 @@ impl MockVaultTrait for MockVault {
 
     fn convert_to_assets(env: Env, shares: i128) -> i128 {
         let exchange_rate = storage::get_exchange_rate(&env);
-        shares * exchange_rate
+        shares * exchange_rate / SCALAR_7
     }
 
     /// Mint tokens to an address (admin only for mock purposes)

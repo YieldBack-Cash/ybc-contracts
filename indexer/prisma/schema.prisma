@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Get a free hosted Postgres database in seconds: `npx create`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model IndexerState {
+  id         Int      @id @default(1)
+  lastPolled DateTime @default(now())
+  lastLedger Int?
+}
+
+model Vault {
+  address   String   @id
+  markets   Market[]
+  createdAt DateTime @default(now())
+}
+
+model Market {
+  id        String   @id
+  vault     String
+  name      String
+  ym        String
+  pt        String
+  yt        String
+  pool      String
+  maturity  BigInt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  vaultRef  Vault    @relation(fields: [vault], references: [address])
+}
+
+model MarketEvent {
+  id             String   @id
+  ledger         Int
+  ledgerClosedAt DateTime
+  source         String
+  type           String
+  txHash         String?
+  contractId     String
+  market         String
+  payload        Json
+  createdAt      DateTime @default(now())
+}
+
+model FactoryEvent {
+  id             String   @id
+  ledger         Int
+  ledgerClosedAt DateTime
+  type           String
+  txHash         String?
+  vault          String?
+  payload        Json
+  createdAt      DateTime @default(now())
+}

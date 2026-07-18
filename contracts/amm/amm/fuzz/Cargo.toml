@@ -1,0 +1,30 @@
+[package]
+name = "amm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Standalone: this crate is its own workspace root (the parent workspace
+# excludes it) because cargo-fuzz builds need nightly + sanitizer flags.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+amm = { path = "..", features = ["testutils"] }
+
+[[bin]]
+name = "amm_stateful"
+path = "fuzz_targets/amm_stateful.rs"
+test = false
+doc = false
+bench = false
+
+# cargo-fuzz builds with sanitizer flags; keep this crate out of the parent
+# workspace (the root Cargo.toml excludes it) and give fuzzing some optimization.
+[profile.release]
+debug = 1
+overflow-checks = true

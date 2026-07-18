@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "yield_manager"
 version = "0.1.0"
 edition = "2021"
@@ -11,6 +11,7 @@ default = ["contract"]
 contract = []
 
 [dependencies]
+amm-interface = { path = "../../amm/amm-interface" }
 principal_token_interface = { path = "../../tokens/principal_token_interface" }
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
@@ -23,17 +24,3 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 principal_token = { path = "../../tokens/principal_token" }
 yield_token = { path = "../../tokens/yield_token" }
 mock_vault = { path = "../../mocks/mock_vault" }
-
-[profile.release]
-opt-level = "z"
-overflow-checks = true
-debug = 0
-strip = "symbols"
-debug-assertions = false
-panic = "abort"
-codegen-units = 1
-lto = true
-
-[profile.release-with-logs]
-inherits = "release"
-debug-assertions = true

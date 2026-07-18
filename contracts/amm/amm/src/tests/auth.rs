@@ -1,0 +1,103 @@
+// ── Auth tests for LiquidityPool (AMM) ────────────────────────────────────────
+//
+// Rule: never call env.mock_all_auths() here. Each test proves that a specific
+// protected function rejects callers who have not provided the required auth.
+
+use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal, String, Symbol};
+
+use crate::contract::LiquidityPool;
+use mock_vault::MockVault;
+
+const SCALAR_ROOT: i128 = 250_000_000;
+const FEE_RATE_ROOT: i128 = 500_000;
+const INITIAL_ANCHOR: i128 = 11_000_000;
+const LAST_IMPLIED_RATE: i128 = 1_000_000;
+const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
+
+fn register_pool(env: &Env) -> (Address, Address, Address) {
+    let admin = Address::generate(env);
+
+    let pt_addr = env.register(
+        MockVault,
+        (&admin, String::from_str(env, "PT"), String::from_str(env, "PT"), 7u32),
+    );
+    let vault_addr = env.register(
+        MockVault,
+        (&admin, String::from_str(env, "Vault"), String::from_str(env, "VLT"), 7u32),
+    );
+
+    let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
+    let pool_addr = env.register(
+        LiquidityPool,
+        (&pt_addr, &vault_addr, expiry, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE),
+    );
+    (pt_addr, vault_addr, pool_addr)
+}
+
+// ── deposit ───────────────────────────────────────────────────────────────────
+
+/// AMM.deposit requires the liquidity provider to authorize the call.
+#[test]
+#[should_panic]
+fn test_deposit_without_to_auth_reverts() {
+    let env = Env::default();
+    let (_pt, _vault, pool_addr) = register_pool(&env);
+    let user = Address::generate(&env);
+
+    env.invoke_contract::<()>(
+        &pool_addr,
+        &Symbol::new(&env, "deposit"),
+        (&user, 1_000_000i128, 0i128, 1_000_000i128, 0i128).into_val(&env),
+    );
+}
+
+// ── withdraw ──────────────────────────────────────────────────────────────────
+
+/// AMM.withdraw requires the LP share holder to authorize the call.
+#[test]
+#[should_panic]
+fn test_withdraw_without_to_auth_reverts() {
+    let env = Env::default();
+    let (_pt, _vault, pool_addr) = register_pool(&env);
+    let user = Address::generate(&env);
+
+    env.invoke_contract::<(i128, i128)>(
+        &pool_addr,
+        &Symbol::new(&env, "withdraw"),
+        (&user, 1_000_000i128, 0i128, 0i128).into_val(&env),
+    );
+}
+
+// ── swap_v_for_pt ─────────────────────────────────────────────────────────────
+
+/// AMM.swap_v_for_pt requires the swapper to authorize the call.
+#[test]
+#[should_panic]
+fn test_swap_v_for_pt_without_to_auth_reverts() {
+    let env = Env::default();
+    let (_pt, _vault, pool_addr) = register_pool(&env);
+    let user = Address::generate(&env);
+
+    env.invoke_contract::<()>(
+        &pool_addr,
+        &Symbol::new(&env, "swap_v_for_pt"),
+        (&user, 1_000_000i128, 1_000_000i128).into_val(&env),
+    );
+}
+
+// ── swap_pt_for_v ─────────────────────────────────────────────────────────────
+
+/// AMM.swap_pt_for_v requires the swapper to authorize the call.
+#[test]
+#[should_panic]
+fn test_swap_pt_for_v_without_to_auth_reverts() {
+    let env = Env::default();
+    let (_pt, _vault, pool_addr) = register_pool(&env);
+    let user = Address::generate(&env);
+
+    env.invoke_contract::<()>(
+        &pool_addr,
+        &Symbol::new(&env, "swap_pt_for_v"),
+        (&user, 1_000_000i128, 1i128).into_val(&env),
+    );
+}

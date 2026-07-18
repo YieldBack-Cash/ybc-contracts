@@ -1,8 +1,11 @@
 use soroban_sdk::{
     contract, contractimpl, token::TokenInterface, Address, Env, MuxedAddress, String,
 };
+use soroban_token_sdk::events::{Burn, Mint, Transfer};
 use yield_manager_interface::YieldManagerClient;
 use crate::storage;
+
+const SCALAR_7: i128 = 1_0000000;
 
 fn check_nonnegative_amount(amount: i128) {
     if amount < 0 {
@@ -45,9 +48,20 @@ impl YieldToken {
         // So current_rate >= old_index is always true
         // This contract only update if rate increased to avoid unnecessary storage writes
         if current_rate > old_index {
-            // Calculate pending yield in vault shares
-            // balance is in token units (scaled by 1e7), rate ratio gives fractional yield
-            let pending_yield = (balance * (current_rate - old_index)) / old_index;
+            // Pending yield, converted to vault SHARES. `balance` is asset-
+            // denominated (minted as shares * rate / SCALAR_7), so the accrued
+            // amount `balance * (current_rate - old_index) / old_index` is in
+            // ASSET units. It is paid out as shares by the yield manager, so
+            // divide by `current_rate` (rescaled by SCALAR_7) to convert assets
+            // to shares at the current price. The trailing division floors, so
+            // the payout rounds down and the yield manager keeps a dust surplus.
+            let pending_yield = balance
+                .checked_mul(current_rate - old_index)
+                .and_then(|v| v.checked_mul(SCALAR_7))
+                .expect("overflow computing pending yield")
+                / old_index
+                    .checked_mul(current_rate)
+                    .expect("overflow computing yield denominator");
             let current_accrued = storage::get_accrued_yield(env, user);
             storage::set_accrued_yield(env, user, current_accrued + pending_yield);
             storage::set_user_index(env, user, current_rate);
@@ -78,11 +92,13 @@ impl TokenInterface for YieldToken {
     }
 
     fn balance(env: Env, id: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_balance(&env, &id)
     }
 
     fn transfer(env: Env, from: Address, to_muxed: MuxedAddress, amount: i128) {
         from.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let to: Address = to_muxed.address();
@@ -99,6 +115,14 @@ impl TokenInterface for YieldToken {
 
         storage::set_balance(&env, &from, from_balance - amount);
         storage::set_balance(&env, &to, to_balance + amount);
+
+        Transfer {
+            from,
+            to,
+            to_muxed_id: to_muxed.id(),
+            amount,
+        }
+        .publish(&env);
     }
 
     fn transfer_from(
@@ -114,6 +138,7 @@ impl TokenInterface for YieldToken {
 
     fn burn(env: Env, from: Address, amount: i128) {
         from.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         let balance = storage::get_balance(&env, &from);
@@ -127,6 +152,8 @@ impl TokenInterface for YieldToken {
 
         let total_supply = storage::get_total_supply(&env);
         storage::set_total_supply(&env, total_supply - amount);
+
+        Burn { from, amount }.publish(&env);
     }
 
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
@@ -135,14 +162,17 @@ impl TokenInterface for YieldToken {
     }
 
     fn decimals(env: Env) -> u32 {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).decimal
     }
 
     fn name(env: Env) -> String {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).name
     }
 
     fn symbol(env: Env) -> String {
+        storage::extend_instance_ttl(&env);
         storage::get_metadata(&env).symbol
     }
 }
@@ -168,6 +198,7 @@ impl YieldTokenTrait for YieldToken {
     fn mint(env: Env, to: Address, amount: i128, exchange_rate: i128) {
         let admin = storage::get_admin(&env);
         admin.require_auth();
+        storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
 
         Self::accrue_yield(&env, &to, Some(exchange_rate));
@@ -177,37 +208,99 @@ impl YieldTokenTrait for YieldToken {
 
         let total_supply = storage::get_total_supply(&env);
         storage::set_total_supply(&env, total_supply + amount);
+
+        Mint { to, to_muxed_id: None, amount }.publish(&env);
+    }
+
+    fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128) {
+        from.require_auth();
+        storage::get_admin(&env).require_auth();
+        storage::extend_instance_ttl(&env);
+        check_nonnegative_amount(amount);
+
+        let from_balance = storage::get_balance(&env, &from);
+        if from_balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        Self::accrue_yield(&env, &from, Some(exchange_rate));
+        Self::accrue_yield(&env, &to, Some(exchange_rate));
+
+        let to_balance = storage::get_balance(&env, &to);
+        storage::set_balance(&env, &from, from_balance - amount);
+        storage::set_balance(&env, &to, to_balance + amount);
+
+        Transfer { from, to, to_muxed_id: None, amount }.publish(&env);
+    }
+
+    fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
+        from.require_auth();
+        storage::get_admin(&env).require_auth();
+        storage::extend_instance_ttl(&env);
+        check_nonnegative_amount(amount);
+
+        let balance = storage::get_balance(&env, &from);
+        if balance < amount {
+            panic!("Insufficient balance");
+        }
+
+        Self::accrue_yield(&env, &from, Some(exchange_rate));
+
+        storage::set_balance(&env, &from, balance - amount);
+
+        let total_supply = storage::get_total_supply(&env);
+        storage::set_total_supply(&env, total_supply - amount);
+
+        Burn { from, amount }.publish(&env);
     }
 
     fn user_index(env: Env, address: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_user_index(&env, &address)
     }
 
     fn accrued_yield(env: Env, address: Address) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_accrued_yield(&env, &address)
     }
 
     fn claim_yield(env: Env, user: Address) -> i128 {
         user.require_auth();
+        storage::extend_instance_ttl(&env);
+
+        let yield_manager = storage::get_admin(&env);
+        let yield_manager_client = YieldManagerClient::new(&env, &yield_manager);
 
         Self::accrue_yield(&env, &user, None);
 
         let claimable = storage::get_accrued_yield(&env, &user);
-        if claimable == 0 {
-            return 0;
+        if claimable > 0 {
+            storage::set_accrued_yield(&env, &user, 0);
+
+            // Call yield manager (admin) to distribute vault shares
+            yield_manager_client.distribute_yield(&user, &claimable);
         }
 
-        storage::set_accrued_yield(&env, &user, 0);
+        // Past maturity the exchange rate is locked, so the accrual above was
+        // the position's final one — burn the now-worthless YT so it doesn't
+        // linger as dust.
+        if env.ledger().timestamp() >= yield_manager_client.get_maturity() {
+            let balance = storage::get_balance(&env, &user);
+            if balance > 0 {
+                storage::set_balance(&env, &user, 0);
 
-        // Call yield manager (admin) to distribute vault shares
-        let yield_manager = storage::get_admin(&env);
-        let yield_manager_client = YieldManagerClient::new(&env, &yield_manager);
-        yield_manager_client.distribute_yield(&user, &claimable);
+                let total_supply = storage::get_total_supply(&env);
+                storage::set_total_supply(&env, total_supply - balance);
+
+                Burn { from: user, amount: balance }.publish(&env);
+            }
+        }
 
         claimable
     }
 
     fn total_supply(env: Env) -> i128 {
+        storage::extend_instance_ttl(&env);
         storage::get_total_supply(&env)
     }
 }

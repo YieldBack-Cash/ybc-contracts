@@ -32,11 +32,11 @@ fn test_swap_v_for_pt_updates_reserves() {
     let f = AmmFixture::new(&env);
 
     f.deposit(&f.admin, 100_000_000, 100_000_000);
-    let (pt_res_before, v_res_before) = f.pool.get_rsrvs();
+    let (pt_res_before, v_res_before) = f.pool.get_reserves();
 
     f.pool.swap_v_for_pt(&f.user, &1_000_000, &100_000_000);
 
-    let (pt_res_after, v_res_after) = f.pool.get_rsrvs();
+    let (pt_res_after, v_res_after) = f.pool.get_reserves();
     assert!(pt_res_after < pt_res_before, "PT reserve should decrease");
     assert!(v_res_after > v_res_before, "V reserve should increase");
 }
@@ -98,11 +98,11 @@ fn test_swap_pt_for_v_updates_reserves() {
     let f = AmmFixture::new(&env);
 
     f.deposit(&f.admin, 100_000_000, 100_000_000);
-    let (pt_res_before, v_res_before) = f.pool.get_rsrvs();
+    let (pt_res_before, v_res_before) = f.pool.get_reserves();
 
     f.pool.swap_pt_for_v(&f.user, &1_000_000, &1);
 
-    let (pt_res_after, v_res_after) = f.pool.get_rsrvs();
+    let (pt_res_after, v_res_after) = f.pool.get_reserves();
     assert!(pt_res_after > pt_res_before, "PT reserve should increase");
     assert!(v_res_after < v_res_before, "V reserve should decrease");
 }
