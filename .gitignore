@@ -7,4 +7,4 @@ target
 nul
 **/test_snapshots/
 /.claude/
-./.idea
+.idea/
