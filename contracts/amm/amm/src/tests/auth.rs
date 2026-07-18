@@ -34,8 +34,6 @@ fn register_pool(env: &Env) -> (Address, Address, Address) {
     (pt_addr, vault_addr, pool_addr)
 }
 
-// ── deposit ───────────────────────────────────────────────────────────────────
-
 /// AMM.deposit requires the liquidity provider to authorize the call.
 #[test]
 #[should_panic]
@@ -50,8 +48,6 @@ fn test_deposit_without_to_auth_reverts() {
         (&user, 1_000_000i128, 0i128, 1_000_000i128, 0i128).into_val(&env),
     );
 }
-
-// ── withdraw ──────────────────────────────────────────────────────────────────
 
 /// AMM.withdraw requires the LP share holder to authorize the call.
 #[test]
@@ -68,8 +64,6 @@ fn test_withdraw_without_to_auth_reverts() {
     );
 }
 
-// ── swap_v_for_pt ─────────────────────────────────────────────────────────────
-
 /// AMM.swap_v_for_pt requires the swapper to authorize the call.
 #[test]
 #[should_panic]
@@ -84,8 +78,6 @@ fn test_swap_v_for_pt_without_to_auth_reverts() {
         (&user, 1_000_000i128, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── swap_pt_for_v ─────────────────────────────────────────────────────────────
 
 /// AMM.swap_pt_for_v requires the swapper to authorize the call.
 #[test]

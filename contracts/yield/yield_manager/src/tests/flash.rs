@@ -2,8 +2,6 @@ use soroban_sdk::{testutils::Address as _, token::TokenClient, Address, IntoVal,
 
 use super::fixture::YieldManagerTest;
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
 /// Call on_flash_receive_v directly on the YM contract.
 fn invoke_flash_receive_v(
     test: &YieldManagerTest,
@@ -60,8 +58,6 @@ fn setup_flash_buy(test: &YieldManagerTest, v_from_pool: i128, user_v: i128) {
     test.mint_vault_shares(&test.user2, user_v);
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
-
 #[test]
 fn test_on_flash_receive_v_happy_path() {
     let test = YieldManagerTest::setup();
@@ -81,13 +77,9 @@ fn test_on_flash_receive_v_happy_path() {
 
     invoke_flash_receive_v(&test, pt_borrowed, v_owed, &user2, 0, &amm);
 
-    // user2's YT was fully consumed.
     assert_eq!(yt.balance(&user2), 0, "user2 YT consumed");
-    // AMM received exactly v_owed.
     assert_eq!(vault.balance(&amm), v_owed, "amm received v_owed");
-    // user2 received the remainder.
     assert_eq!(vault.balance(&user2), expected_v_to_user, "user2 received remainder");
-    // PT and YT were burned from the YM — it holds none.
     assert_eq!(pt.balance(&test.yield_manager), 0, "YM PT burned");
     assert_eq!(yt.balance(&test.yield_manager), 0, "YM YT burned");
     // Conservation: total V out = shares_returned = pt_borrowed (at 1:1 rate).
@@ -139,14 +131,12 @@ fn test_on_flash_receive_pt_happy_path() {
 
     invoke_flash_receive_pt(&test, yt_out, v_from_pool, &test.user2, 200_000, &amm);
 
-    // The user paid exactly the YT price and received exactly yt_out YT.
     assert_eq!(
         test.vault_balance(&test.user2),
         user_v - expected_user_cost,
         "user pays exactly v_to_mint - v_from_pool"
     );
     assert_eq!(test.get_yt_balance(&test.user2), yt_out, "user receives yt_out YT");
-    // The pool received its yt_out PT; the YM kept none.
     assert_eq!(test.get_pt_balance(&amm), yt_out, "amm received yt_out PT");
     assert_eq!(test.get_pt_balance(&test.yield_manager), 0, "YM leaked PT");
     // Backing: pool advance + user top-up = v_to_mint, all held by the YM.

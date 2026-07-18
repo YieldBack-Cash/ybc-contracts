@@ -27,7 +27,6 @@ fn test_yt_accrues_yield_over_time() {
 
     assert!(claimed > 0);
 
-    // User should now hold vault shares equal to claimed yield
     let user_vault_balance = test.vault_balance(&test.user1);
     assert_eq!(user_vault_balance, claimed);
 }

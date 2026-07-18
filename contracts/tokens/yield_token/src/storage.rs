@@ -18,12 +18,10 @@ pub enum DataKey {
     AccruedYield(Address),
 }
 
-// Storage keys
 const ADMIN_KEY: &str = "admin";
 const METADATA_KEY: &str = "metadata";
 const TOTAL_SUPPLY_KEY: &str = "total_supply";
 
-// Storage TTL constants
 pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
@@ -39,7 +37,6 @@ pub fn extend_instance_ttl(env: &Env) {
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
 
-// Admin functions
 pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&ADMIN_KEY, admin);
 }
@@ -51,7 +48,6 @@ pub fn get_admin(env: &Env) -> Address {
         .expect("Admin not set")
 }
 
-// Token metadata
 pub fn set_metadata(env: &Env, name: String, symbol: String, decimal: u32) {
     let metadata = YieldTokenMetadata {
         name,
@@ -68,7 +64,6 @@ pub fn get_metadata(env: &Env) -> YieldTokenMetadata {
         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn set_total_supply(env: &Env, supply: i128) {
     env.storage().instance().set(&TOTAL_SUPPLY_KEY, &supply);
 }
@@ -77,7 +72,6 @@ pub fn get_total_supply(env: &Env) -> i128 {
     env.storage().instance().get(&TOTAL_SUPPLY_KEY).unwrap_or(0)
 }
 
-// User balance
 pub fn set_balance(env: &Env, address: &Address, balance: i128) {
     let key = DataKey::Balance(address.clone());
     env.storage().persistent().set(&key, &balance);
@@ -102,7 +96,6 @@ pub fn get_balance(env: &Env, address: &Address) -> i128 {
     }
 }
 
-// User index (exchange rate at last interaction)
 pub fn set_user_index(env: &Env, address: &Address, index: i128) {
     let key = DataKey::UserIndex(address.clone());
     env.storage().persistent().set(&key, &index);
@@ -127,7 +120,6 @@ pub fn get_user_index(env: &Env, address: &Address) -> i128 {
     }
 }
 
-// Accrued yield (accumulated yield not yet claimed)
 pub fn set_accrued_yield(env: &Env, address: &Address, amount: i128) {
     let key = DataKey::AccruedYield(address.clone());
     env.storage().persistent().set(&key, &amount);

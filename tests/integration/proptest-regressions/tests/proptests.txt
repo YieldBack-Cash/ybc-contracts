@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3f1790339ac3741c761f7533c51c8abed89d4855112916c35aec1b02c479a175 # shrinks to yt = 1000
+cc ab3eb1bb11d098caa93467b4366fffb6b499a0d48a0328bbf05057553fe4d7db # shrinks to steps = [BuyYt { actor: 0, yt_out: 1, max_v_in: 1 }]
+cc da519815b7f58f4ed1bfbc69b942af346820aa5a32e141bdc69161996965d9e9 # shrinks to steps = [RaiseVaultRate { pct: 1 }, ClaimYield { actor: 33 }]

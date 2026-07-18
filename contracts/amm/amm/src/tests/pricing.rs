@@ -9,7 +9,6 @@ use super::fixture::{AmmFixture, ONE_YEAR_SECS};
 fn test_pt_converges_to_parity_near_expiry() {
     let pt_out = 1_000_000i128;
 
-    // Early trade — just after market open
     let env = Env::default();
     env.mock_all_auths();
     let f_early = AmmFixture::new(&env);
@@ -28,13 +27,11 @@ fn test_pt_converges_to_parity_near_expiry() {
     f_late.pool.swap_v_for_pt(&f_late.user, &pt_out, &100_000_000);
     let v_cost_late = v_before_late - f_late.vault.balance(&f_late.user);
 
-    // Early: PT at discount → costs less V than face value
     assert!(
         v_cost_early < pt_out,
         "early: PT should trade below par, cost={} pt_out={}",
         v_cost_early, pt_out,
     );
-    // Near expiry: PT converges to par → costs more V than early
     assert!(
         v_cost_late > v_cost_early,
         "late cost should exceed early cost as PT converges to par: early={} late={}",
@@ -55,7 +52,6 @@ fn test_higher_vault_rate_affects_pricing() {
     f.pool.swap_v_for_pt(&f.user, &1_000_000, &100_000_000);
     let v_cost_base = v_before_base - f.vault.balance(&f.user);
 
-    // Reset with higher vault rate
     let env2 = Env::default();
     env2.mock_all_auths();
     let f2 = AmmFixture::new(&env2);

@@ -1,7 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env, String};
 use soroban_token_sdk::{metadata::TokenMetadata, TokenUtils};
 
-// Storage TTL constants
 pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
@@ -26,7 +25,6 @@ pub fn extend_instance_ttl(e: &Env) {
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
 
-// Admin functions
 pub fn read_administrator(e: &Env) -> Address {
     let key = DataKey::Admin;
     e.storage().instance().get(&key).unwrap()
@@ -37,7 +35,6 @@ pub fn write_administrator(e: &Env, id: &Address) {
     e.storage().instance().set(&key, id);
 }
 
-// Metadata functions
 pub fn write_metadata(e: &Env, metadata: TokenMetadata) {
     TokenUtils::new(e).metadata().set_metadata(&metadata);
 }
@@ -54,7 +51,6 @@ pub fn read_symbol(e: &Env) -> String {
     TokenUtils::new(e).metadata().get_metadata().symbol
 }
 
-// Balance functions
 pub fn read_balance(e: &Env, addr: &Address) -> i128 {
     let key = DataKey::Balance(addr.clone());
     if let Some(balance) = e.storage().persistent().get::<DataKey, i128>(&key) {
@@ -88,7 +84,6 @@ pub fn spend_balance(e: &Env, addr: &Address, amount: i128) {
     write_balance(e, addr, balance - amount);
 }
 
-// Allowance functions
 pub fn read_allowance(e: &Env, from: &Address, spender: &Address) -> i128 {
     let key = DataKey::Allowance(from.clone(), spender.clone());
     e.storage().temporary().get(&key).unwrap_or(0)
@@ -119,7 +114,6 @@ pub fn spend_allowance(e: &Env, from: &Address, spender: &Address, amount: i128)
     write_allowance(e, from, spender, allowance - amount, 0);
 }
 
-// Total supply functions
 pub fn read_total_supply(e: &Env) -> i128 {
     let key = DataKey::TotalSupply;
     e.storage().instance().get(&key).unwrap_or(0)

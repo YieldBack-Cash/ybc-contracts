@@ -4,7 +4,7 @@ use soroban_sdk::{contracttype, token, Address, Env};
 #[contracttype]
 pub struct MarketState {
     pub token_a: Address,
-    pub token_b: Address, // TODO: vault address is the same as token_b (V token)
+    pub token_b: Address, // TODO: vault address is the same as token_b (V token is the vault contract address)
     pub reserve_a: i128,
     pub reserve_b: i128,
     pub expiry_ts: u64,
@@ -25,7 +25,6 @@ pub enum DataKey {
     Ym,
 }
 
-// Storage TTL constants
 pub const DAY_IN_LEDGERS: u32 = 17280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;

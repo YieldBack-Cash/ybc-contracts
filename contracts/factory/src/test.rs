@@ -13,13 +13,11 @@ use soroban_sdk::{
 };
 use yield_manager_interface::VaultType;
 
-// Import compiled WASM bytecode for contracts the factory deploys.
 mod ym_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_manager.wasm");
 }
 
 mod pt_wasm {
-    // TODO: look into using the separate interface crate and importing this as bytes instead of contractimport!
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/principal_token.wasm");
 }
 
@@ -65,7 +63,6 @@ impl FactoryTest {
             ),
         );
 
-        // Upload contract WASMs and get hashes
         let ym_hash = env.deployer().upload_contract_wasm(ym_wasm::WASM);
         let pt_hash = env.deployer().upload_contract_wasm(pt_wasm::WASM);
         let yt_hash = env.deployer().upload_contract_wasm(yt_wasm::WASM);
@@ -115,10 +112,6 @@ impl FactoryTest {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[test]
 fn test_getters_before_deployment() {
     let test = FactoryTest::setup();
@@ -163,8 +156,6 @@ fn test_deploy_yield_manager() {
 
     let market = test.create_market(maturity);
 
-    // The market is retrievable by (vault, maturity) and carries all four
-    // contract addresses.
     let stored = test
         .factory
         .get_market(&test.vault_addr, &maturity)
@@ -174,11 +165,9 @@ fn test_deploy_yield_manager() {
     assert_eq!(stored.yt, market.yt);
     assert_eq!(stored.pool, market.pool);
 
-    // Deployed YM should point at the correct vault
     let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
     assert_eq!(ym_client.get_vault(), test.vault_addr);
 
-    // Deployed YM should have the correct maturity
     assert_eq!(ym_client.get_maturity(), maturity);
 }
 
@@ -191,10 +180,8 @@ fn test_ym_knows_its_tokens() {
 
     let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
 
-    // YM should know about PT
     assert_eq!(ym_client.get_principal_token(), market.pt);
 
-    // YM should know about YT
     assert_eq!(ym_client.get_yield_token(), market.yt);
 }
 
@@ -245,7 +232,6 @@ fn test_deposit_through_factory_deployed_contracts() {
 
     let market = test.create_market(maturity);
 
-    // Mint vault shares to user
     let shares = 1_000_0000i128;
     test.mint_vault_shares(&test.user1, shares);
 
@@ -257,11 +243,9 @@ fn test_deposit_through_factory_deployed_contracts() {
         &(test.env.ledger().sequence() + 1000),
     );
 
-    // Deposit through the factory-deployed yield manager
     let ym_client = ym_wasm::Client::new(&test.env, &market.ym);
     ym_client.deposit(&test.user1, &shares);
 
-    // PT and YT should have been minted
     let pt_balance = TokenClient::new(&test.env, &market.pt).balance(&test.user1);
     assert!(pt_balance > 0);
 
@@ -271,7 +255,6 @@ fn test_deposit_through_factory_deployed_contracts() {
     // Both should be equal (shares * exchange_rate)
     assert_eq!(pt_balance, yt_balance);
 
-    // Yield manager should hold the vault shares
     let vault_token = TokenClient::new(&test.env, &test.vault_addr);
     assert_eq!(vault_token.balance(&market.ym), shares);
 }
@@ -304,7 +287,6 @@ fn test_second_market_same_vault_different_maturity_coexists() {
     let market1 = test.create_market(m1);
     let market2 = test.create_market(m2);
 
-    // Two independent markets on the same vault, each its own set of contracts.
     assert_ne!(market1.ym, market2.ym);
     assert_ne!(market1.pool, market2.pool);
     assert_ne!(market1.pt, market2.pt);
