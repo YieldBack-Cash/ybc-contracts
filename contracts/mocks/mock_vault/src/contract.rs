@@ -24,7 +24,6 @@ impl MockVaultTrait for MockVault {
         // Initialize exchange rate to 1.0 (scaled by 1e7)
         storage::set_exchange_rate(&env, 1_000_0000);
 
-        // Initialize OpenZeppelin token metadata
         Base::set_metadata(&env, decimals, name, symbol);
     }
 
@@ -67,7 +66,7 @@ impl FungibleToken for MockVault {
     }
 
     fn transfer(e: &Env, from: Address, to: MuxedAddress, amount: i128) {
-        Base::transfer(e, &from, &to, amount)  // THIS is the missing transfer function
+        Base::transfer(e, &from, &to, amount)
     }
 
     fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, amount: i128) {

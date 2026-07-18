@@ -4,8 +4,6 @@ use soroban_sdk::testutils::{Address as _, Ledger};
 use crate::contract::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::MockVaultClient;
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
 // Default market params (all 1e7-scaled)
 pub const SCALAR_ROOT: i128 = 250_000_000;   // 25.0 — moderate curve steepness
 pub const FEE_RATE_ROOT: i128 = 500_000;     // 0.05 — 5% annualised fee root
@@ -14,13 +12,10 @@ pub const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1 — 10% starting implied r
 
 pub const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
-// ── Fixture ──────────────────────────────────────────────────────────────────
-
 pub struct AmmFixture<'a> {
     pub env: Env,
     /// PT token client (mock_vault registered first → lower counter address).
     pub pt: MockVaultClient<'a>,
-    /// Vault (V) token client.
     pub vault: MockVaultClient<'a>,
     pub pool: LiquidityPoolClient<'a>,
     pub admin: Address,
@@ -43,14 +38,12 @@ impl<'a> AmmFixture<'a> {
         let admin = Address::generate(env);
         let user  = Address::generate(env);
 
-        // PT registered first → lower counter address.
         let pt_addr = env.register(
             mock_vault::MockVault,
             (admin.clone(), String::from_str(env, "Principal Token"), String::from_str(env, "PT"), 7u32),
         );
         let pt = MockVaultClient::new(env, &pt_addr);
 
-        // Vault registered second → higher counter address.
         let vault_addr = env.register(
             mock_vault::MockVault,
             (admin.clone(), String::from_str(env, "Vault"), String::from_str(env, "VLT"), 7u32),
@@ -64,7 +57,6 @@ impl<'a> AmmFixture<'a> {
         // pool accepts it, while other tests never touch the flash entrypoints.
         let ym = Address::generate(env);
 
-        // AMM pool.
         let now    = env.ledger().timestamp();
         let expiry = now + ONE_YEAR_SECS;
         let pool_addr = env.register(
@@ -75,7 +67,6 @@ impl<'a> AmmFixture<'a> {
 
         vault.set_exchange_rate(&1_000_0000);
 
-        // Fund admin and user.
         pt.mint(&admin, &1_000_000_000);
         pt.mint(&user,  &1_000_000_000);
         vault.mint(&admin, &1_000_000_000);

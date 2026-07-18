@@ -11,7 +11,6 @@ use principal_token::PrincipalToken;
 use yield_manager::YieldManager;
 use yield_manager_interface::VaultType;
 
-/// Shared test fixture for YieldToken tests
 pub struct YieldTokenTest<'a> {
     pub env: Env,
     pub user1: Address,
@@ -31,7 +30,6 @@ impl<'a> YieldTokenTest<'a> {
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
 
-        // Deploy mock vault
         let vault_address = env.register(
             MockVault,
             (
@@ -44,11 +42,9 @@ impl<'a> YieldTokenTest<'a> {
         let vault_client = TokenClient::new(&env, &vault_address);
         let mock_vault_client = MockVaultClient::new(&env, &vault_address);
 
-        // Set maturity to 1000 seconds from now
         let current_time = env.ledger().timestamp();
         let maturity = current_time + 1000;
 
-        // Deploy yield manager
         let yield_manager_id = env.register(
             YieldManager,
             (&admin, &vault_address, &VaultType::Vault4626, &maturity),
@@ -57,18 +53,16 @@ impl<'a> YieldTokenTest<'a> {
         // Mint vault shares directly to yield manager for distributing yield
         mock_vault_client.mint(&yield_manager_id, &1_000_000_0000000i128);
 
-        // Deploy PT token
         let pt_id = env.register(
             PrincipalToken,
             (
                 &yield_manager_id,
                 &String::from_str(&env, "Principal Token"),
                 &String::from_str(&env, "PT"),
-                &7u32, // decimals for 1e7
+                &7u32,
             ),
         );
 
-        // Deploy YT token with decimal parameter
         let yt_id = env.register(
             YieldToken,
             (
@@ -79,7 +73,6 @@ impl<'a> YieldTokenTest<'a> {
             ),
         );
 
-        // Set token contracts in yield manager
         env.invoke_contract::<()>(
             &yield_manager_id,
             &Symbol::new(&env, "set_token_contracts"),

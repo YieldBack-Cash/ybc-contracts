@@ -93,7 +93,6 @@ impl AmmInterface for LiquidityPool {
         let time_to_expiry = market.expiry_ts - now;
         let years = crate::math::seconds_to_years(time_to_expiry);
 
-        // Convert vault share reserve to underlying assets for AMM pricing math.
         let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
 
         let rate_scalar = crate::math::div_down(market.scalar_root, years);
@@ -177,7 +176,6 @@ impl AmmInterface for LiquidityPool {
         let t_years = crate::math::seconds_to_years(market.expiry_ts - now);
         assert!(t_years > 0, "time to expiry in years must be positive");
 
-        // Convert vault share reserve to underlying assets for AMM pricing math.
         let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
 
         let rate_scalar = crate::math::div_down(market.scalar_root, t_years);
@@ -200,7 +198,7 @@ impl AmmInterface for LiquidityPool {
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0, // reserve_fee_percent
+            0,
             net_pt_to_account,
         );
 
@@ -370,7 +368,6 @@ impl AmmInterface for LiquidityPool {
         let time_to_expiry = market.expiry_ts - now;
         let years = crate::math::seconds_to_years(time_to_expiry);
 
-        // Convert vault share reserve to underlying assets for AMM pricing math.
         let reserve_b_assets = convert_vault_shares_to_assets(&e, market.reserve_b);
 
         let rate_scalar = crate::math::div_down(market.scalar_root, years);

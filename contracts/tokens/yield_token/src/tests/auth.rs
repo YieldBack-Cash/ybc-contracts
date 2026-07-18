@@ -19,8 +19,6 @@ fn register_yt(env: &Env) -> (Address, Address) {
     (admin, yt_addr)
 }
 
-// ── mint ─────────────────────────────────────────────────────────────────────
-
 /// Only the admin (yield manager) can mint YT. A stranger's call must panic.
 #[test]
 #[should_panic]
@@ -35,8 +33,6 @@ fn test_mint_non_admin_reverts() {
         (&stranger, 1_000_000i128, 10_000_000i128).into_val(&env),
     );
 }
-
-// ── transfer ─────────────────────────────────────────────────────────────────
 
 /// YT.transfer requires the sender to authorize the transfer.
 #[test]
@@ -53,8 +49,6 @@ fn test_transfer_without_from_auth_reverts() {
         (&from, &to, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── transfer_with_rate ────────────────────────────────────────────────────────
 
 /// YT.transfer_with_rate requires the sender to authorize.
 #[test]
@@ -154,8 +148,6 @@ fn test_transfer_with_rate_with_from_and_admin_auth_succeeds() {
     );
 }
 
-// ── burn_with_rate ───────────────────────────────────────────────────────────
-
 /// burn_with_rate takes the same caller-supplied exchange_rate as
 /// transfer_with_rate, so it must also require the yield manager's auth.
 #[test]
@@ -182,8 +174,6 @@ fn test_burn_with_rate_without_admin_auth_reverts() {
     );
 }
 
-// ── burn ─────────────────────────────────────────────────────────────────────
-
 /// YT.burn requires the holder to authorize the burn.
 #[test]
 #[should_panic]
@@ -198,8 +188,6 @@ fn test_burn_without_from_auth_reverts() {
         (&holder, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── claim_yield ───────────────────────────────────────────────────────────────
 
 /// YT.claim_yield requires the user to authorize their own claim.
 #[test]

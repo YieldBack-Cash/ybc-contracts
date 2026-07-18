@@ -21,8 +21,6 @@ pub enum YieldManagerError {
     PoolAlreadySet = 7,
 }
 
-/// Trait defining the interface for the Yield Manager contract.
-/// This trait is used to generate the YieldManagerClient for type-safe cross-contract calls.
 #[contractclient(name = "YieldManagerClient")]
 pub trait YieldManagerTrait {
     fn __constructor(

@@ -23,8 +23,6 @@ fn register_ym(env: &Env) -> (Address, Address, Address) {
     (admin, vault_addr, ym_addr)
 }
 
-// ── set_token_contracts ───────────────────────────────────────────────────────
-
 /// Only the admin can register the PT and YT contract addresses.
 /// A stranger's call must panic.
 #[test]
@@ -42,8 +40,6 @@ fn test_set_token_contracts_non_admin_reverts() {
     );
 }
 
-// ── deposit ───────────────────────────────────────────────────────────────────
-
 /// YM.deposit requires the depositor to authorize the call.
 /// A transaction that does not carry the depositor's signature must panic.
 #[test]
@@ -60,8 +56,6 @@ fn test_deposit_without_from_auth_reverts() {
     );
 }
 
-// ── redeem_combined ─────────────────────────────────────────────────────────────
-
 /// YM.redeem_combined requires the redeemer to authorize the call.
 #[test]
 #[should_panic]
@@ -76,8 +70,6 @@ fn test_redeem_combined_without_from_auth_reverts() {
         (&user, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── redeem_principal ──────────────────────────────────────────────────────────
 
 /// YM.redeem_principal requires the redeemer to authorize the call.
 #[test]

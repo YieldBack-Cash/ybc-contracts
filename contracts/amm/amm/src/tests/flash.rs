@@ -4,8 +4,6 @@ use soroban_sdk::testutils::Address as _;
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
 use amm_interface::{AmmClient, FlashSwapPtReceiver, FlashSwapVReceiver};
 
-// ── Mock flash-V receiver ────────────────────────────────────────────────────
-//
 // Stands in for the router on the YT→V path. Behaviour `mode`:
 //   0 — repay exactly `v_owed` in V; keep the borrowed PT (the correct behaviour)
 //   1 — repay `v_owed - 1` in V (under-repay → AMM must revert)
@@ -46,8 +44,6 @@ impl FlashSwapVReceiver for MockFlashVReceiver {
     }
 }
 
-// ── Mock flash-PT receiver ───────────────────────────────────────────────────
-//
 // Stands in for the router on the V→YT path. `repay_ok = true` returns exactly
 // the borrowed PT (valid: pool ends with ≥ what it had); `false` returns one less.
 
@@ -80,8 +76,6 @@ impl FlashSwapPtReceiver for MockFlashPtReceiver {
     }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 fn v_receiver(f: &AmmFixture, mode: u32) -> Address {
     // Deploy at the pool's trusted receiver address so `flash_swap_v` accepts it.
     let addr = f.env.register_at(
@@ -89,7 +83,6 @@ fn v_receiver(f: &AmmFixture, mode: u32) -> Address {
         MockFlashVReceiver,
         (f.pool.address.clone(), f.vault.address.clone(), f.pt.address.clone(), mode),
     );
-    // Fund it with V so it can repay the pool.
     f.vault.mint(&addr, &1_000_000_000);
     addr
 }
@@ -106,8 +99,6 @@ fn pt_receiver(f: &AmmFixture, repay_ok: bool) -> Address {
     f.pt.mint(&addr, &1_000_000_000);
     addr
 }
-
-// ── flash_swap_v ─────────────────────────────────────────────────────────────
 
 #[test]
 fn test_flash_swap_v_happy_path() {
@@ -177,7 +168,6 @@ fn test_flash_swap_v_insufficient_liquidity_reverts() {
     f.deposit(&f.admin, 100_000_000, 100_000_000);
 
     let receiver = v_receiver(&f, 0);
-    // Asking to borrow more PT than the pool holds.
     f.pool.flash_swap_v(&receiver, &200_000_000i128, &f.user, &1i128);
 }
 
@@ -194,8 +184,6 @@ fn test_flash_swap_v_expired_reverts() {
     f.pool.flash_swap_v(&receiver, &1_000_000i128, &f.user, &1i128);
 }
 
-// ── flash_swap_pt ────────────────────────────────────────────────────────────
-
 #[test]
 fn test_flash_swap_pt_buys_pt_and_pays_v() {
     let env = Env::default();
@@ -210,7 +198,6 @@ fn test_flash_swap_pt_buys_pt_and_pays_v() {
     f.pool.flash_swap_pt(&receiver, &yt_out, &f.user, &1_000_000_000i128);
 
     let (pt_res_after, v_res_after) = f.pool.get_reserves();
-    // The pool bought exactly yt_out PT and paid V for it.
     assert_eq!(pt_res_after, pt_res_before + yt_out, "pool PT reserve grows by the bought PT");
     assert!(v_res_after < v_res_before, "pool paid V for the PT");
     // PT trades below par, so the V paid is below the face amount.
@@ -261,8 +248,6 @@ fn test_flash_swap_pt_dust_amount_reverts() {
     f.pool.flash_swap_pt(&receiver, &1i128, &f.user, &1_000_000_000i128);
 }
 
-// ── Security regressions ─────────────────────────────────────────────────────
-//
 // A receiver that tries to re-enter the pool during its flash callback. Soroban
 // forbids re-entering a contract already on the call stack at the host level, so
 // the nested call fails and the whole flash swap reverts. This test pins that

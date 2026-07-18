@@ -19,8 +19,6 @@ fn quiet_env() -> Env {
     Env::new_with_config(EnvTestConfig { capture_snapshot_at_drop: false })
 }
 
-// ── Strategies ───────────────────────────────────────────────────────────────
-
 /// Token amounts: mostly plausible trade sizes, sometimes zero/negative/huge so
 /// the contract's rejection paths get exercised too.
 fn amount() -> impl Strategy<Value = i128> {
@@ -78,8 +76,6 @@ fn curve_domain() -> impl Strategy<Value = (i128, i128, i128, i128, i128, i128)>
         })
 }
 
-// ── Stateful invariants (same harness as the cargo-fuzz target) ─────────────
-
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
 
@@ -88,8 +84,6 @@ proptest! {
         run_steps(&steps);
     }
 }
-
-// ── LP fairness properties ───────────────────────────────────────────────────
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
@@ -139,7 +133,6 @@ proptest! {
         let quote_pt_before = pt_before * lp_shares / total_before;
         let quote_v_before = v_before * lp_shares / total_before;
 
-        // Buy x PT out of the pool, then sell exactly x back.
         prop_assume!(harness.pool.try_swap_v_for_pt(trader, &x, &HOLDER_FUNDS).is_ok());
         prop_assume!(harness.pool.try_swap_pt_for_v(trader, &x, &1).is_ok());
 
@@ -159,8 +152,6 @@ proptest! {
         );
     }
 }
-
-// ── Curve math properties ────────────────────────────────────────────────────
 
 proptest! {
     /// Buying PT and immediately selling it back can never profit the user:
@@ -260,8 +251,6 @@ fn round_trip_does_not_profit_near_expiry() {
         "round trip profited: paid {v_in} V, got back {net_v_back} V",
     );
 }
-
-// ── Fixed-point math properties ──────────────────────────────────────────────
 
 proptest! {
     /// ln is strictly monotone over its useful range.

@@ -54,7 +54,6 @@ pub(crate) fn compute_rate_anchor(
         "proportion must be between 0 and 1"
     );
 
-    // ln( proportion / (1 - proportion) )
     let one_minus_p = math::FP_SCALE - proportion;
 
     let ratio = proportion
@@ -64,7 +63,6 @@ pub(crate) fn compute_rate_anchor(
 
     let ln_proportion = math::ln_fp(ratio, math::FP_SCALE);
 
-    // rate_anchor = new_exchange_rate - lnProportion / rateScalar
     let adjustment = ln_proportion
         .checked_mul(math::FP_SCALE)
         .expect("overflow computing anchor adjustment")

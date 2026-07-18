@@ -18,7 +18,6 @@ fn test_deposit_mints_pt_and_yt() {
     assert_eq!(pt_balance, shares);
     assert_eq!(yt_balance, shares);
 
-    // Yield manager should hold the vault shares
     let ym_vault_balance = test.vault_balance(&test.yield_manager);
     assert_eq!(ym_vault_balance, shares);
 }

@@ -67,12 +67,10 @@ impl YieldToken {
             storage::set_user_index(env, user, current_rate);
         }
 
-        // If the rate hasn't gone up no yield to accrue, no storage update needed
         current_rate
     }
 }
 
-// SEP-41 TokenInterface implementation
 #[contractimpl]
 impl TokenInterface for YieldToken {
     fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
@@ -87,7 +85,6 @@ impl TokenInterface for YieldToken {
         _amount: i128,
         _expiration_ledger: u32,
     ) {
-        // YieldToken doesn't support this function
         panic!("approve not supported for YieldToken");
     }
 
@@ -132,7 +129,6 @@ impl TokenInterface for YieldToken {
         _to: Address,
         _amount: i128,
     ) {
-        // YieldToken doesn't support this function
         panic!("transfer_from not supported for YieldToken");
     }
 
@@ -157,7 +153,6 @@ impl TokenInterface for YieldToken {
     }
 
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {
-        // YieldToken doesn't support this function
         panic!("burn_from not supported for YieldToken");
     }
 
@@ -277,7 +272,6 @@ impl YieldTokenTrait for YieldToken {
         if claimable > 0 {
             storage::set_accrued_yield(&env, &user, 0);
 
-            // Call yield manager (admin) to distribute vault shares
             yield_manager_client.distribute_yield(&user, &claimable);
         }
 

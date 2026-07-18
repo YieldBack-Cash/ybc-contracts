@@ -34,7 +34,6 @@ fn test_withdraw_insufficient_shares_panics() {
 
     f.deposit(&f.admin, 10_000_000, 10_000_000);
     let shares = f.pool.balance_shares(&f.admin);
-    // Try to withdraw more than owned
     f.pool.withdraw(&f.admin, &(shares + 1), &0, &0);
 }
 
@@ -47,6 +46,5 @@ fn test_withdraw_min_not_satisfied_panics() {
 
     f.deposit(&f.admin, 10_000_000, 10_000_000);
     let shares = f.pool.balance_shares(&f.admin);
-    // min_a set absurdly high
     f.pool.withdraw(&f.admin, &shares, &999_999_999, &0);
 }

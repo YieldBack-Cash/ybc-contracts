@@ -2,8 +2,6 @@ use soroban_sdk::Env;
 
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
 
-// ── swap_v_for_pt ─────────────────────────────────────────────────────────────
-
 #[test]
 fn test_swap_v_for_pt_basic() {
     let env = Env::default();
@@ -49,7 +47,6 @@ fn test_swap_v_for_pt_slippage_guard() {
     let f = AmmFixture::new(&env);
 
     f.deposit(&f.admin, 100_000_000, 100_000_000);
-    // v_in_max set to 1 — should always be exceeded
     f.pool.swap_v_for_pt(&f.user, &1_000_000, &1);
 }
 
@@ -67,8 +64,6 @@ fn test_swap_v_for_pt_expired_panics() {
 
     f.pool.swap_v_for_pt(&f.user, &1_000_000, &100_000_000);
 }
-
-// ── swap_pt_for_v ─────────────────────────────────────────────────────────────
 
 #[test]
 fn test_swap_pt_for_v_basic() {
@@ -115,7 +110,6 @@ fn test_swap_pt_for_v_slippage_guard() {
     let f = AmmFixture::new(&env);
 
     f.deposit(&f.admin, 100_000_000, 100_000_000);
-    // min_v_out set absurdly high
     f.pool.swap_pt_for_v(&f.user, &1_000_000, &999_999_999);
 }
 

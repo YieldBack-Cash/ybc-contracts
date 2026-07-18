@@ -17,8 +17,6 @@ fn register_pt(env: &Env) -> (Address, Address) {
     (admin, pt_addr)
 }
 
-// ── mint ─────────────────────────────────────────────────────────────────────
-
 /// Only the admin (yield manager) can mint PT. A stranger's call must panic.
 #[test]
 #[should_panic]
@@ -33,8 +31,6 @@ fn test_mint_non_admin_reverts() {
         (&stranger, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── burn ─────────────────────────────────────────────────────────────────────
 
 /// PT.burn is admin-gated — not from-gated — meaning token holders cannot
 /// burn their own PT directly. Only the yield manager (admin) can trigger burns.
@@ -53,8 +49,6 @@ fn test_burn_non_admin_reverts() {
     );
 }
 
-// ── transfer ─────────────────────────────────────────────────────────────────
-
 /// PT.transfer requires the sender to authorize the transfer.
 #[test]
 #[should_panic]
@@ -70,8 +64,6 @@ fn test_transfer_without_from_auth_reverts() {
         (&from, &to, 1_000_000i128).into_val(&env),
     );
 }
-
-// ── approve ──────────────────────────────────────────────────────────────────
 
 /// PT.approve requires the owner to authorize the allowance grant.
 #[test]
