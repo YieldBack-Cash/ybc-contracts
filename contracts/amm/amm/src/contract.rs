@@ -317,8 +317,8 @@ impl AmmInterface for LiquidityPool {
         // Invariant: pool gained exactly yt_out PT and paid exactly v_paid V.
         let pt_balance_after = get_balance_a(&e);
         let v_balance_after = get_balance_b(&e);
-        assert!(pt_balance_after == pt_balance_before + yt_out, "flash swap: PT not delivered");
-        assert!(v_balance_after == v_balance_before - v_paid, "flash swap: V mispaid");
+        assert_eq!(pt_balance_after, pt_balance_before + yt_out, "flash swap: PT not delivered");
+        assert_eq!(v_balance_after, v_balance_before - v_paid, "flash swap: V mispaid");
 
         market.reserve_a = pt_balance_after;
         market.reserve_b = v_balance_after;
