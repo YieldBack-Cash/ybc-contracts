@@ -13,6 +13,7 @@ pub trait AmmInterface {
     fn get_reserves(env: Env) -> (i128, i128);
     fn get_implied_rate(env: Env) -> i128;
     fn balance_shares(env: Env, user: Address) -> i128;
+    fn get_total_shares(env: Env) -> i128;
 }
 
 #[contractclient(name = "FlashSwapPtReceiverClient")]

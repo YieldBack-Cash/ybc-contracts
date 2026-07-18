@@ -613,4 +613,11 @@ impl AmmInterface for LiquidityPool {
         extend_instance_ttl(&e);
         get_shares(&e, &user)
     }
+
+    /// Returns the total pool shares outstanding (including the locked
+    /// minimum-liquidity shares held by the burn address).
+    fn get_total_shares(e: Env) -> i128 {
+        extend_instance_ttl(&e);
+        get_total_shares(&e)
+    }
 }

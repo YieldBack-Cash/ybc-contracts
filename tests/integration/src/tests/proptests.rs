@@ -172,10 +172,24 @@ impl<'a> RouterHarness<'a> {
                 if v > 0 {
                     self.f.vault.approve(&who, &self.f.pool.address, &v, &expiry_ledger);
                 }
-                let _ = self.f.pool.try_deposit(&who, &pt, &0, &v, &0);
+                let (pre_pt, pre_v) = self.f.pool.get_reserves();
+                let pre_total = self.f.pool.get_total_shares();
+                if self.f.pool.try_deposit(&who, &pt, &0, &v, &0).is_ok() {
+                    self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
+                }
             }
             Step::AmmWithdraw { actor, shares } => {
-                let _ = self.f.pool.try_withdraw(&self.actor(actor), &shares, &0, &0);
+                let (pre_pt, pre_v) = self.f.pool.get_reserves();
+                let pre_total = self.f.pool.get_total_shares();
+                if let Ok(Ok((out_pt, out_v))) =
+                    self.f.pool.try_withdraw(&self.actor(actor), &shares, &0, &0)
+                {
+                    // Pro-rata exactly, floor-rounded: never short an LP a full
+                    // unit, never pay beyond the shares' proportional claim.
+                    assert_eq!(out_pt, pre_pt * shares / pre_total, "withdraw paid non-pro-rata PT");
+                    assert_eq!(out_v, pre_v * shares / pre_total, "withdraw paid non-pro-rata V");
+                    self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
+                }
             }
             Step::ExitExpired { actor, lp_shares, min_shares_out } => {
                 let who = self.actor(actor);
@@ -244,6 +258,23 @@ impl<'a> RouterHarness<'a> {
             &Symbol::new(e, "total_supply"),
             soroban_sdk::Vec::new(e),
         )
+    }
+
+    /// LP fairness across a deposit or withdraw: per-share reserves of BOTH
+    /// tokens must not decrease (compared cross-multiplied to avoid division).
+    /// Only liquidity ops may be checked this way — swaps legitimately shift
+    /// composition, and flash swaps re-sync reserves mid-call.
+    fn assert_share_price_not_diluted(&self, pre_pt: i128, pre_v: i128, pre_total: i128) {
+        let (post_pt, post_v) = self.f.pool.get_reserves();
+        let post_total = self.f.pool.get_total_shares();
+        for (pre, post, label) in [(pre_pt, post_pt, "PT"), (pre_v, post_v, "V")] {
+            assert!(
+                post.checked_mul(pre_total).expect("share-price check overflow")
+                    >= pre.checked_mul(post_total).expect("share-price check overflow"),
+                "{} per-share reserve diluted by liquidity op",
+                label
+            );
+        }
     }
 
     /// Current YM exchange rate (refreshed, like a real op would see it).

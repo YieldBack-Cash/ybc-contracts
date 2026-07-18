@@ -7,9 +7,17 @@
 
 use proptest::prelude::*;
 
+use soroban_sdk::testutils::EnvTestConfig;
+use soroban_sdk::{token, Env};
+
 use crate::curve::calc_trade;
-use crate::fuzz_harness::{run_steps, Step};
+use crate::fuzz_harness::{run_steps, Harness, Step, HOLDER_FUNDS, POOL_SEED};
 use crate::math::FP_SCALE;
+
+/// Test env that skips writing a snapshot JSON per proptest case.
+fn quiet_env() -> Env {
+    Env::new_with_config(EnvTestConfig { capture_snapshot_at_drop: false })
+}
 
 // ── Strategies ───────────────────────────────────────────────────────────────
 
@@ -78,6 +86,77 @@ proptest! {
     #[test]
     fn stateful_invariants_hold(steps in proptest::collection::vec(step(), 1..25)) {
         run_steps(&steps);
+    }
+}
+
+// ── LP fairness properties ───────────────────────────────────────────────────
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// Depositing liquidity and immediately withdrawing the minted shares never
+    /// returns more of EITHER token than was put in: LP entry/exit accounting
+    /// can only lose rounding dust to the pool, never extract from it.
+    #[test]
+    fn lp_deposit_withdraw_round_trip_never_profits(
+        pt in 1_0000000i128..=HOLDER_FUNDS,
+        v in 1_0000000i128..=HOLDER_FUNDS,
+    ) {
+        let env = quiet_env();
+        let harness = Harness::new(&env);
+        let user = &harness.actors[1];
+
+        let pt_token = token::TokenClient::new(&env, &harness.pt.address);
+        let v_token = token::TokenClient::new(&env, &harness.vault.address);
+        let pt_before = pt_token.balance(user);
+        let v_before = v_token.balance(user);
+
+        prop_assume!(harness.pool.try_deposit(user, &pt, &0, &v, &0).is_ok());
+        let minted = harness.pool.balance_shares(user);
+        prop_assert!(minted > 0, "accepted deposit minted no shares");
+
+        harness.pool.withdraw(user, &minted, &0, &0);
+
+        let net_pt = pt_token.balance(user) - pt_before;
+        let net_v = v_token.balance(user) - v_before;
+        prop_assert!(net_pt <= 0, "LP round trip minted {} PT from nothing", net_pt);
+        prop_assert!(net_v <= 0, "LP round trip minted {} V from nothing", net_v);
+    }
+
+    /// A buy-then-sell-back swap round trip leaves the pool with the same PT,
+    /// no less V, and an unchanged share supply — so the fees the trader paid
+    /// land in the LPs' redeemable value rather than being skimmed or lost.
+    #[test]
+    fn swap_fees_accrue_to_lp_redeemable_value(x in 1_0000000i128..=POOL_SEED / 2) {
+        let env = quiet_env();
+        let harness = Harness::new(&env);
+        let admin = &harness.actors[0];
+        let trader = &harness.actors[1];
+
+        let (pt_before, v_before) = harness.pool.get_reserves();
+        let total_before = harness.pool.get_total_shares();
+        let lp_shares = harness.pool.balance_shares(admin);
+        let quote_pt_before = pt_before * lp_shares / total_before;
+        let quote_v_before = v_before * lp_shares / total_before;
+
+        // Buy x PT out of the pool, then sell exactly x back.
+        prop_assume!(harness.pool.try_swap_v_for_pt(trader, &x, &HOLDER_FUNDS).is_ok());
+        prop_assume!(harness.pool.try_swap_pt_for_v(trader, &x, &1).is_ok());
+
+        let (pt_after, v_after) = harness.pool.get_reserves();
+        let total_after = harness.pool.get_total_shares();
+        prop_assert_eq!(pt_after, pt_before, "round trip changed the PT reserve");
+        prop_assert!(v_after >= v_before, "round trip drained {} V from the pool", v_before - v_after);
+        prop_assert_eq!(total_after, total_before, "swaps must not mint or burn LP shares");
+
+        prop_assert!(
+            pt_after * lp_shares / total_after >= quote_pt_before,
+            "LP redeemable PT decreased across a fee-paying round trip"
+        );
+        prop_assert!(
+            v_after * lp_shares / total_after >= quote_v_before,
+            "LP redeemable V decreased across a fee-paying round trip"
+        );
     }
 }
 

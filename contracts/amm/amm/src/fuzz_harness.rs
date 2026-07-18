@@ -129,10 +129,25 @@ impl<'a> Harness<'a> {
     pub fn apply(&self, step: Step) {
         match step {
             Step::Deposit { actor, pt, v } => {
-                let _ = self.pool.try_deposit(self.actor(actor), &pt, &0, &v, &0);
+                let (pre_pt, pre_v) = self.pool.get_reserves();
+                let pre_total = self.pool.get_total_shares();
+                if self.pool.try_deposit(self.actor(actor), &pt, &0, &v, &0).is_ok() {
+                    self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
+                }
             }
             Step::Withdraw { actor, shares } => {
-                let _ = self.pool.try_withdraw(self.actor(actor), &shares, &0, &0);
+                let (pre_pt, pre_v) = self.pool.get_reserves();
+                let pre_total = self.pool.get_total_shares();
+                if let Ok(Ok((out_pt, out_v))) =
+                    self.pool.try_withdraw(self.actor(actor), &shares, &0, &0)
+                {
+                    // Pro-rata exactly, floor-rounded: the pool may keep the
+                    // sub-stroop dust but never short an LP a full unit — and
+                    // never pay out more than the shares' proportional claim.
+                    assert_eq!(out_pt, pre_pt * shares / pre_total, "withdraw paid non-pro-rata PT");
+                    assert_eq!(out_v, pre_v * shares / pre_total, "withdraw paid non-pro-rata V");
+                    self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
+                }
             }
             Step::SwapVForPt { actor, pt_out, v_in_max } => {
                 let _ = self.pool.try_swap_v_for_pt(self.actor(actor), &pt_out, &v_in_max);
@@ -148,6 +163,23 @@ impl<'a> Harness<'a> {
                 let rate = rate.clamp(MIN_VAULT_RATE, MAX_VAULT_RATE);
                 self.vault.set_exchange_rate(&rate);
             }
+        }
+    }
+
+    /// LP fairness across a deposit or withdraw: per-share reserves of BOTH
+    /// tokens must not decrease (compared cross-multiplied to avoid division).
+    /// Only liquidity ops may be checked this way — swaps legitimately shift
+    /// composition, trading one reserve against the other.
+    fn assert_share_price_not_diluted(&self, pre_pt: i128, pre_v: i128, pre_total: i128) {
+        let (post_pt, post_v) = self.pool.get_reserves();
+        let post_total = self.pool.get_total_shares();
+        for (pre, post, label) in [(pre_pt, post_pt, "PT"), (pre_v, post_v, "V")] {
+            assert!(
+                post.checked_mul(pre_total).expect("share-price check overflow")
+                    >= pre.checked_mul(post_total).expect("share-price check overflow"),
+                "{} per-share reserve diluted by liquidity op",
+                label
+            );
         }
     }
 
