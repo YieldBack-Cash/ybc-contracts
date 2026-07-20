@@ -318,8 +318,16 @@ impl AmmInterface for LiquidityPool {
         assert_eq!(pt_balance_after, pt_balance_before + yt_out, "flash swap: PT not delivered");
         assert_eq!(v_balance_after, v_balance_before - v_paid, "flash swap: V mispaid");
 
-        market.reserve_a = pt_balance_after;
-        market.reserve_b = v_balance_after;
+        // Update reserves by the priced amounts; the balance checks above are
+        // assertions only, so donated tokens never enter pricing.
+        market.reserve_a = market
+            .reserve_a
+            .checked_add(yt_out)
+            .expect("overflow updating PT reserve");
+        market.reserve_b = market
+            .reserve_b
+            .checked_sub(v_paid)
+            .expect("underflow updating V reserve");
         assert!(market.reserve_a > 0 && market.reserve_b > 0, "new reserves must be strictly positive");
 
         let new_exchange_rate = get_exchange_rate_from_trade(
@@ -417,9 +425,16 @@ impl AmmInterface for LiquidityPool {
             "flash swap: V not fully repaid"
         );
 
-        // Re-sync reserves to actual balances: PT fell (lent then burned), V rose by repayment.
-        market.reserve_a = pt_balance_after;
-        market.reserve_b = v_balance_after;
+        // Update reserves by the priced amounts: PT fell (lent then burned), V rose
+        // by the owed repayment. Any overpayment stays out of pricing.
+        market.reserve_a = market
+            .reserve_a
+            .checked_sub(pt_to_borrow)
+            .expect("underflow updating PT reserve");
+        market.reserve_b = market
+            .reserve_b
+            .checked_add(v_owed_shares)
+            .expect("overflow updating V reserve");
         assert!(market.reserve_a > 0 && market.reserve_b > 0, "new reserves must be strictly positive");
 
         let new_exchange_rate = get_exchange_rate_from_trade(
