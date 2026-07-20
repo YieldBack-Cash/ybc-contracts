@@ -64,12 +64,6 @@ impl LiquidityPool {
         assert!(apy_max - apy_min >= MIN_BAND_WIDTH, "band too narrow");
         assert!(fee_apy > 0 && fee_apy <= MAX_FEE_APY, "fee_apy out of range");
 
-        // TODO: verify this derivation — double-check that pinning the band
-        // edges at p = 0.9 / 0.1 PT proportion (±ln(9) logit term) actually
-        // produces the intended apy_min/apy_max behavior across the curve,
-        // including away-from-first-order cases (time close to expiry, wide
-        // bands, etc). Sanity-check against the curve math in curve.rs.
-        //
         // The curve stores rates in ln space (exchange_rate = e^(rate·t)), so
         // an APY maps to ln(1 + apy). The band collapses into curve steepness:
         // at the p = 0.9 / 0.1 pins the logit term is ±ln(9), and to first
