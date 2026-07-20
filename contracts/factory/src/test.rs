@@ -29,12 +29,13 @@ mod amm_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/amm.wasm");
 }
 
-// Default AMM curve parems for tests. Mirrors contracts/amm/amm/src/tests/fixture.rs
-// so a factory-deployed pool behaves the same as the AMM crate's own test fixture
-const SCALAR_ROOT: i128 = 250_000_000; // 25.0 moderate curve steepness
-const FEE_RATE_ROOT: i128 = 500_000; // 0.05, 5% annualized fee root
-const INITIAL_ANCHOR: i128 = 11_000_000; // 1.1, 10% initial implied rate anchor
-const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1, 10% starting implied rate
+// Default AMM market params for tests (1e7-scaled APYs). Mirrors
+// contracts/amm/amm/src/tests/fixture.rs so a factory-deployed pool behaves
+// the same as the AMM crate's own test fixture
+const CURRENT_APY: i128 = 1_000_000; // 10% opening implied rate
+const APY_MIN: i128 = 200_000; // 2% bottom of the trading band
+const APY_MAX: i128 = 2_000_000; // 20% top of the trading band
+const FEE_APY: i128 = 100_000; // 1% fee as an annualized rate spread
 
 struct FactoryTest {
     env: Env,
@@ -88,15 +89,18 @@ impl FactoryTest {
         }
     }
 
+    // Creation is permissionless — user1, not the admin, creates every market
+    // in these tests.
     fn create_market(&self, maturity: u64) -> Market {
         self.factory.create_market(
+            &self.user1,
             &self.vault_addr,
             &VaultType::Vault4626,
             &maturity,
-            &SCALAR_ROOT,
-            &INITIAL_ANCHOR,
-            &FEE_RATE_ROOT,
-            &LAST_IMPLIED_RATE,
+            &CURRENT_APY,
+            &APY_MIN,
+            &APY_MAX,
+            &FEE_APY,
         )
     }
 
@@ -265,13 +269,14 @@ fn test_create_market_deploys_working_pool() {
     let maturity = test.env.ledger().timestamp() + 1000;
 
     let market = test.factory.create_market(
+        &test.user1,
         &test.vault_addr,
         &VaultType::Vault4626,
         &maturity,
-        &SCALAR_ROOT,
-        &INITIAL_ANCHOR,
-        &FEE_RATE_ROOT,
-        &LAST_IMPLIED_RATE,
+        &CURRENT_APY,
+        &APY_MIN,
+        &APY_MAX,
+        &FEE_APY,
     );
 
     let pool_client = amm_wasm::Client::new(&test.env, &market.pool);
@@ -351,6 +356,48 @@ fn test_upgrade_emits_event() {
 }
 
 #[test]
+fn test_create_market_without_creator_auth_fails() {
+    // No mock_all_auths: the unauthenticated create_market call must be
+    // rejected. Permissionless means anyone may create — not that creation
+    // is unauthenticated.
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let vault_addr = env.register(
+        MockVault,
+        (
+            &admin,
+            String::from_str(&env, "Mock Vault Token"),
+            String::from_str(&env, "MVT"),
+            7u32,
+        ),
+    );
+
+    let wasm_hashes = WasmHashes {
+        pt: env.deployer().upload_contract_wasm(pt_wasm::WASM),
+        yt: env.deployer().upload_contract_wasm(yt_wasm::WASM),
+        ym: env.deployer().upload_contract_wasm(ym_wasm::WASM),
+        amm: env.deployer().upload_contract_wasm(amm_wasm::WASM),
+    };
+    let factory_addr = env.register(Factory, (&admin, wasm_hashes));
+    let factory = FactoryClient::new(&env, &factory_addr);
+
+    let maturity = env.ledger().timestamp() + 1000;
+    let result = factory.try_create_market(
+        &creator,
+        &vault_addr,
+        &VaultType::Vault4626,
+        &maturity,
+        &CURRENT_APY,
+        &APY_MIN,
+        &APY_MAX,
+        &FEE_APY,
+    );
+    assert!(result.is_err(), "unauthenticated create_market must fail");
+}
+
+#[test]
 fn test_create_market_emits_event() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
@@ -358,6 +405,7 @@ fn test_create_market_emits_event() {
     let market = test.create_market(maturity);
 
     let expected = MarketCreated {
+        creator: test.user1.clone(),
         vault: test.vault_addr.clone(),
         market,
     };

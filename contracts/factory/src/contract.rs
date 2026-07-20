@@ -31,13 +31,14 @@ pub trait FactoryTrait {
 
     fn create_market(
         env: Env,
+        creator: Address,
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market;
 
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
@@ -122,23 +123,28 @@ impl FactoryTrait for Factory {
         storage::set_wasm_hashes(&env, &wasm_hashes);
     }
 
-    // TODO: support permissionless market creation — drop the admin gate (or add a
-    // separate ungated entry point) so any user can create a market for any vault.
-    // Needs: validation that `vault` is a real vault (not just any token contract),
-    // spam/duplicate-market protection, and a story for who curates what the
-    // frontend/indexer surfaces.
+    /// Creates a market for `vault` at `maturity`. Permissionless: any address
+    /// may create a market by authorizing as `creator` — the creator is
+    /// published in `MarketCreated` so off-chain curation can distinguish who
+    /// deployed what. Curve parameters are APY-denominated (1e7-scaled) and
+    /// validated/derived by the AMM constructor.
+    ///
+    /// The vault is taken on trust: there is no on-chain way to prove it is an
+    /// honest vault, and a malicious one can only harm users who opt into its
+    /// market — every market gets its own YM/PT/YT/pool touching only its own
+    /// vault. Which markets are surfaced to users is an off-chain concern.
     fn create_market(
         env: Env,
+        creator: Address,
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
+        creator.require_auth();
         storage::extend_instance_ttl(&env);
 
         // Fail early with a clear message rather than deep inside the AMM
@@ -167,13 +173,14 @@ impl FactoryTrait for Factory {
             env.clone(),
             vault.clone(),
             ym_addr,
-            scalar_root,
-            initial_anchor,
-            fee_rate_root,
-            last_implied_rate,
+            current_apy,
+            apy_min,
+            apy_max,
+            fee_apy,
         );
 
         MarketCreated {
+            creator,
             vault: vault.clone(),
             market: market.clone(),
         }
@@ -297,10 +304,10 @@ impl Factory {
         env: Env,
         vault: Address,
         ym_addr: Address,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market {
         let wasm_hashes = storage::get_wasm_hashes(&env);
 
@@ -320,10 +327,10 @@ impl Factory {
                     // trades against PT
                     vault.clone(),
                     maturity,
-                    scalar_root,
-                    initial_anchor,
-                    fee_rate_root,
-                    last_implied_rate,
+                    current_apy,
+                    apy_min,
+                    apy_max,
+                    fee_apy,
                     ym_addr.clone(),
                 ),
             );

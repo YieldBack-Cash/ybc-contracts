@@ -4,6 +4,8 @@ use soroban_sdk::{contractevent, Address, BytesN};
 #[contractevent(data_format = "single-value")]
 pub struct MarketCreated {
     #[topic]
+    pub creator: Address,
+    #[topic]
     pub vault: Address,
     pub market: Market,
 }
