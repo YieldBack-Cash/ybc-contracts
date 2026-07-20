@@ -4,11 +4,11 @@ use soroban_sdk::testutils::{Address as _, Ledger};
 use crate::contract::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::MockVaultClient;
 
-// Default market params (all 1e7-scaled)
-pub const SCALAR_ROOT: i128 = 250_000_000;   // 25.0 — moderate curve steepness
-pub const FEE_RATE_ROOT: i128 = 500_000;     // 0.05 — 5% annualised fee root
-pub const INITIAL_ANCHOR: i128 = 11_000_000; // 1.1  — 10% initial implied rate anchor
-pub const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1 — 10% starting implied rate
+// Default market params (all 1e7-scaled APYs)
+pub const CURRENT_APY: i128 = 1_000_000; // 10% — opening implied rate
+pub const APY_MIN: i128 = 200_000;       // 2%  — bottom of the trading band
+pub const APY_MAX: i128 = 2_000_000;     // 20% — top of the trading band
+pub const FEE_APY: i128 = 100_000;       // 1%  — fee as an annualized rate spread
 
 pub const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
@@ -61,7 +61,7 @@ impl<'a> AmmFixture<'a> {
         let expiry = now + ONE_YEAR_SECS;
         let pool_addr = env.register(
             LiquidityPool,
-            (pt_addr.clone(), vault_addr.clone(), expiry, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE, ym.clone()),
+            (pt_addr.clone(), vault_addr.clone(), expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, ym.clone()),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 

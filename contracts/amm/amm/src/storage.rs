@@ -10,7 +10,6 @@ pub struct MarketState {
     pub expiry_ts: u64,
     pub last_implied_rate: i128,
     pub scalar_root: i128,
-    pub initial_anchor: i128,
     pub fee_rate_root: i128,
 }
 

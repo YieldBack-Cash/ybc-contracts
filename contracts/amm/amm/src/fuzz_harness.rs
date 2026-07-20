@@ -13,11 +13,11 @@ use soroban_sdk::{token, Address, Env, String};
 use crate::contract::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::MockVaultClient;
 
-// Market params, mirroring tests/fixture.rs (all 1e7-scaled).
-const SCALAR_ROOT: i128 = 250_000_000; // 25.0
-const FEE_RATE_ROOT: i128 = 500_000; // 0.05
-const INITIAL_ANCHOR: i128 = 11_000_000; // 1.1
-const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1
+// Market params, mirroring tests/fixture.rs (all 1e7-scaled APYs).
+const CURRENT_APY: i128 = 1_000_000; // 10%
+const APY_MIN: i128 = 200_000; // 2%
+const APY_MAX: i128 = 2_000_000; // 20%
+const FEE_APY: i128 = 100_000; // 1%
 const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
 /// Total of each token minted per holder (admin and user).
@@ -100,10 +100,10 @@ impl<'a> Harness<'a> {
                 pt_addr,
                 vault_addr,
                 expiry,
-                SCALAR_ROOT,
-                INITIAL_ANCHOR,
-                FEE_RATE_ROOT,
-                LAST_IMPLIED_RATE,
+                CURRENT_APY,
+                APY_MIN,
+                APY_MAX,
+                FEE_APY,
                 ym,
             ),
         );

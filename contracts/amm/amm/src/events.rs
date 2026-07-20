@@ -7,8 +7,13 @@ pub struct PoolInit {
     #[topic]
     pub token_b: Address,
     pub expiry_ts: u64,
+    // Creator-supplied APY inputs (what the market claims about itself)…
+    pub current_apy: i128,
+    pub apy_min: i128,
+    pub apy_max: i128,
+    pub fee_apy: i128,
+    // …and the curve parameters derived from them.
     pub scalar_root: i128,
-    pub initial_anchor: i128,
     pub fee_rate_root: i128,
     pub last_implied_rate: i128,
 }

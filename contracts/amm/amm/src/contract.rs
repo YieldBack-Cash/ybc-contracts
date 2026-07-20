@@ -10,38 +10,76 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env};
 const MINIMUM_LIQUIDITY: i128 = 100;
 const BURN_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
+/// Bounds on creator-supplied market parameters (all 1e7-scaled APYs).
+/// Outside these ranges the market is degenerate: a band narrower than
+/// MIN_BAND_WIDTH makes the curve so steep it rejects almost every trade,
+/// an APY above MAX_APY pushes `e^(rate·t)` outside the range where the
+/// fixed-point exp/ln approximations are accurate, and a fee above
+/// MAX_FEE_APY makes trading pointless.
+const MAX_APY: i128 = 10_000_000; // 100%
+const MIN_BAND_WIDTH: i128 = 100_000; // 1 percentage point
+const MAX_FEE_APY: i128 = 200_000; // 2%
+
+/// ln(9), 1e7-scaled: the curve's logit term ln(p/(1-p)) at the p = 0.9 and
+/// p = 0.1 proportions where the APY band edges are pinned.
+const LN_9: i128 = 21_972_246;
+
 #[contract]
 pub struct LiquidityPool;
 
 #[contractimpl]
 impl LiquidityPool {
-    /// Initializes the pool.
+    /// Initializes the pool. Curve parameters are derived from
+    /// APY-denominated inputs (1e7-scaled, e.g. 500_000 = 5%).
     ///
     /// # Arguments
     /// * `token_a` - First token address (must be < `token_b`)
     /// * `token_b` - Second token address (vault share token)
     /// * `expiry_ts` - Unix timestamp at which the market expires
-    /// * `scalar_root` - Controls curve steepness (1e7-scaled)
-    /// * `initial_anchor` - Initial curve anchor (1e7-scaled)
-    /// * `fee_rate_root` - Fee rate root (1e7-scaled)
-    /// * `last_implied_rate` - Initial implied rate (1e7-scaled)
+    /// * `current_apy` - APY the market opens trading at
+    /// * `apy_min` / `apy_max` - band the curve is tuned to trade within: the
+    ///   implied rate reaches `apy_max` when the pool is 90% PT and `apy_min`
+    ///   at 10% PT. Soft edges — the hard limits are the proportion bounds.
+    /// * `fee_apy` - fee as an annualized rate spread, decays to zero at expiry
     /// * `ym` - Trusted yield manager; the only address accepted as a flash-swap receiver
     pub fn __constructor(
         e: Env,
         token_a: Address,
         token_b: Address,
         expiry_ts: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
         ym: Address,
     ) {
-let now = e.ledger().timestamp();
+        let now = e.ledger().timestamp();
         assert!(expiry_ts > now, "expiry must be in the future");
-        assert!(scalar_root > 0, "scalar_root must be positive");
-        assert!(fee_rate_root > 0, "fee_rate_root must be positive");
-        assert!(initial_anchor > 0, "initial_anchor must be positive");
+        assert!(apy_min >= 0, "apy_min must be non-negative");
+        assert!(
+            apy_min < current_apy && current_apy < apy_max,
+            "current_apy must be inside the band"
+        );
+        assert!(apy_max <= MAX_APY, "apy_max too high");
+        assert!(apy_max - apy_min >= MIN_BAND_WIDTH, "band too narrow");
+        assert!(fee_apy > 0 && fee_apy <= MAX_FEE_APY, "fee_apy out of range");
+
+        // TODO: verify this derivation — double-check that pinning the band
+        // edges at p = 0.9 / 0.1 PT proportion (±ln(9) logit term) actually
+        // produces the intended apy_min/apy_max behavior across the curve,
+        // including away-from-first-order cases (time close to expiry, wide
+        // bands, etc). Sanity-check against the curve math in curve.rs.
+        //
+        // The curve stores rates in ln space (exchange_rate = e^(rate·t)), so
+        // an APY maps to ln(1 + apy). The band collapses into curve steepness:
+        // at the p = 0.9 / 0.1 pins the logit term is ±ln(9), and to first
+        // order the resulting APY half-width ln(9)/scalar_root is the same at
+        // any time to expiry.
+        let last_implied_rate =
+            crate::math::ln_fp(crate::math::FP_SCALE + current_apy, crate::math::FP_SCALE);
+        let fee_rate_root =
+            crate::math::ln_fp(crate::math::FP_SCALE + fee_apy, crate::math::FP_SCALE);
+        let scalar_root = crate::math::div_down(2 * LN_9, apy_max - apy_min);
 
         set_ym(&e, &ym);
 
@@ -53,7 +91,6 @@ let now = e.ledger().timestamp();
             expiry_ts,
             last_implied_rate,
             scalar_root,
-            initial_anchor,
             fee_rate_root,
         });
         put_total_shares(&e, 0);
@@ -62,8 +99,11 @@ let now = e.ledger().timestamp();
             token_a,
             token_b,
             expiry_ts,
+            current_apy,
+            apy_min,
+            apy_max,
+            fee_apy,
             scalar_root,
-            initial_anchor,
             fee_rate_root,
             last_implied_rate,
         }
