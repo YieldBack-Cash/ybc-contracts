@@ -9,4 +9,5 @@ mod deposit;
 mod exchange_rate;
 mod initialization;
 mod redeem;
+mod surplus;
 mod transfer;

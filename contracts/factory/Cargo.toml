@@ -9,6 +9,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+stellar-access = { workspace = true }
+stellar-macros = { workspace = true }
 yield_manager_interface = { path = "../yield/yield_manager_interface" }
 
 [dev-dependencies]

@@ -19,6 +19,7 @@ pub struct YieldManagerTest {
     pub yt: Address,
     pub pool: Address,
     pub maturity: u64,
+    pub treasury: Address,
 }
 
 impl YieldManagerTest {
@@ -43,7 +44,11 @@ impl YieldManagerTest {
         let current_time = env.ledger().timestamp();
         let maturity = current_time + 1000;
 
-        let yield_manager_id = env.register(YieldManager, (&admin, &vault_addr, VaultType::Vault4626, maturity));
+        let treasury = Address::generate(&env);
+        let yield_manager_id = env.register(
+            YieldManager,
+            (&admin, &vault_addr, VaultType::Vault4626, maturity, &treasury),
+        );
 
         let pt_id = env.register(
             PrincipalToken,
@@ -88,6 +93,7 @@ impl YieldManagerTest {
             yt: yt_id,
             pool: pool_addr,
             maturity,
+            treasury,
         }
     }
 

@@ -1,7 +1,7 @@
 use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, IntoVal, String, Symbol};
 
 use amm::LiquidityPoolClient;
-use factory::{Factory, FactoryClient, Market, WasmHashes};
+use factory::{Factory, FactoryClient, FeeConfig, Market, WasmHashes};
 use mock_vault::{MockVault, MockVaultClient};
 use router::RouterContract;
 use yield_manager::VaultType;
@@ -75,7 +75,14 @@ impl<'a> IntegrationFixture<'a> {
             ym: env.deployer().upload_contract_wasm(ym_wasm::WASM),
             amm: env.deployer().upload_contract_wasm(amm_wasm::WASM),
         };
-        let factory_addr = env.register(Factory, (&admin, wasm_hashes));
+        // Reserve fee rate 0: the integration tests assert exact user/pool
+        // amounts and the fee-remit paths are covered by the AMM and factory
+        // unit tests.
+        let fee_config = FeeConfig {
+            treasury: Address::generate(env),
+            reserve_fee_rate: 0,
+        };
+        let factory_addr = env.register(Factory, (&admin, wasm_hashes, fee_config));
         let factory = FactoryClient::new(env, &factory_addr);
 
         // ── Market (YM + PT + YT + AMM) ──────────────────────────────────────

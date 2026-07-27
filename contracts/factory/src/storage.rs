@@ -1,11 +1,13 @@
-use crate::contract::{Market, WasmHashes};
+use crate::contract::{FeeConfig, Market, WasmHashes};
 use soroban_sdk::{contracttype, Address, Env};
 
+// The owner entry is managed by the stellar-access Ownable module under its
+// own storage key.
 #[contracttype]
 enum DataKey {
-    Admin,
     WasmHashes,
     SaltCounter,
+    FeeConfig,
     Market(Address, u64),
 }
 
@@ -25,19 +27,19 @@ pub fn extend_instance_ttl(env: &Env) {
         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
 
-pub fn set_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&DataKey::Admin, admin);
-}
-
-pub fn get_admin(env: &Env) -> Address {
-    env.storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .expect("Admin not set")
-}
-
 pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
     env.storage().instance().set(&DataKey::WasmHashes, hashes);
+}
+
+pub fn set_fee_config(env: &Env, config: &FeeConfig) {
+    env.storage().instance().set(&DataKey::FeeConfig, config);
+}
+
+pub fn get_fee_config(env: &Env) -> FeeConfig {
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeConfig)
+        .expect("Fee config not set")
 }
 
 pub fn get_wasm_hashes(env: &Env) -> WasmHashes {

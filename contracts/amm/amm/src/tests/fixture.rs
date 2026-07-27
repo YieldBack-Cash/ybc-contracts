@@ -23,16 +23,25 @@ pub struct AmmFixture<'a> {
     /// The pool's trusted flash-swap receiver. Flash tests deploy their mock
     /// receiver at this address via `env.register_at` so it is accepted by the pool.
     pub ym: Address,
+    /// Protocol fee sink baked into the pool at construction.
+    pub treasury: Address,
 }
 
 impl<'a> AmmFixture<'a> {
-    /// Deploy env, mock PT, mock vault, and the AMM pool.
+    /// Deploy env, mock PT, mock vault, and the AMM pool with the reserve fee
+    /// off (rate 0) — most tests assert exact amounts under fee-free reserves.
     /// Expiry is set to `now + ONE_YEAR_SECS` by default.
+    pub fn new(env: &'a Env) -> Self {
+        Self::new_with_reserve_fee(env, 0)
+    }
+
+    /// Same as `new`, but with a nonzero treasury cut of the trading fee
+    /// (1e7-scaled fraction, e.g. 1_000_000 = 10% of the fee).
     ///
     /// Both tokens are registered via `env.register` so their addresses come
     /// from the same sequential counter.  PT is registered first, guaranteeing
     /// `pt_addr < vault_addr` without any randomness.
-    pub fn new(env: &'a Env) -> Self {
+    pub fn new_with_reserve_fee(env: &'a Env, reserve_fee_rate: i128) -> Self {
         env.ledger().with_mut(|l| { l.timestamp = 1_000_000; });
 
         let admin = Address::generate(env);
@@ -56,12 +65,13 @@ impl<'a> AmmFixture<'a> {
         // deploy a mock receiver at this address (via `env.register_at`) so the
         // pool accepts it, while other tests never touch the flash entrypoints.
         let ym = Address::generate(env);
+        let treasury = Address::generate(env);
 
         let now    = env.ledger().timestamp();
         let expiry = now + ONE_YEAR_SECS;
         let pool_addr = env.register(
             LiquidityPool,
-            (pt_addr.clone(), vault_addr.clone(), expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, ym.clone()),
+            (pt_addr.clone(), vault_addr.clone(), expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, ym.clone(), treasury.clone(), reserve_fee_rate),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
 
@@ -72,7 +82,7 @@ impl<'a> AmmFixture<'a> {
         vault.mint(&admin, &1_000_000_000);
         vault.mint(&user,  &1_000_000_000);
 
-        AmmFixture { env: env.clone(), pt, vault, pool, admin, user, ym }
+        AmmFixture { env: env.clone(), pt, vault, pool, admin, user, ym, treasury }
     }
 
     pub fn set_time(&self, ts: u64) {

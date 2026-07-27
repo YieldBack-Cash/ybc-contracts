@@ -1,5 +1,5 @@
 use crate::curve::{calc_trade, compute_rate_anchor, get_exchange_rate_from_trade};
-use crate::events::{Deposit, FlashSwapPt, FlashSwapV, PoolInit, SwapPtForV, SwapVForPt, Withdraw};
+use crate::events::{Deposit, FlashSwapPt, FlashSwapV, PoolInit, ReserveFeePaid, SwapPtForV, SwapVForPt, Withdraw};
 use crate::transfers::{get_deposit_amounts, transfer_pt_from_pool_to_user, transfer_pt_from_user_to_pool, transfer_v_from_user_to_pool, transfer_v_from_pool_to_user};
 use crate::vault::{convert_assets_to_vault_shares, convert_vault_shares_to_assets};
 use crate::storage::*;
@@ -19,6 +19,12 @@ const BURN_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 const MAX_APY: i128 = 10_000_000; // 100%
 const MIN_BAND_WIDTH: i128 = 100_000; // 1 percentage point
 const MAX_FEE_APY: i128 = 200_000; // 2%
+
+/// Cap on the treasury's share of the trading fee (1e7-scaled fraction of the
+/// fee, not of the trade). Above 50% the LP cut stops being worth providing
+/// liquidity for. calc_trade itself accepts the full 0–100% range; this is
+/// the policy bound enforced at construction.
+const MAX_RESERVE_FEE_RATE: i128 = 5_000_000; // 50% of the fee
 
 /// ln(9), 1e7-scaled: the curve's logit term ln(p/(1-p)) at the p = 0.9 and
 /// p = 0.1 proportions where the APY band edges are pinned.
@@ -42,6 +48,9 @@ impl LiquidityPool {
     ///   at 10% PT. Soft edges — the hard limits are the proportion bounds.
     /// * `fee_apy` - fee as an annualized rate spread, decays to zero at expiry
     /// * `ym` - Trusted yield manager; the only address accepted as a flash-swap receiver
+    /// * `treasury` - Protocol fee sink; receives the reserve cut of each trade's fee
+    /// * `reserve_fee_rate` - Treasury's share of the fee (1e7-scaled, e.g.
+    ///   `1_000_000` = 10% of the fee). Immutable once set — there is no setter.
     pub fn __constructor(
         e: Env,
         token_a: Address,
@@ -52,6 +61,8 @@ impl LiquidityPool {
         apy_max: i128,
         fee_apy: i128,
         ym: Address,
+        treasury: Address,
+        reserve_fee_rate: i128,
     ) {
         let now = e.ledger().timestamp();
         assert!(expiry_ts > now, "expiry must be in the future");
@@ -63,6 +74,10 @@ impl LiquidityPool {
         assert!(apy_max <= MAX_APY, "apy_max too high");
         assert!(apy_max - apy_min >= MIN_BAND_WIDTH, "band too narrow");
         assert!(fee_apy > 0 && fee_apy <= MAX_FEE_APY, "fee_apy out of range");
+        assert!(
+            reserve_fee_rate >= 0 && reserve_fee_rate <= MAX_RESERVE_FEE_RATE,
+            "reserve_fee_rate out of range"
+        );
 
         // The curve stores rates in ln space (exchange_rate = e^(rate·t)), so
         // an APY maps to ln(1 + apy). The band collapses into curve steepness:
@@ -76,6 +91,8 @@ impl LiquidityPool {
         let scalar_root = crate::math::div_down(2 * LN_9, apy_max - apy_min);
 
         set_ym(&e, &ym);
+        set_treasury(&e, &treasury);
+        set_reserve_fee_rate(&e, reserve_fee_rate);
 
         put_market_state(&e, &MarketState {
             token_a: token_a.clone(),
@@ -100,8 +117,34 @@ impl LiquidityPool {
             scalar_root,
             fee_rate_root,
             last_implied_rate,
+            treasury,
+            reserve_fee_rate,
         }
         .publish(&e);
+    }
+
+    /// Converts the reserve-fee cut from asset units to vault shares. Floors
+    /// (on top of the floored split in calc_trade), so the rounding dust
+    /// stays with the LPs; returns 0 for a non-positive cut.
+    fn reserve_fee_in_shares(e: &Env, fee_assets: i128) -> i128 {
+        if fee_assets <= 0 {
+            return 0;
+        }
+        convert_assets_to_vault_shares(e, fee_assets).max(0)
+    }
+
+    /// Remits an already-converted reserve-fee cut to the treasury and emits
+    /// `ReserveFeePaid`. No-op for zero, so a zero-rate market never touches
+    /// the treasury. Callers subtract the same amount from `reserve_b`, so
+    /// the cut never enters LP accounting.
+    fn remit_reserve_fee(e: &Env, token_b: &Address, fee_shares: i128) {
+        if fee_shares <= 0 {
+            return;
+        }
+        let treasury = get_treasury(e);
+        token::TokenClient::new(e, token_b)
+            .transfer(&e.current_contract_address(), &treasury, &fee_shares);
+        ReserveFeePaid { treasury, amount: fee_shares }.publish(e);
     }
 }
 
@@ -139,13 +182,13 @@ impl AmmInterface for LiquidityPool {
             time_to_expiry as i128,
         );
 
-        let (net_v_to_account, _fee, _reserve_fee) = calc_trade(
+        let (net_v_to_account, _fee, net_v_to_reserve) = calc_trade(
             market.reserve_a,
             reserve_b_assets,
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0, // reserve fee off for now
+            get_reserve_fee_rate(&e),
             pt_out,
         );
 
@@ -160,8 +203,12 @@ impl AmmInterface for LiquidityPool {
         transfer_v_from_user_to_pool(&e, &market.token_b, &to, v_in_shares);
         transfer_pt_from_pool_to_user(&e, &market.token_a, &to, pt_out);
 
-        // reserve_b stays in vault shares for LP accounting.
-        market.reserve_b += v_in_shares;
+        let reserve_fee_shares = LiquidityPool::reserve_fee_in_shares(&e, net_v_to_reserve);
+        LiquidityPool::remit_reserve_fee(&e, &market.token_b, reserve_fee_shares);
+
+        // reserve_b stays in vault shares for LP accounting; the treasury cut
+        // has already left the pool, so it never enters the reserves.
+        market.reserve_b += v_in_shares - reserve_fee_shares;
         market.reserve_a -= pt_out;
 
         let new_exchange_rate = get_exchange_rate_from_trade(
@@ -226,13 +273,13 @@ impl AmmInterface for LiquidityPool {
         // Pendle sign convention: negative means PT comes FROM the user INTO the pool
         let net_pt_to_account = -pt_in;
 
-        let (net_v_to_account, _net_v_fee, _net_v_to_reserve) = calc_trade(
+        let (net_v_to_account, _net_v_fee, net_v_to_reserve) = calc_trade(
             market.reserve_a,
             reserve_b_assets,
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0,
+            get_reserve_fee_rate(&e),
             net_pt_to_account,
         );
 
@@ -242,20 +289,27 @@ impl AmmInterface for LiquidityPool {
         let v_out_assets = net_v_to_account;
         let v_out_shares = convert_assets_to_vault_shares(&e, v_out_assets);
         assert!(v_out_shares >= min_v_out, "out amount below minimum");
-        assert!(market.reserve_b > v_out_shares, "insufficient V liquidity");
+        // The fee is withheld from the user's payout but its treasury cut still
+        // leaves the pool, so liquidity must cover both legs.
+        let reserve_fee_shares = LiquidityPool::reserve_fee_in_shares(&e, net_v_to_reserve);
+        assert!(
+            market.reserve_b > v_out_shares + reserve_fee_shares,
+            "insufficient V liquidity"
+        );
 
         let new_reserve_a = market.reserve_a
             .checked_add(pt_in)
             .expect("overflow updating PT reserve");
         // reserve_b stays in vault shares for LP accounting.
         let new_reserve_b = market.reserve_b
-            .checked_sub(v_out_shares)
+            .checked_sub(v_out_shares + reserve_fee_shares)
             .expect("underflow updating V reserve");
 
         assert!(new_reserve_a > 0 && new_reserve_b > 0, "new reserves must be strictly positive");
 
         transfer_pt_from_user_to_pool(&e, &market.token_a, &to, pt_in);
         transfer_v_from_pool_to_user(&e, &market.token_b, &to, v_out_shares);
+        LiquidityPool::remit_reserve_fee(&e, &market.token_b, reserve_fee_shares);
 
         market.reserve_a = new_reserve_a;
         market.reserve_b = new_reserve_b;
@@ -318,21 +372,25 @@ impl AmmInterface for LiquidityPool {
 
         // The pool buys `yt_out` PT → PT flows INTO the pool: same pricing as swap_pt_for_v.
         let net_pt_to_account = -yt_out;
-        let (net_v_to_account, _fee, _reserve_fee) = calc_trade(
+        let (net_v_to_account, _fee, net_v_to_reserve) = calc_trade(
             market.reserve_a,
             reserve_b_assets,
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0, // reserve fee off for now
+            get_reserve_fee_rate(&e),
             net_pt_to_account,
         );
         assert!(net_v_to_account > 0, "expected pool to pay V for PT");
         let v_paid = convert_assets_to_vault_shares(&e, net_v_to_account);
         assert!(v_paid > 0, "v_paid must be positive");
+        let reserve_fee_shares = LiquidityPool::reserve_fee_in_shares(&e, net_v_to_reserve);
         // Backstop only: exchange_rate >= 1 caps v_paid at yt_out, so exceeding the
         // V reserve would need proportion > 1 — calc_trade's proportion cap fires first.
-        assert!(market.reserve_b > v_paid, "insufficient V liquidity");
+        assert!(
+            market.reserve_b > v_paid + reserve_fee_shares,
+            "insufficient V liquidity"
+        );
 
         let pt_balance_before = get_balance_a(&e);
         let v_balance_before = get_balance_b(&e);
@@ -352,6 +410,10 @@ impl AmmInterface for LiquidityPool {
         assert_eq!(pt_balance_after, pt_balance_before + yt_out, "flash swap: PT not delivered");
         assert_eq!(v_balance_after, v_balance_before - v_paid, "flash swap: V mispaid");
 
+        // Remit after the delta asserts above so they see only the priced
+        // amounts; the fee then leaves both the balance and the reserves.
+        LiquidityPool::remit_reserve_fee(&e, &market.token_b, reserve_fee_shares);
+
         // Update reserves by the priced amounts; the balance checks above are
         // assertions only, so donated tokens never enter pricing.
         market.reserve_a = market
@@ -360,7 +422,7 @@ impl AmmInterface for LiquidityPool {
             .expect("overflow updating PT reserve");
         market.reserve_b = market
             .reserve_b
-            .checked_sub(v_paid)
+            .checked_sub(v_paid + reserve_fee_shares)
             .expect("underflow updating V reserve");
         assert!(market.reserve_a > 0 && market.reserve_b > 0, "new reserves must be strictly positive");
 
@@ -423,13 +485,13 @@ impl AmmInterface for LiquidityPool {
         );
 
         // PT flows OUT of the pool to the account → positive net_pt_to_account, V owed back.
-        let (net_v_to_account, _fee, _reserve_fee) = calc_trade(
+        let (net_v_to_account, _fee, net_v_to_reserve) = calc_trade(
             market.reserve_a,
             reserve_b_assets,
             rate_scalar,
             rate_anchor,
             fee_factor,
-            0, // reserve fee off for now
+            get_reserve_fee_rate(&e),
             pt_to_borrow,
         );
         assert!(net_v_to_account < 0, "expected pool to be repaid V");
@@ -438,6 +500,7 @@ impl AmmInterface for LiquidityPool {
             .expect("overflow converting signed V flow");
         let v_owed_shares = convert_assets_to_vault_shares(&e, v_owed_assets);
         assert!(v_owed_shares > 0, "v_owed must be positive");
+        let reserve_fee_shares = LiquidityPool::reserve_fee_in_shares(&e, net_v_to_reserve);
 
         let pt_balance_before = get_balance_a(&e);
         let v_balance_before = get_balance_b(&e);
@@ -459,6 +522,11 @@ impl AmmInterface for LiquidityPool {
             "flash swap: V not fully repaid"
         );
 
+        // Remit after the repayment assert above so it sees only the priced
+        // amounts. The repayment includes the fee, so the reserve gains the
+        // repayment net of the treasury cut.
+        LiquidityPool::remit_reserve_fee(&e, &market.token_b, reserve_fee_shares);
+
         // Update reserves by the priced amounts: PT fell (lent then burned), V rose
         // by the owed repayment. Any overpayment stays out of pricing.
         market.reserve_a = market
@@ -467,7 +535,7 @@ impl AmmInterface for LiquidityPool {
             .expect("underflow updating PT reserve");
         market.reserve_b = market
             .reserve_b
-            .checked_add(v_owed_shares)
+            .checked_add(v_owed_shares - reserve_fee_shares)
             .expect("overflow updating V reserve");
         assert!(market.reserve_a > 0 && market.reserve_b > 0, "new reserves must be strictly positive");
 
@@ -652,6 +720,16 @@ impl AmmInterface for LiquidityPool {
     fn get_implied_rate(e: Env) -> i128 {
         extend_instance_ttl(&e);
         get_market_state(&e).last_implied_rate
+    }
+
+    fn get_treasury(e: Env) -> Address {
+        extend_instance_ttl(&e);
+        get_treasury(&e)
+    }
+
+    fn get_reserve_fee_rate(e: Env) -> i128 {
+        extend_instance_ttl(&e);
+        get_reserve_fee_rate(&e)
     }
 
     /// Returns the pool share balance for a given user.

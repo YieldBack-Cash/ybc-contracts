@@ -16,6 +16,18 @@ pub struct PoolInit {
     pub scalar_root: i128,
     pub fee_rate_root: i128,
     pub last_implied_rate: i128,
+    // Protocol fee config snapshotted at creation.
+    pub treasury: Address,
+    pub reserve_fee_rate: i128,
+}
+
+/// Emitted whenever a trade's reserve-fee cut is remitted to the treasury.
+/// `amount` is in vault shares — the units that actually moved.
+#[contractevent(topics = ["reserve_fee_paid"], data_format = "vec")]
+pub struct ReserveFeePaid {
+    #[topic]
+    pub treasury: Address,
+    pub amount: i128,
 }
 
 #[contractevent(topics = ["swap_v_for_pt"], data_format = "vec")]

@@ -12,6 +12,8 @@ pub trait AmmInterface {
     fn withdraw(env: Env, to: Address, share_amount: i128, min_a: i128, min_b: i128) -> (i128, i128);
     fn get_reserves(env: Env) -> (i128, i128);
     fn get_implied_rate(env: Env) -> i128;
+    fn get_treasury(env: Env) -> Address;
+    fn get_reserve_fee_rate(env: Env) -> i128;
     fn balance_shares(env: Env, user: Address) -> i128;
     fn get_total_shares(env: Env) -> i128;
 }

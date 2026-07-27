@@ -28,9 +28,10 @@ fn register_pool(env: &Env) -> (Address, Address, Address) {
 
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
     let ym = Address::generate(env);
+    let treasury = Address::generate(env);
     let pool_addr = env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym),
+        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym, &treasury, 0i128),
     );
     (pt_addr, vault_addr, pool_addr)
 }
