@@ -108,9 +108,12 @@ impl TokenInterface for YieldToken {
         Self::accrue_yield(&env, &from, None);
         Self::accrue_yield(&env, &to, None);
 
-        let to_balance = storage::get_balance(&env, &to);
-
+        // Debit first, then read the credit side. When `from == to` both sides
+        // are the same storage key, so reading `to_balance` up front would let
+        // the credit overwrite the debit and mint `amount` YT out of nothing —
+        // along with a claim on yield the manager holds no backing for.
         storage::set_balance(&env, &from, from_balance - amount);
+        let to_balance = storage::get_balance(&env, &to);
         storage::set_balance(&env, &to, to_balance + amount);
 
         Transfer {
@@ -221,8 +224,10 @@ impl YieldTokenTrait for YieldToken {
         Self::accrue_yield(&env, &from, Some(exchange_rate));
         Self::accrue_yield(&env, &to, Some(exchange_rate));
 
-        let to_balance = storage::get_balance(&env, &to);
+        // Debit before reading the credit side — see `transfer` for why a
+        // self-transfer would otherwise mint YT.
         storage::set_balance(&env, &from, from_balance - amount);
+        let to_balance = storage::get_balance(&env, &to);
         storage::set_balance(&env, &to, to_balance + amount);
 
         Transfer { from, to, to_muxed_id: None, amount }.publish(&env);
@@ -269,10 +274,14 @@ impl YieldTokenTrait for YieldToken {
         Self::accrue_yield(&env, &user, None);
 
         let claimable = storage::get_accrued_yield(&env, &user);
+        // The YM re-denominates locked claims to their locked-rate asset
+        // value, so the shares actually paid can be fewer than `claimable` —
+        // report what the user really received.
+        let mut paid = 0;
         if claimable > 0 {
             storage::set_accrued_yield(&env, &user, 0);
 
-            yield_manager_client.distribute_yield(&user, &claimable);
+            paid = yield_manager_client.distribute_yield(&user, &claimable);
         }
 
         // Past maturity the exchange rate is locked, so the accrual above was
@@ -290,7 +299,7 @@ impl YieldTokenTrait for YieldToken {
             }
         }
 
-        claimable
+        paid
     }
 
     fn total_supply(env: Env) -> i128 {
