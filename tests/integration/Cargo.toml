@@ -13,6 +13,7 @@ factory = { path = "../../contracts/factory" }
 mock_vault = { path = "../../contracts/mocks/mock_vault" }
 principal_token = { path = "../../contracts/tokens/principal_token" }
 router = { path = "../../contracts/router" }
+standard_vault = { path = "../../contracts/mocks/standard_vault" }
 yield_manager = { path = "../../contracts/yield/yield_manager" }
 yield_token = { path = "../../contracts/tokens/yield_token" }
 proptest = "1"

@@ -211,6 +211,84 @@ LP positions are the pool's (PT, V) reserves; shares are tracked per user by the
   entire PT balance via the YM, sweeps YT-accrued yield via `claim_yield`, and
   bounds the total V delivered by `min_shares_out`.
 
+### 4.8 Zaps: entering and leaving in the base asset
+
+Everything above is denominated in **V** (vault shares). The zaps let a user
+arrive and leave holding only the vault's underlying asset (USDC, say) and never
+think about shares at all. Each one wraps an existing operation in a vault
+deposit or redeem:
+
+| Zap | Path |
+|-----|------|
+| `zap_asset_for_pt` / `zap_pt_for_asset` | asset ↔ V ↔ PT (AMM spot) |
+| `zap_asset_for_yt` / `zap_yt_for_asset` | asset ↔ V ↔ YT (flash swap) |
+| `zap_asset_for_split` / `zap_split_for_asset` | asset ↔ V ↔ PT+YT (YM mint/burn) |
+| `zap_asset_for_lp` / `zap_lp_for_asset` | asset ↔ V ↔ LP position |
+| `exit_expired_to_asset` | expired LP + PT + YT → asset |
+
+Four properties hold across all of them:
+
+1. **The router still custodies nothing.** Every leg names the *user* as the
+   token-holding party — the vault deposit passes the user as `from`, `receiver`
+   and `operator` alike. A revert anywhere unwinds the whole chain and strands
+   nothing, so the design rule in §3 survives unchanged.
+2. **Slippage is bounded once, in base-asset terms.** A single `min_asset_out` /
+   `max_asset_in` covers pool price *and* vault rate together — the only figure
+   the user cares about. Per-leg share bounds are left deliberately wide.
+3. **Nothing trusts a vault's self-reported amounts.** Every quantity crossing
+   the vault boundary is measured as a balance delta before and after, because
+   SEP-56 leaves fees and rounding to the implementation.
+4. **The vault is called only through SEP-56.** `query_asset`, `convert_to_*`,
+   `deposit` and `redeem` — nothing vault-specific, so any compliant vault can
+   back a market without an adapter. The asset address is read live from
+   `query_asset` (once per invocation) rather than snapshotted into the market
+   record, so there is nothing to migrate and nothing that can go stale.
+
+`zap_asset_for_lp` takes a caller-supplied `pt_to_buy`. The pool only accepts
+its two legs in the current reserve ratio, and solving for the split that lands
+on that ratio means duplicating the AMM's curve math in the router; instead the
+frontend simulates for the figure and the router refunds whatever the pool
+declines, so a slightly wrong number costs a refund rather than a failure.
+
+### 4.9 What makes a vault zap-compatible
+
+The protocol calls **four** vault functions in total — `query_asset`,
+`convert_to_assets`, `deposit`, `redeem` — out of the eighteen SEP-56 declares.
+That is deliberate: the smaller the surface, the more vaults can back a market.
+So compatibility is rarely blocked by the interface. It is blocked by semantics
+the standard leaves open.
+
+The full list of what a vault must do, and how a violation shows up:
+
+| # | Requirement | If violated |
+|---|-------------|-------------|
+| 1 | The four functions above, at SEP-56 names and signatures | Zaps revert immediately (unknown function). Nothing moves. |
+| 2 | Shares are a SEP-41 token (`balance`, `transfer`, `transfer_from`, `approve`) — SEP-56 mandates this anyway | The YM cannot custody and the AMM cannot hold a reserve; the market itself won't work, zaps or not. |
+| 3 | `redeem` burns **exactly** the shares requested, never clamping to the balance | Caught: the router asserts the exact burn and reverts. |
+| 4 | Settlement is synchronous — assets have arrived when the call returns | Caught: the measured asset delta fails `min_asset_out`. |
+| 5 | `deposit` is permissionless for the acting address (no signer gate, allowlist, or cap below the amount) | Entry zaps revert; exit zaps still work. A lopsided market. |
+| 6 | Delegation, where supported, is allowance-based | Not exercised — the router passes one address for every role. Only matters if that ever changes (§4.8). |
+| 7 | Share value never falls, and there are no exit fees | **Not caught.** See below. |
+
+Requirements 1 through 5 all fail *loudly and atomically*: the transaction
+reverts and the user keeps their position. A vault that violates any of them
+produces a broken market, not a dangerous one.
+
+Requirement 7 is different, and it is the one to actually worry about. The YM
+treats its exchange rate as non-decreasing (§5) and derives PT face value from
+`convert_to_assets`, which SEP-56 says nothing about reconciling with what
+`redeem` really pays. A vault that loses value, or charges on the way out, leaves
+PT over-valued against backing that cannot cover it — a slow solvency drift, not
+an error. Nothing on-chain detects it.
+
+Since `create_market` is permissionless, a vault failing any of these can already
+back a market. That is not a security hole — markets are fully isolated per
+`(vault, maturity)` — but "SEP-56 compliant" is not sufficient grounds to surface
+a market in a UI. Checking 1–5 is cheap: simulate a small round trip against the
+vault off-chain. Checking 7 is a judgement about the vault operator, not a test.
+
+See [SECURITY.md](./SECURITY.md) for the trust model.
+
 ---
 
 ## 5. The exchange rate
@@ -262,6 +340,7 @@ Where each topic in this document lives in the source.
 | YT flash swaps (callbacks) | §4.5 | `contracts/router/src/contract.rs` (`swap_v_for_yt`, `swap_yt_for_v`); `contracts/yield/yield_manager/src/contract.rs` (`on_flash_receive_pt`, `on_flash_receive_v`); flash traits in `amm-interface` |
 | Liquidity provision | §4.6 | `contracts/amm/amm/src/contract.rs` (`deposit`, `withdraw`) |
 | Maturity redemption & exit | §4.7 | `contracts/yield/yield_manager/src/contract.rs` (`redeem_principal`); `contracts/router/src/contract.rs` (`exit_expired`); `contracts/tokens/yield_token/src/contract.rs` (`claim_yield`) |
+| Base-asset zaps | §4.8 | `contracts/router/src/contract.rs` (`zap_*`, `exit_expired_to_asset`, and the `deposit_assets` / `redeem_shares` helpers); SEP-56 surface in `vault/vault_interface`; tested against OpenZeppelin's vault via `contracts/mocks/standard_vault` in `tests/integration/src/tests/zaps.rs` |
 | Exchange rate | §1, §5 | `contracts/yield/yield_manager/src/contract.rs` (`update_exchange_rate`, `get_vault_exchange_rate`) |
 | Events (off-chain integration) | — | each contract's `events.rs` |
 ```

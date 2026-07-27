@@ -11,19 +11,29 @@ members = [
   "contracts/amm/amm",
   "contracts/amm/amm-interface",
   "contracts/mocks/mock_vault",
+  "contracts/mocks/standard_vault",
+  "contracts/treasury",
   "vault/vault_interface",
   "contracts/router",
   "tests/integration",
-  "tests/blend",
 ]
 # cargo-fuzz crates build with nightly + sanitizer flags; keep them out of
 # normal workspace builds.
-exclude = ["contracts/amm/amm/fuzz"]
+# tests/blend is excluded until blend-contract-sdk supports soroban-sdk 26
+# (its latest, 2.25.0, pins 25.3.2 — incompatible with the OZ crates' 26.1
+# requirement). Re-add to members when a compatible release ships.
+exclude = ["contracts/amm/amm/fuzz", "tests/blend"]
 
 [workspace.dependencies]
-soroban-sdk = "25.3.1"
-soroban-token-sdk = "25.3.1"
+# 26.1 is the newest SDK the OpenZeppelin 0.7.2 crates support (no OZ release
+# targets 27 yet); mixed SDK versions make Env/Address types incompatible.
+soroban-sdk = "26.1.1"
+soroban-token-sdk = "26.1.1"
 soroban-fixed-point-math = "1.5.0"
+# OpenZeppelin stellar-contracts: Ownable for the human-owned singletons
+# (factory, treasury). Market contracts keep their hand-rolled one-shot admins.
+stellar-access = "0.7.2"
+stellar-macros = "0.7.2"
 
 [profile.release]
 opt-level = "z"
