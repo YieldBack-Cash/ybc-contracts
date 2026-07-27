@@ -1,5 +1,5 @@
 use soroban_sdk::{token, Address, Env};
-use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, PoolSet, RedeemCombined, RedeemPrincipal, TokenContractsSet};
+use crate::events::{Deposit, DistributeYield, FlashDeposit, FlashRedeem, PoolSet, RedeemCombined, RedeemPrincipal, SurplusCollected, TokenContractsSet};
 use crate::storage;
 use amm_interface::{FlashSwapPtReceiver, FlashSwapVReceiver};
 use vault_interface::VaultContractClient;
@@ -68,11 +68,13 @@ impl YieldManagerTrait for YieldManager {
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
+        treasury: Address,
     ) {
         storage::set_admin(&env, &admin);
         storage::set_vault(&env, &vault);
         storage::set_vault_type(&env, vault_type);
         storage::set_maturity(&env, maturity);
+        storage::set_treasury(&env, &treasury);
 
         let initial_rate = YieldManager::get_vault_exchange_rate(&env);
         storage::set_exchange_rate(&env, initial_rate);
@@ -132,6 +134,11 @@ impl YieldManagerTrait for YieldManager {
     fn get_maturity(env: Env) -> u64 {
         storage::extend_instance_ttl(&env);
         storage::get_maturity(&env)
+    }
+
+    fn get_treasury(env: Env) -> Address {
+        storage::extend_instance_ttl(&env);
+        storage::get_treasury(&env)
     }
 
     fn get_exchange_rate(env: Env) -> i128 {
@@ -233,7 +240,7 @@ impl YieldManagerTrait for YieldManager {
         Ok(())
     }
 
-    fn distribute_yield(env: Env, to: Address, shares_amount: i128) -> Result<(), YieldManagerError> {
+    fn distribute_yield(env: Env, to: Address, shares_amount: i128) -> Result<i128, YieldManagerError> {
         storage::extend_instance_ttl(&env);
 
         if !storage::is_initialized(&env) {
@@ -245,21 +252,44 @@ impl YieldManagerTrait for YieldManager {
         yt_addr.require_auth();
 
         if shares_amount <= 0 {
-            return Ok(());
+            return Ok(0);
         }
 
         let exchange_rate = YieldManager::update_exchange_rate(&env);
+
+        // The YT accrues yield as a share count frozen against rates up to the
+        // locked rate. Positions freeze in ASSET value at maturity, so once the
+        // rate is locked a claim pays the shares that asset value buys at the
+        // live rate — fewer shares when the vault has kept appreciating. The
+        // difference is post-maturity interest and belongs to the protocol.
+        let shares_to_send = if storage::is_rate_locked(&env) {
+            let live_rate = YieldManager::get_vault_exchange_rate(&env).max(exchange_rate);
+            if live_rate == 0 {
+                return Err(YieldManagerError::ExchangeRateZero);
+            }
+            let paid = shares_amount
+                .checked_mul(exchange_rate)
+                .expect("overflow adjusting yield payout")
+                / live_rate;
+            let freed = shares_amount - paid;
+            if freed > 0 {
+                storage::set_surplus_shares(&env, storage::get_surplus_shares(&env) + freed);
+            }
+            paid
+        } else {
+            shares_amount
+        };
 
         let vault_addr = storage::get_vault(&env);
         let vault_token_client = token::Client::new(&env, &vault_addr);
         vault_token_client.transfer(
             &env.current_contract_address(),
             &to,
-            &shares_amount,
+            &shares_to_send,
         );
 
-        DistributeYield { to, shares_amount, exchange_rate }.publish(&env);
-        Ok(())
+        DistributeYield { to, shares_amount: shares_to_send, exchange_rate }.publish(&env);
+        Ok(shares_to_send)
     }
 
     fn redeem_principal(env: Env, from: Address, pt_amount: i128) -> Result<(), YieldManagerError> {
@@ -299,6 +329,19 @@ impl YieldManagerTrait for YieldManager {
             .expect("overflow computing shares_to_return")
             / exchange_rate;
 
+        // This PT's backing was reserved at the locked rate; redeeming at a
+        // higher live rate frees the difference — the post-maturity interest
+        // the redeemer forgoes ("you snooze you lose"). Record it for
+        // collect_surplus.
+        let shares_at_locked = pt_amount
+            .checked_mul(SCALAR_7)
+            .expect("overflow computing shares_at_locked")
+            / locked_rate;
+        let freed = shares_at_locked - shares_to_return;
+        if freed > 0 {
+            storage::set_surplus_shares(&env, storage::get_surplus_shares(&env) + freed);
+        }
+
         let pt_token_client = token::Client::new(&env, &pt_addr);
         pt_token_client.burn(&from, &pt_amount);
 
@@ -311,6 +354,31 @@ impl YieldManagerTrait for YieldManager {
 
         RedeemPrincipal { from, pt_amount, shares_returned: shares_to_return, exchange_rate }.publish(&env);
         Ok(())
+    }
+
+    fn collect_surplus(env: Env) -> Result<i128, YieldManagerError> {
+        storage::extend_instance_ttl(&env);
+
+        if !storage::is_initialized(&env) {
+            return Err(YieldManagerError::NotInitialized);
+        }
+
+        let surplus = storage::get_surplus_shares(&env);
+        if surplus <= 0 {
+            return Ok(0);
+        }
+        storage::set_surplus_shares(&env, 0);
+
+        let treasury = storage::get_treasury(&env);
+        let vault_addr = storage::get_vault(&env);
+        token::Client::new(&env, &vault_addr).transfer(
+            &env.current_contract_address(),
+            &treasury,
+            &surplus,
+        );
+
+        SurplusCollected { treasury, amount: surplus }.publish(&env);
+        Ok(surplus)
     }
 }
 

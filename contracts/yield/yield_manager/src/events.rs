@@ -72,3 +72,10 @@ pub struct FlashRedeem {
     pub v_to_user: i128,
     pub exchange_rate: i128,
 }
+
+#[contractevent(topics = ["surplus_collected"], data_format = "vec")]
+pub struct SurplusCollected {
+    #[topic]
+    pub treasury: Address,
+    pub amount: i128,
+}
