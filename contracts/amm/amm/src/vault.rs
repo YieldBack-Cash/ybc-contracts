@@ -44,6 +44,18 @@ impl VaultRate {
             / FP_SCALE
     }
 
+    /// The probed rate itself: assets per `FP_SCALE` shares, exactly the value
+    /// `convert_to_assets(FP_SCALE)` returned.
+    ///
+    /// Exposed so a flash swap can hand the figure to its receiver rather than
+    /// leave it to repeat this read. The receiver's own probe would use the same
+    /// scale and get the same number — the yield manager's `SCALAR_7` and this
+    /// `FP_SCALE` are both 1e7 — so passing it down is pure deduplication, with
+    /// no conversion involved.
+    pub(crate) fn assets_per_scale(&self) -> i128 {
+        self.assets_per_scale
+    }
+
     /// Vault shares equivalent to `assets` units of the underlying.
     pub(crate) fn to_shares(&self, assets: i128) -> i128 {
         assets

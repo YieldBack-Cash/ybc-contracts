@@ -38,15 +38,51 @@ impl YieldManager {
             return storage::get_exchange_rate(env);
         }
 
+        // The locked check stays ahead of the read: once maturity has passed the
+        // vault is never consulted at all. Inlining this as a single delegation
+        // would evaluate the argument first and read it regardless.
+        YieldManager::update_exchange_rate_from(env, YieldManager::get_vault_exchange_rate(env))
+    }
+
+    /// As [`YieldManager::update_exchange_rate`], but with the vault's current rate
+    /// supplied by the caller rather than read here.
+    ///
+    /// For callers that have ALREADY read it from the vault directly in this same
+    /// transaction — today only the flash-swap callbacks, where the AMM loads the
+    /// rate to price the trade and hands it down. The rate cannot move within a
+    /// transaction, so reading it again returns the same number for the price of a
+    /// full round trip into the underlying lending pool.
+    ///
+    /// Every piece of policy stays here: the non-decreasing floor still applies and
+    /// the maturity lock is still set. The caller supplies only the raw observation.
+    ///
+    /// Two conditions make that safe, and both must keep holding:
+    ///
+    ///   * The figure is read straight from the vault, never one already
+    ///     high-water-marked or otherwise derived. Passing a stale-high rate back in
+    ///     would ratchet the stored rate up permanently — the floor discards values
+    ///     that are too LOW, so an inflated one is the direction that does harm.
+    ///   * The caller's vault is this yield manager's vault. Guaranteed by
+    ///     construction rather than checked: `create_market` threads one `vault`
+    ///     value into both this contract and the pool's share-token slot, and
+    ///     `set_pool` is one-shot, so the pairing cannot be re-pointed afterwards.
+    ///     Before this parameter existed the yield manager was self-consistent
+    ///     whatever the AMM referenced, so this is a new dependency — anything that
+    ///     ever lets the two be deployed apart has to re-establish it.
+    fn update_exchange_rate_from(env: &Env, vault_rate: i128) -> i128 {
+        if storage::is_rate_locked(env) {
+            return storage::get_exchange_rate(env);
+        }
+        assert!(vault_rate > 0, "vault rate must be positive");
+
         let maturity = storage::get_maturity(env);
         let current_time = env.ledger().timestamp();
 
-        let new_rate = YieldManager::get_vault_exchange_rate(env);
         let stored_rate = storage::get_exchange_rate(env);
 
-        let current_rate = if new_rate > stored_rate {
-            storage::set_exchange_rate(env, new_rate);
-            new_rate
+        let current_rate = if vault_rate > stored_rate {
+            storage::set_exchange_rate(env, vault_rate);
+            vault_rate
         } else {
             stored_rate
         };
@@ -644,7 +680,7 @@ impl YieldManagerTrait for YieldManager {
 #[cfg(feature = "contract")]
 #[contractimpl]
 impl FlashSwapPtReceiver for YieldManager {
-    fn on_flash_receive_pt(env: Env, yt_out: i128, v_from_pool: i128, user: Address, max_v_in: i128, amm: Address) {
+    fn on_flash_receive_pt(env: Env, yt_out: i128, v_from_pool: i128, user: Address, max_v_in: i128, vault_rate: i128, amm: Address) {
         storage::extend_instance_ttl(&env);
 
         if !storage::is_initialized(&env) {
@@ -666,7 +702,9 @@ impl FlashSwapPtReceiver for YieldManager {
         let vault_client = token::Client::new(&env, &vault_addr);
         let pt_client = token::Client::new(&env, &pt_addr);
 
-        let exchange_rate = YieldManager::update_exchange_rate(&env);
+        // Supplied by the pool, which read it from the vault to price this trade —
+        // see `update_exchange_rate_from` for why that is the only safe source.
+        let exchange_rate = YieldManager::update_exchange_rate_from(&env, vault_rate);
         assert!(exchange_rate > 0, "exchange rate is zero");
 
         // Vault shares needed to mint yt_out PT+YT (inverse of deposit's mint math).
@@ -712,7 +750,7 @@ impl FlashSwapPtReceiver for YieldManager {
 #[cfg(feature = "contract")]
 #[contractimpl]
 impl FlashSwapVReceiver for YieldManager {
-    fn on_flash_receive_v(env: Env, pt_borrowed: i128, v_owed: i128, user: Address, min_v_out: i128, amm: Address) {
+    fn on_flash_receive_v(env: Env, pt_borrowed: i128, v_owed: i128, user: Address, min_v_out: i128, vault_rate: i128, amm: Address) {
         storage::extend_instance_ttl(&env);
 
         if !storage::is_initialized(&env) {
@@ -732,10 +770,11 @@ impl FlashSwapVReceiver for YieldManager {
         let yt_client = YieldTokenClient::new(&env, &yt_addr);
         let vault_client = token::Client::new(&env, &vault_addr);
 
-        // Fetch the exchange rate before any YT operations. All YT calls below use this
-        // rate as a hint so the YT contract never calls back into the YM, which would
-        // trigger re-entry while on_flash_receive_v is executing.
-        let exchange_rate = YieldManager::update_exchange_rate(&env);
+        // Supplied by the pool, which read it from the vault to price this trade —
+        // see `update_exchange_rate_from` for why that is the only safe source. All
+        // YT calls below take it as a hint too, so the YT contract never calls back
+        // into the YM, which would re-enter while this callback is executing.
+        let exchange_rate = YieldManager::update_exchange_rate_from(&env, vault_rate);
         assert!(exchange_rate > 0, "exchange rate is zero");
 
         // No user pull here: the router moved the user's `pt_borrowed` YT in before the

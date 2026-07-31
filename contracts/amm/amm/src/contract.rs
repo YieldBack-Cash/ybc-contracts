@@ -414,8 +414,16 @@ impl AmmInterface for LiquidityPool {
 
         // Synchronous callback: receiver mints yt_out (PT+YT), sends YT to the user,
         // and delivers exactly yt_out PT back to this address.
-        FlashSwapPtReceiverClient::new(&e, &receiver)
-            .on_flash_receive_pt(&yt_out, &v_paid, &user, &max_v_in, &e.current_contract_address());
+        // `rate` is passed rather than left for the receiver to fetch: it was read
+        // from the vault a few lines above and cannot move within this transaction.
+        FlashSwapPtReceiverClient::new(&e, &receiver).on_flash_receive_pt(
+            &yt_out,
+            &v_paid,
+            &user,
+            &max_v_in,
+            &rate.assets_per_scale(),
+            &e.current_contract_address(),
+        );
 
         // Invariant: pool gained exactly yt_out PT and paid exactly v_paid V.
         let pt_balance_after = get_balance_a(&e);
@@ -525,8 +533,15 @@ impl AmmInterface for LiquidityPool {
 
         // Synchronous callback: receiver pulls YT from the user, redeems PT+YT → V via the YM,
         // repays this address `v_owed_shares` V, and forwards the remainder to the user.
-        FlashSwapVReceiverClient::new(&e, &receiver)
-            .on_flash_receive_v(&pt_to_borrow, &v_owed_shares, &user, &min_v_out, &e.current_contract_address());
+        // Same as flash_swap_pt: hand down the rate already loaded above.
+        FlashSwapVReceiverClient::new(&e, &receiver).on_flash_receive_v(
+            &pt_to_borrow,
+            &v_owed_shares,
+            &user,
+            &min_v_out,
+            &rate.assets_per_scale(),
+            &e.current_contract_address(),
+        );
 
         let pt_balance_after = get_balance_a(&e);
         let v_balance_after = get_balance_b(&e);

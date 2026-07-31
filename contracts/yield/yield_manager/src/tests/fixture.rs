@@ -107,6 +107,15 @@ impl YieldManagerTest {
         vault_client.set_exchange_rate(&rate);
     }
 
+    /// The vault's rate as the AMM would observe it, probed at the same 1e7 scale
+    /// the protocol uses everywhere. The flash callbacks now take this as an
+    /// argument, so tests driving them directly must pass what a real pool would
+    /// have read — reading it live keeps that honest across
+    /// `set_vault_exchange_rate`.
+    pub fn vault_exchange_rate(&self) -> i128 {
+        MockVaultClient::new(&self.env, &self.vault_addr).convert_to_assets(&10_000_000)
+    }
+
     pub fn vault_balance(&self, user: &Address) -> i128 {
         let token = TokenClient::new(&self.env, &self.vault_addr);
         token.balance(user)

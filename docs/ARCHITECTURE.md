@@ -167,7 +167,8 @@ swap with a YM mint/burn.
 
 ```
 1. AMM advances v_from_pool vault shares to the YM (its payment for the PT it's buying)
-2. AMM calls YM.on_flash_receive_pt(yt_out, v_from_pool, user, max_v_in, amm)
+2. AMM calls YM.on_flash_receive_pt(yt_out, v_from_pool, user, max_v_in, vault_rate, amm)
+   — vault_rate is the rate the AMM already read to price this trade (§4.8)
 3. YM pulls max_v_in from the user, computes v_to_mint = yt_out*1e7/rate,
    user_cost = v_to_mint - v_from_pool  (the YT price), refunds the excess
 4. YM mints yt_out PT (to itself) + yt_out YT (to the user)
@@ -183,7 +184,7 @@ advance covers the rest of the mint and is repaid in PT.
 1. Router first transfers the user's yt_in YT to the YM
    (so the user's signed auth entry is a fixed-arg transfer, not pool-state-dependent)
 2. AMM lends pt_borrowed = yt_in PT to the YM
-3. AMM calls YM.on_flash_receive_v(pt_borrowed, v_owed, user, min_v_out, amm)
+3. AMM calls YM.on_flash_receive_v(pt_borrowed, v_owed, user, min_v_out, vault_rate, amm)
 4. YM burns the pair (pt_borrowed PT + yt_in YT) → shares_returned = pt_borrowed*1e7/rate
 5. YM repays v_owed vault shares to the AMM, sends the remainder (>= min_v_out) to the user
 ```
@@ -194,6 +195,13 @@ independently authenticated against `user`, so a direct caller impersonating the
 pool cannot mint or redeem against other depositors' V. The `rate` is passed as
 a hint into every PT/YT call so the token contracts never call *back* into the YM
 mid-callback (the host rejects that re-entry).
+
+That same auth gate is what makes the inbound `vault_rate` safe. It reaches
+security-critical arithmetic — it divides `v_to_mint`, so an inflated value would
+mint against fewer shares — but it can only originate from the registered pool,
+which is factory-deployed, immutable, and reads it from the vault itself. The
+yield manager additionally keeps its non-decreasing floor, so a value *below* the
+stored rate is discarded rather than adopted.
 
 ### 4.6 Providing liquidity
 
@@ -221,7 +229,7 @@ deposit or redeem:
 | Zap | Path |
 |-----|------|
 | `zap_asset_for_pt` / `zap_pt_for_asset` | asset ↔ V ↔ PT (AMM spot) |
-| `zap_asset_for_yt` / `zap_yt_for_asset` | asset ↔ V ↔ YT (flash swap) — **exceeds the per-transaction budget against a Blend vault; see below** |
+| `zap_asset_for_yt` / `zap_yt_for_asset` | asset ↔ V ↔ YT (flash swap) |
 | `zap_asset_for_split` / `zap_split_for_asset` | asset ↔ V ↔ PT+YT (YM mint/burn) |
 | `zap_asset_for_lp` / `zap_lp_for_asset` | asset ↔ V ↔ LP position |
 | `exit_expired_to_asset` | expired LP + PT + YT → asset — converts the caller's **whole** share balance up to `sweep_allowance`, so size that to the expected proceeds |
@@ -266,23 +274,39 @@ rather than a delta measured mid-call — which means it converts the caller's
 **entire** share balance up to `sweep_allowance`, including shares held for
 unrelated markets. Size the allowance to the expected proceeds.
 
-A cost driver worth knowing when reading this code: a YT `transfer` looks like
-one token call but used to be two Blend pool reads, because `accrue_yield` runs
-for both sender and recipient and each independently walked YT → YM → vault →
-Blend for a rate that cannot change within a transaction. It is now fetched once
-and shared. The equivalent saving still available on the YT paths is having the
-AMM pass its already-loaded `VaultRate` into the flash callbacks instead of the
-yield manager re-fetching it.
+The governing principle is that **the vault rate is read once and threaded
+downward**, never re-fetched by each layer. A YT `transfer` used to cost two Blend
+reads because `accrue_yield` runs for both sender and recipient and each walked
+YT → YM → vault → Blend independently; it now fetches once and shares. The yield
+manager passes the rate to the yield token for the same reason. And the AMM hands
+its already-loaded `VaultRate` to the flash callbacks, so the yield manager does
+not repeat the read — `update_exchange_rate` is split so the vault read is
+separable from the policy, with the non-decreasing floor, the maturity lock and
+the storage write all staying in the yield manager.
 
-The two YT zaps remain out of reach, and the measurements say it is structural
-rather than a missed optimisation: `zap_asset_for_pt` (two Blend submissions plus
-an AMM swap) fits, while `zap_yt_for_asset` (one submission plus a flash swap)
-does not — so the flash swap alone costs more than a deposit and a swap together.
-Any asset-denominated YT route needs at least one submission to convert, so
-removing vault work cannot close the gap. YT is therefore a two-transaction
-product: the share-denominated `swap_v_for_yt` / `swap_yt_for_v` work normally,
-with a vault deposit or redeem on either side. They fail at *simulation*, so a
-user never spends a fee on one.
+That last change is what brought the YT zaps inside the budget. **All eight zaps
+and all four share-denominated swaps now simulate successfully against a Blend
+vault**, the heaviest being `zap_asset_for_yt` at ~32M instructions.
+
+Two things about the rate hint are load-bearing, and both are documented at
+`update_exchange_rate_from`:
+
+* **Direction.** The value flows from the contract that read the vault *directly*
+  to the contract applying policy on top of it, never the reverse. Sourcing the
+  AMM's pricing rate from the yield manager would hand it a high-water-marked
+  figure that can be stale — the AMM keeps reading the vault itself.
+* **Pairing.** The receiver's vault must be the caller's vault. Guaranteed by
+  construction: `create_market` threads one `vault` value into both, and
+  `set_pool` is one-shot.
+
+The `amm` and `yield_manager` WASM changed the callback ABI together and are not
+interchangeable with their predecessors — see §4.10.
+
+An earlier revision of this document concluded the YT zaps were *structurally*
+out of reach, reasoning that the flash swap alone cost more than a deposit plus a
+swap. That was wrong twice over: the comparison was made against a market frozen
+on pre-fix bytecode, and it reasoned about CPU when the binding limit is memory.
+`docs/YT_ZAP_BUDGET.md` records the measurements.
 
 `zap_asset_for_lp` takes a caller-supplied `pt_to_buy`. The pool only accepts
 its two legs in the current reserve ratio, and solving for the split that lands
@@ -328,6 +352,37 @@ a market in a UI. Checking 1–5 is cheap: simulate a small round trip against t
 vault off-chain. Checking 7 is a judgement about the vault operator, not a test.
 
 See [SECURITY.md](./SECURITY.md) for the trust model.
+
+### 4.10 Markets are immutable — WASM is bound at creation
+
+`create_market` stamps whatever hashes the factory holds **at that moment** into
+the market's YM, PT, YT and pool. None of those four expose an upgrade
+entrypoint, so a market can never adopt a later version. Only the factory and the
+router can be replaced: the factory has `upgrade`, and the router is a singleton
+that resolves markets through the factory, so a new router works against existing
+markets untouched.
+
+Three consequences that have each caused real problems:
+
+1. **Install order silently determines what a market can do.** A market created
+   between installing contract A and contract B gets new-A and old-B, forever.
+   Market `1789517001` was created two minutes after a new AMM and two days
+   before a new YM/YT — it is permanently missing `exit_expired_to_asset`, whose
+   YM never had the function, and its YT still performs a redundant rate lookup
+   on every transfer. **Always install every WASM, verify
+   `factory.get_wasm_hashes()`, and only then `create_market`.**
+2. **A market's deployed hashes can silently diverge from the registry.**
+   `deployments.testnet.json` records what was *installed*, not what any given
+   market *runs*. To check a live market, fetch its contracts and hash them —
+   `stellar contract fetch --id <ym> | sha256sum` — rather than trusting the
+   registry. Markets now carry a `deployed_wasm` block for this reason.
+3. **Contracts that change together must ship together.** The AMM and YM share
+   the flash-callback ABI. Installing one without the other yields markets whose
+   flash swaps fail at the callback. They are versioned as a pair.
+
+Because markets are immutable, essentially every contract-level fix requires
+creating new markets. Bundle them: one migration can carry several changes at
+barely more cost than one.
 
 ---
 
@@ -381,6 +436,9 @@ Where each topic in this document lives in the source.
 | Liquidity provision | §4.6 | `contracts/amm/amm/src/contract.rs` (`deposit`, `withdraw`) |
 | Maturity redemption & exit | §4.7 | `contracts/yield/yield_manager/src/contract.rs` (`redeem_principal`); `contracts/router/src/contract.rs` (`exit_expired`); `contracts/tokens/yield_token/src/contract.rs` (`claim_yield`) |
 | Base-asset zaps | §4.8 | `contracts/router/src/contract.rs` (`zap_*`, `exit_expired_to_asset`, and the `deposit_assets` / `redeem_shares` helpers); SEP-56 surface in `vault/vault_interface`; tested against OpenZeppelin's vault via `contracts/mocks/standard_vault` in `tests/integration/src/tests/zaps.rs` |
+| Vault-rate threading | §4.5, §4.8 | `contracts/amm/amm/src/vault.rs` (`VaultRate`, read once per invocation); `amm-interface` (`vault_rate` on both flash callbacks); `yield_manager/src/contract.rs` (`update_exchange_rate_from` — the vault read split from the policy) |
+| Transaction budget | §4.8, §4.10 | `docs/YT_ZAP_BUDGET.md` — per-leg cost model, measured instruction counts per entrypoint, and why the binding limit is memory rather than CPU |
+| Market immutability | §4.10 | `contracts/factory/src/contract.rs` (`create_market` stamps hashes at creation); `deployments/deployments.testnet.json` (`deployed_wasm` per market) |
 | Exchange rate | §1, §5 | `contracts/yield/yield_manager/src/contract.rs` (`update_exchange_rate`, `get_vault_exchange_rate`) |
 | Events (off-chain integration) | — | each contract's `events.rs` |
 ```
