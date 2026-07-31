@@ -51,6 +51,21 @@ pub struct ZappedOut {
     pub asset_out: i128,
 }
 
+/// Base-asset counterpart of [`ExitedExpired`]. Carries only what the router
+/// itself knows: it no longer measures the PT burned or the shares redeemed,
+/// because the yield manager now settles both in one call and reports them in
+/// its own `RedeemToAsset` event.
+#[contractevent(topics = ["exit_expired_to_asset"], data_format = "vec")]
+pub struct ExitedExpiredToAsset {
+    #[topic]
+    pub vault: Address,
+    #[topic]
+    pub to: Address,
+    pub maturity: u64,
+    pub lp_shares: i128,
+    pub asset_out: i128,
+}
+
 #[contractevent(topics = ["exit_expired"], data_format = "vec")]
 pub struct ExitedExpired {
     #[topic]

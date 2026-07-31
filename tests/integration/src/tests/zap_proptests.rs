@@ -19,7 +19,7 @@ use std::vec::Vec;
 use soroban_sdk::testutils::EnvTestConfig;
 use soroban_sdk::{Address, Env, IntoVal, Symbol};
 
-use super::zap_fixture::{ZapFixture, USER_ASSET};
+use super::zap_fixture::{ZapFixture, SWEEP, USER_ASSET};
 
 /// Test env that skips writing a snapshot JSON per proptest case.
 fn quiet_env() -> Env {
@@ -134,21 +134,32 @@ impl<'a> ZapHarness<'a> {
     fn apply(&mut self, step: Step) {
         let e = &self.f.env;
         let (vault, maturity) = (self.f.vault.clone(), self.f.maturity);
+        // Both are caller-chosen in production too — the harness stands in for
+        // the frontend here. A generous sweep ceiling costs nothing since unused
+        // allowance is never taken.
+        let expiry = self.f.expiry();
         let f = &self.f;
 
         match step {
             Step::ZapAssetForPt { actor, pt_out, max_asset_in } => {
                 let who = self.actor(actor);
+                // max_v_in is the pool-side bound, pulled in full and refunded.
+                // Half the deposit's nominal share value keeps it fundable while
+                // still covering a realistic trade.
+                let max_v_in = (max_asset_in / 2).max(1);
                 self.try_router(
                     "zap_asset_for_pt",
-                    (&vault, maturity, &who, pt_out, max_asset_in).into_val(e),
+                    (&vault, maturity, &who, pt_out, max_asset_in, max_v_in, SWEEP, expiry)
+                        .into_val(e),
                 );
             }
             Step::ZapAssetForYt { actor, yt_out, max_asset_in } => {
                 let who = self.actor(actor);
+                let max_v_in = (max_asset_in / 2).max(1);
                 self.try_router(
                     "zap_asset_for_yt",
-                    (&vault, maturity, &who, yt_out, max_asset_in).into_val(e),
+                    (&vault, maturity, &who, yt_out, max_asset_in, max_v_in, SWEEP, expiry)
+                        .into_val(e),
                 );
             }
             Step::ZapAssetForSplit { actor, asset_in, min_tokens_out } => {
@@ -164,9 +175,15 @@ impl<'a> ZapHarness<'a> {
                 // pool's ratio; an absolute amount almost never does, so the
                 // whole entrypoint would go untested.
                 let pt_to_buy = portion(asset_in, pt_pct.min(90)) / 2;
+                let max_v_in = (asset_in / 2).max(1);
+                let desired_v = (asset_in / 4).max(1);
                 self.try_router(
                     "zap_asset_for_lp",
-                    (&vault, maturity, &who, asset_in, pt_to_buy, min_lp_out).into_val(e),
+                    (
+                        &vault, maturity, &who, asset_in, pt_to_buy, max_v_in, desired_v,
+                        min_lp_out, SWEEP, expiry,
+                    )
+                        .into_val(e),
                 );
             }
             Step::ZapPtForAsset { actor, pct, min_asset_out } => {
@@ -174,7 +191,7 @@ impl<'a> ZapHarness<'a> {
                 let pt_in = portion(f.balance_of(&f.pt, &who), pct);
                 self.try_router(
                     "zap_pt_for_asset",
-                    (&vault, maturity, &who, pt_in, min_asset_out).into_val(e),
+                    (&vault, maturity, &who, pt_in, min_asset_out, SWEEP, expiry).into_val(e),
                 );
             }
             Step::ZapYtForAsset { actor, pct, min_asset_out } => {
@@ -182,7 +199,7 @@ impl<'a> ZapHarness<'a> {
                 let yt_in = portion(f.balance_of(&f.yt, &who), pct);
                 self.try_router(
                     "zap_yt_for_asset",
-                    (&vault, maturity, &who, yt_in, min_asset_out).into_val(e),
+                    (&vault, maturity, &who, yt_in, min_asset_out, SWEEP, expiry).into_val(e),
                 );
             }
             Step::ZapSplitForAsset { actor, pct, min_asset_out } => {
@@ -201,9 +218,11 @@ impl<'a> ZapHarness<'a> {
             Step::ZapLpForAsset { actor, pct, min_asset_out } => {
                 let who = self.actor(actor);
                 let lp_shares = portion(f.pool.balance_shares(&who), pct);
+                let pt_to_sell = portion(f.balance_of(&f.pt, &who), pct);
                 self.try_router(
                     "zap_lp_for_asset",
-                    (&vault, maturity, &who, lp_shares, min_asset_out).into_val(e),
+                    (&vault, maturity, &who, lp_shares, pt_to_sell, min_asset_out, SWEEP, expiry)
+                        .into_val(e),
                 );
             }
             Step::ExitExpiredToAsset { actor, pct, min_asset_out } => {
@@ -216,7 +235,11 @@ impl<'a> ZapHarness<'a> {
                     || (lp_shares > 0 && f.pool.balance_shares(&who) >= lp_shares);
                 let ok = self.try_router(
                     "exit_expired_to_asset",
-                    (&vault, maturity, &who, lp_shares, min_asset_out).into_val(e),
+                    (
+                        &vault, maturity, &who, lp_shares, SWEEP, expiry, min_asset_out, SWEEP,
+                        expiry,
+                    )
+                        .into_val(e),
                 );
                 if ok && touches_supply {
                     self.supplies_decoupled = true;
@@ -303,6 +326,20 @@ impl<'a> ZapHarness<'a> {
     /// implementation detail the user never asked for, so stranding even one
     /// means a refund path was missed.
     fn assert_no_shares_stranded(&self, step: Step, before: Option<i128>) {
+        // The expired exit is the one deliberate exception: it converts the
+        // actor's whole share balance up to the allowance, not just what the
+        // call produced, so it legitimately ENDS with fewer shares than it
+        // started. Never more — that would still be a stranded refund.
+        if let Step::ExitExpiredToAsset { .. } = step {
+            if let (Some(idx), Some(before)) = (step.actor_idx(), before) {
+                let who = self.actor(idx);
+                assert!(
+                    self.f.balance_of(&self.f.vault, &who) <= before,
+                    "{step:?} increased the actor's vault shares",
+                );
+            }
+            return;
+        }
         if let (Some(idx), Some(before)) = (step.actor_idx(), before) {
             let who = self.actor(idx);
             assert_eq!(
@@ -454,14 +491,18 @@ proptest! {
         let bought = f.env.try_invoke_contract::<i128, soroban_sdk::Error>(
             &f.router.address,
             &Symbol::new(&f.env, "zap_asset_for_pt"),
-            (&f.vault, f.maturity, &f.user, pt, asset_before).into_val(&f.env),
+            (
+                &f.vault, f.maturity, &f.user, pt, asset_before, asset_before / 2, SWEEP,
+                f.expiry(),
+            )
+                .into_val(&f.env),
         );
         prop_assume!(bought.is_ok());
 
         let sold = f.env.try_invoke_contract::<i128, soroban_sdk::Error>(
             &f.router.address,
             &Symbol::new(&f.env, "zap_pt_for_asset"),
-            (&f.vault, f.maturity, &f.user, pt, 1i128).into_val(&f.env),
+            (&f.vault, f.maturity, &f.user, pt, 1i128, SWEEP, f.expiry()).into_val(&f.env),
         );
         prop_assume!(sold.is_ok());
 
@@ -483,14 +524,18 @@ proptest! {
         let bought = f.env.try_invoke_contract::<i128, soroban_sdk::Error>(
             &f.router.address,
             &Symbol::new(&f.env, "zap_asset_for_yt"),
-            (&f.vault, f.maturity, &f.user, yt, asset_before).into_val(&f.env),
+            (
+                &f.vault, f.maturity, &f.user, yt, asset_before, asset_before / 2, SWEEP,
+                f.expiry(),
+            )
+                .into_val(&f.env),
         );
         prop_assume!(bought.is_ok());
 
         let sold = f.env.try_invoke_contract::<i128, soroban_sdk::Error>(
             &f.router.address,
             &Symbol::new(&f.env, "zap_yt_for_asset"),
-            (&f.vault, f.maturity, &f.user, yt, 1i128).into_val(&f.env),
+            (&f.vault, f.maturity, &f.user, yt, 1i128, SWEEP, f.expiry()).into_val(&f.env),
         );
         prop_assume!(sold.is_ok());
 

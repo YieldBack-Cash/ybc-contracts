@@ -221,10 +221,10 @@ deposit or redeem:
 | Zap | Path |
 |-----|------|
 | `zap_asset_for_pt` / `zap_pt_for_asset` | asset ↔ V ↔ PT (AMM spot) |
-| `zap_asset_for_yt` / `zap_yt_for_asset` | asset ↔ V ↔ YT (flash swap) |
+| `zap_asset_for_yt` / `zap_yt_for_asset` | asset ↔ V ↔ YT (flash swap) — **exceeds the per-transaction budget against a Blend vault; see below** |
 | `zap_asset_for_split` / `zap_split_for_asset` | asset ↔ V ↔ PT+YT (YM mint/burn) |
 | `zap_asset_for_lp` / `zap_lp_for_asset` | asset ↔ V ↔ LP position |
-| `exit_expired_to_asset` | expired LP + PT + YT → asset |
+| `exit_expired_to_asset` | expired LP + PT + YT → asset — converts the caller's **whole** share balance up to `sweep_allowance`, so size that to the expected proceeds |
 
 Four properties hold across all of them:
 
@@ -243,6 +243,46 @@ Four properties hold across all of them:
    back a market without an adapter. The asset address is read live from
    `query_asset` (once per invocation) rather than snapshotted into the market
    record, so there is nothing to migrate and nothing that can go stale.
+
+**Transaction budget.** A zap's cost is dominated by how many times it makes the
+vault do real work. Against a lending vault like Blend, a deposit or redeem is a
+pool submission — reserve updates, position updates, emissions accounting — and
+even a rate *read* accrues interest and reads pool state. The AMM therefore loads
+the vault rate once per invocation (`VaultRate` in `amm/src/vault.rs`) rather than
+converting through a cross-contract call at each of the four points a swap needs
+it; that one change is what brings `zap_asset_for_lp` inside the limit.
+
+`exit_expired_to_asset` was over the limit whenever an LP position was involved,
+and the fix illustrates the rule. It used to redeem twice — once for the shares
+backing the caller's PT, once for the loose shares an LP withdrawal and a yield
+claim leave behind. The yield manager now gathers those loose shares with a
+`transfer_from` (cheap) and redeems the combined total once (expensive, but
+once). Reordering the router so both payouts land before that call is what makes
+it possible. Verified on-chain with a real LP position.
+
+The cost of that is a wider allowance. The yield manager authenticates the
+caller, so the amount it takes has to be a ceiling the caller signed in advance
+rather than a delta measured mid-call — which means it converts the caller's
+**entire** share balance up to `sweep_allowance`, including shares held for
+unrelated markets. Size the allowance to the expected proceeds.
+
+A cost driver worth knowing when reading this code: a YT `transfer` looks like
+one token call but used to be two Blend pool reads, because `accrue_yield` runs
+for both sender and recipient and each independently walked YT → YM → vault →
+Blend for a rate that cannot change within a transaction. It is now fetched once
+and shared. The equivalent saving still available on the YT paths is having the
+AMM pass its already-loaded `VaultRate` into the flash callbacks instead of the
+yield manager re-fetching it.
+
+The two YT zaps remain out of reach, and the measurements say it is structural
+rather than a missed optimisation: `zap_asset_for_pt` (two Blend submissions plus
+an AMM swap) fits, while `zap_yt_for_asset` (one submission plus a flash swap)
+does not — so the flash swap alone costs more than a deposit and a swap together.
+Any asset-denominated YT route needs at least one submission to convert, so
+removing vault work cannot close the gap. YT is therefore a two-transaction
+product: the share-denominated `swap_v_for_yt` / `swap_yt_for_v` work normally,
+with a vault deposit or redeem on either side. They fail at *simulation*, so a
+user never spends a fee on one.
 
 `zap_asset_for_lp` takes a caller-supplied `pt_to_buy`. The pool only accepts
 its two legs in the current reserve ratio, and solving for the split that lands

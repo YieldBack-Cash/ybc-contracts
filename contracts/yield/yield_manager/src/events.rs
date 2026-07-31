@@ -79,3 +79,28 @@ pub struct SurplusCollected {
     pub treasury: Address,
     pub amount: i128,
 }
+
+/// Base asset entered the market through the YM: `asset_in` became
+/// `shares_in` vault shares (custodied by the YM) and minted `mint_amount`
+/// of PT and YT each.
+#[contractevent(topics = ["deposit_asset"], data_format = "vec")]
+pub struct DepositAsset {
+    #[topic]
+    pub from: Address,
+    pub asset_in: i128,
+    pub shares_in: i128,
+    pub mint_amount: i128,
+    pub exchange_rate: i128,
+}
+
+/// A redemption (combined pre-maturity, or principal post-maturity) paid out
+/// in the base asset: `shares_redeemed` of YM custody became `asset_out`.
+#[contractevent(topics = ["redeem_to_asset"], data_format = "vec")]
+pub struct RedeemToAsset {
+    #[topic]
+    pub from: Address,
+    pub burned: i128,
+    pub shares_redeemed: i128,
+    pub asset_out: i128,
+    pub exchange_rate: i128,
+}

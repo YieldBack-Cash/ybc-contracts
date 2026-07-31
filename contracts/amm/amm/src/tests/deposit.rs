@@ -100,10 +100,12 @@ fn skewed_pool(env: &Env) -> AmmFixture<'_> {
 
     // Exact-PT round trips return reserve_a to `p` each time while swap fees
     // accrue in reserve_b, driving reserve_b far above total_shares (= p).
+    // The bound is pulled in full and the excess refunded, so it must be an
+    // amount the admin actually holds — 2c comfortably covers the priced cost.
     let c = p / 10;
     for _ in 0..40 {
         f.swap_pt_for_v(&f.admin, c, 1);
-        f.swap_v_for_pt(&f.admin, c, i128::MAX / 4);
+        f.swap_v_for_pt(&f.admin, c, 2 * c);
     }
 
     let (ra, rb) = f.pool.get_reserves();

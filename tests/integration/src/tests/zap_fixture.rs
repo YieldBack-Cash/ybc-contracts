@@ -44,6 +44,11 @@ pub const USER_ASSET: i128 = 10_000_000_000;
 pub const POOL_PT: i128 = 1_500_000_000;
 pub const POOL_V: i128 = 1_500_000_000;
 
+/// A deliberately generous sweep ceiling for tests. Unused allowance is never
+/// taken, so over-providing costs nothing; the point of the parameter is that
+/// it is a number chosen BEFORE signing rather than measured during execution.
+pub const SWEEP: i128 = 10_000_000_000;
+
 pub struct ZapFixture<'a> {
     pub env: Env,
     pub admin: Address,
@@ -173,6 +178,17 @@ impl<'a> ZapFixture<'a> {
         token::TokenClient::new(&self.env, token_addr).balance(who)
     }
 
+    /// The YM's current exchange rate, refreshed exactly as a real operation
+    /// would see it. Needed by the auth-entry tests, which must reproduce the
+    /// rate hint the YT burn is called with.
+    pub fn ym_exchange_rate(&self) -> i128 {
+        self.env.invoke_contract::<i128>(
+            &self.ym,
+            &Symbol::new(&self.env, "get_exchange_rate"),
+            soroban_sdk::Vec::new(&self.env),
+        )
+    }
+
     pub fn total_supply(&self, token_addr: &Address) -> i128 {
         self.env.invoke_contract::<i128>(
             token_addr,
@@ -196,5 +212,13 @@ impl<'a> ZapFixture<'a> {
         self.env
             .ledger()
             .with_mut(|l| l.timestamp = self.maturity + 1);
+    }
+
+    /// An allowance expiry comfortably ahead of now. In production this must be
+    /// chosen client-side before signing — deriving it from the current ledger
+    /// inside the contract is precisely the drift that broke the first testnet
+    /// attempt. Here the tests are the client, so computing it is correct.
+    pub fn expiry(&self) -> u32 {
+        self.env.ledger().sequence() + 1000
     }
 }
