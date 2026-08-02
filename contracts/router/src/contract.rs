@@ -1,6 +1,6 @@
 use amm_interface::AmmClient;
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, token, Address, Env,
+    contract, contractclient, contractimpl, contracttype, token, Address, Env, String,
 };
 use vault_interface::VaultContractClient;
 use yield_manager_interface::YieldManagerClient;
@@ -14,6 +14,7 @@ use crate::storage::{extend_instance_ttl, get_factory, set_factory};
 #[contracttype]
 #[derive(Clone)]
 pub struct Market {
+    pub name: String,
     pub ym: Address,
     pub pt: Address,
     pub yt: Address,

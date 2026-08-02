@@ -11,6 +11,7 @@ use yield_manager_interface::{VaultType, YieldManagerClient};
 #[contracttype]
 #[derive(Clone)]
 pub struct Market {
+    pub name: String,
     pub ym: Address,
     pub pt: Address,
     pub yt: Address,
@@ -197,6 +198,8 @@ impl FactoryTrait for Factory {
 
         let ym_addr =
             Self::deploy_yield_manager_internal(env.clone(), vault.clone(), vault_type, maturity);
+        let vault_symbol = soroban_sdk::token::TokenClient::new(&env, &vault).symbol();
+        let market_name = build_token_string(&env, "", &vault_symbol, Some(maturity));
         let market = Self::deploy_pool_internal(
             env.clone(),
             vault.clone(),
@@ -390,6 +393,7 @@ impl Factory {
         ym_client.set_pool(&pool_addr);
 
         let market = Market {
+            name,
             ym: ym_addr,
             pt,
             yt,
