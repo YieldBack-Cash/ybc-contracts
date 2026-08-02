@@ -1,23 +1,28 @@
-use crate::contract::{Market, WasmHashes};
+use crate::contract::{FeeConfig, Market, WasmHashes};
 use soroban_sdk::{contractevent, Address, BytesN};
 
 #[contractevent(data_format = "single-value")]
 pub struct MarketCreated {
     #[topic]
+    pub creator: Address,
+    #[topic]
     pub vault: Address,
     pub market: Market,
 }
 
-#[contractevent]
-pub struct AdminChanged {
-    pub old_admin: Address,
-    pub new_admin: Address,
-}
+// Ownership events (transfer started/completed, renounced) are emitted by
+// the stellar-access Ownable module itself.
 
 #[contractevent]
 pub struct WasmHashesUpdated {
     pub old_hashes: WasmHashes,
     pub new_hashes: WasmHashes,
+}
+
+#[contractevent]
+pub struct FeeConfigUpdated {
+    pub old_config: FeeConfig,
+    pub new_config: FeeConfig,
 }
 
 #[contractevent]

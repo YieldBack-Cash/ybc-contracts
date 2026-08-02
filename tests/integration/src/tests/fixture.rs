@@ -1,7 +1,7 @@
 use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, IntoVal, String, Symbol};
 
 use amm::LiquidityPoolClient;
-use factory::{Factory, FactoryClient, Market, WasmHashes};
+use factory::{Factory, FactoryClient, FeeConfig, Market, WasmHashes};
 use mock_vault::{MockVault, MockVaultClient};
 use router::RouterContract;
 use yield_manager::VaultType;
@@ -21,11 +21,11 @@ mod amm_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/amm.wasm");
 }
 
-// AMM market params
-const SCALAR_ROOT: i128 = 250_000_000;
-const FEE_RATE_ROOT: i128 = 500_000;
-const INITIAL_ANCHOR: i128 = 11_000_000;
-const LAST_IMPLIED_RATE: i128 = 1_000_000;
+// AMM market params (1e7-scaled APYs)
+const CURRENT_APY: i128 = 1_000_000; // 10%
+const APY_MIN: i128 = 200_000; // 2%
+const APY_MAX: i128 = 2_000_000; // 20%
+const FEE_APY: i128 = 100_000; // 1%
 
 pub const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
@@ -75,18 +75,26 @@ impl<'a> IntegrationFixture<'a> {
             ym: env.deployer().upload_contract_wasm(ym_wasm::WASM),
             amm: env.deployer().upload_contract_wasm(amm_wasm::WASM),
         };
-        let factory_addr = env.register(Factory, (&admin, wasm_hashes));
+        // Reserve fee rate 0: the integration tests assert exact user/pool
+        // amounts and the fee-remit paths are covered by the AMM and factory
+        // unit tests.
+        let fee_config = FeeConfig {
+            treasury: Address::generate(env),
+            reserve_fee_rate: 0,
+        };
+        let factory_addr = env.register(Factory, (&admin, wasm_hashes, fee_config));
         let factory = FactoryClient::new(env, &factory_addr);
 
         // ── Market (YM + PT + YT + AMM) ──────────────────────────────────────
         let market = factory.create_market(
+            &admin,
             &vault_addr,
             &VaultType::Vault4626,
             &maturity,
-            &SCALAR_ROOT,
-            &INITIAL_ANCHOR,
-            &FEE_RATE_ROOT,
-            &LAST_IMPLIED_RATE,
+            &CURRENT_APY,
+            &APY_MIN,
+            &APY_MAX,
+            &FEE_APY,
         );
         let pool = LiquidityPoolClient::new(env, &market.pool);
 
@@ -123,13 +131,14 @@ impl<'a> IntegrationFixture<'a> {
         );
         let maturity = self.env.ledger().timestamp() + ONE_YEAR_SECS;
         let market = self.factory.create_market(
+            &self.user,
             &vault_addr,
             &VaultType::Vault4626,
             &maturity,
-            &SCALAR_ROOT,
-            &INITIAL_ANCHOR,
-            &FEE_RATE_ROOT,
-            &LAST_IMPLIED_RATE,
+            &CURRENT_APY,
+            &APY_MIN,
+            &APY_MAX,
+            &FEE_APY,
         );
         self.env.invoke_contract::<()>(
             &vault_addr,
@@ -149,13 +158,14 @@ impl<'a> IntegrationFixture<'a> {
     /// with different maturities at once.
     pub fn create_market_on_vault(&self, vault: &Address, maturity: u64) -> Market {
         self.factory.create_market(
+            &self.user,
             vault,
             &VaultType::Vault4626,
             &maturity,
-            &SCALAR_ROOT,
-            &INITIAL_ANCHOR,
-            &FEE_RATE_ROOT,
-            &LAST_IMPLIED_RATE,
+            &CURRENT_APY,
+            &APY_MIN,
+            &APY_MAX,
+            &FEE_APY,
         )
     }
 

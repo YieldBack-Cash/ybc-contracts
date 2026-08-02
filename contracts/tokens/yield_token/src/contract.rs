@@ -105,12 +105,20 @@ impl TokenInterface for YieldToken {
             panic!("Insufficient balance");
         }
 
-        Self::accrue_yield(&env, &from, None);
-        Self::accrue_yield(&env, &to, None);
+        // One rate lookup for the pair. Left to itself each `accrue_yield` walks
+        // YT → YM → vault → the underlying lending pool for the current rate,
+        // so an unhinted transfer costs two full round trips into Blend for a
+        // value that cannot change within a single transaction.
+        let rate = Self::get_exchange_rate(&env);
+        Self::accrue_yield(&env, &from, Some(rate));
+        Self::accrue_yield(&env, &to, Some(rate));
 
-        let to_balance = storage::get_balance(&env, &to);
-
+        // Debit first, then read the credit side. When `from == to` both sides
+        // are the same storage key, so reading `to_balance` up front would let
+        // the credit overwrite the debit and mint `amount` YT out of nothing —
+        // along with a claim on yield the manager holds no backing for.
         storage::set_balance(&env, &from, from_balance - amount);
+        let to_balance = storage::get_balance(&env, &to);
         storage::set_balance(&env, &to, to_balance + amount);
 
         Transfer {
@@ -207,8 +215,11 @@ impl YieldTokenTrait for YieldToken {
         Mint { to, to_muxed_id: None, amount }.publish(&env);
     }
 
+    /// Admin-gated only, for the same reason as `burn_with_rate`: the YM is the
+    /// sole caller and authenticates `from` itself, and `exchange_rate` is a
+    /// live value that would make any holder signature drift between simulation
+    /// and execution. Currently unused by the protocol; kept for symmetry.
     fn transfer_with_rate(env: Env, from: Address, to: Address, amount: i128, exchange_rate: i128) {
-        from.require_auth();
         storage::get_admin(&env).require_auth();
         storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
@@ -221,15 +232,29 @@ impl YieldTokenTrait for YieldToken {
         Self::accrue_yield(&env, &from, Some(exchange_rate));
         Self::accrue_yield(&env, &to, Some(exchange_rate));
 
-        let to_balance = storage::get_balance(&env, &to);
+        // Debit before reading the credit side — see `transfer` for why a
+        // self-transfer would otherwise mint YT.
         storage::set_balance(&env, &from, from_balance - amount);
+        let to_balance = storage::get_balance(&env, &to);
         storage::set_balance(&env, &to, to_balance + amount);
 
         Transfer { from, to, to_muxed_id: None, amount }.publish(&env);
     }
 
+    /// Burns `from`'s YT at a rate the yield manager supplies.
+    ///
+    /// Admin-gated only — deliberately NOT `from.require_auth()`. The YM is the
+    /// sole caller (that is what the admin check enforces) and every path it
+    /// calls this from has already authenticated `from` at its own entrypoint,
+    /// so a second check adds no authority.
+    ///
+    /// It actively broke things: `exchange_rate` is read live and moves with the
+    /// vault every ledger, so requiring the holder's signature over an argument
+    /// list containing it meant the wallet signed one rate during simulation and
+    /// the chain executed with another. Observed on testnet as Auth/InvalidAction
+    /// on every `redeem_combined` — a pre-existing bug, not one the asset-
+    /// denominated entrypoints introduced.
     fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
-        from.require_auth();
         storage::get_admin(&env).require_auth();
         storage::extend_instance_ttl(&env);
         check_nonnegative_amount(amount);
@@ -269,10 +294,14 @@ impl YieldTokenTrait for YieldToken {
         Self::accrue_yield(&env, &user, None);
 
         let claimable = storage::get_accrued_yield(&env, &user);
+        // The YM re-denominates locked claims to their locked-rate asset
+        // value, so the shares actually paid can be fewer than `claimable` —
+        // report what the user really received.
+        let mut paid = 0;
         if claimable > 0 {
             storage::set_accrued_yield(&env, &user, 0);
 
-            yield_manager_client.distribute_yield(&user, &claimable);
+            paid = yield_manager_client.distribute_yield(&user, &claimable);
         }
 
         // Past maturity the exchange rate is locked, so the accrual above was
@@ -290,7 +319,7 @@ impl YieldTokenTrait for YieldToken {
             }
         }
 
-        claimable
+        paid
     }
 
     fn total_supply(env: Env) -> i128 {

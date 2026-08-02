@@ -4,7 +4,7 @@ mod contract;
 mod events;
 mod storage;
 
-pub use contract::RouterContract;
+pub use contract::{RouterClient, RouterContract, RouterInterface};
 
 use soroban_sdk::contractmeta;
 

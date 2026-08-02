@@ -187,9 +187,10 @@ impl<'a> RealBlendFixture<'a> {
         fee_vault_client.deposit(&1_0000000i128, &admin, &admin, &admin);
 
         // ── Yield manager ────────────────────────────────────────────────────
+        let treasury = Address::generate(env);
         let ym_addr = env.register(
             YieldManager,
-            (&admin, &fee_vault_addr, VaultType::Vault4626, maturity),
+            (&admin, &fee_vault_addr, VaultType::Vault4626, maturity, &treasury),
         );
 
         // ── PT and YT ────────────────────────────────────────────────────────

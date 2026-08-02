@@ -2,89 +2,257 @@
   "network": "testnet",
   "wasms": {
     "principal_token": {
-      "wasm_hash": "ba3bb97f6d18675b4b369300f99ff59a7f63045ec256010ae8c47ea1704237e6",
-      "installed_at": "2026-07-22T14:15:00Z"
+      "wasm_hash": "8ee1099fdb2266359681a76557d841bc4fe33724e5f4d4b4dffec2dfc6611123",
+      "installed_at": "2026-07-27T18:36:00Z"
     },
     "yield_token": {
-      "wasm_hash": "607c6a81282dc7ed33178b7562f343e370efe10895129ef7910d445c4f6017bf",
-      "installed_at": "2026-07-22T14:15:30Z"
+      "wasm_hash": "18bcafd9f62d499f9697bca37af17bbecb353674bbe6013b4a3eba8f868d4b7f",
+      "installed_at": "2026-07-29T03:10:00Z",
+      "notes": "transfer fetches the exchange rate once and shares it across the sender/recipient accrue_yield pair; unhinted it walked YT -> YM -> vault -> Blend twice for a value that cannot change within a transaction. Also: burn_with_rate / transfer_with_rate are admin-gated only."
     },
     "yield_manager": {
-      "wasm_hash": "5f5f050287b07782e0032f06fbeb4b7b9978878c80e14b7fccd59a49d3cf1f2d",
-      "installed_at": "2026-07-22T14:16:00Z"
+      "wasm_hash": "ceff0ceb8ed99e7a45714bf65d159c24f0fcb0bb6c0a5770582da2408e366c8f",
+      "installed_at": "2026-07-31T00:00:00Z",
+      "notes": "Flash callbacks take the vault rate as an argument instead of re-reading it. update_exchange_rate is split: the vault read is separable from the policy (non-decreasing floor, maturity lock, storage write), which all stays in the YM. This is what brought zap_asset_for_yt inside the budget. MUST be deployed together with amm b079327d - the callback ABI changed.",
+      "supersedes": "067d82285666e4baf57287e95693620e52cdfdda3b042137033d9e7a62519e2e"
     },
     "amm": {
-      "wasm_hash": "03a9660ea52a95f47e1c81017aa5928fa3e03dee240c5b7c58a9f993ebe84c3f",
-      "installed_at": "2026-07-22T14:16:30Z"
+      "wasm_hash": "b079327df8d9233939daf0fb21fbe02ba1c9243df9409b4507e5685f6f86e94a",
+      "installed_at": "2026-07-31T00:00:00Z",
+      "notes": "Passes its already-loaded VaultRate into the flash callbacks so the receiver need not repeat the read. Keeps reading the vault directly for its own pricing - the value flows from the contract that read the vault to the one applying policy on it, never the reverse. MUST be deployed together with yield_manager ceff0ceb - the callback ABI changed.",
+      "supersedes": "f910f83a89b4bb327f6274890cf690b213d59d7288486a51ef1de82df250c970"
+    },
+    "treasury": {
+      "wasm_hash": "826bebe4a34ddff8beec071b014b9bf83f007f2aa7e0598e0a5b25e378d55ba9",
+      "installed_at": "2026-07-27T18:39:00Z"
     },
     "factory": {
-      "wasm_hash": "51796db72249f132e02e0b7663a6d012aa367c8515da8bcf141459c15acde364",
-      "installed_at": "2026-07-22T14:17:00Z"
+      "wasm_hash": "63cabd5be3311e4dad4d563dd5df6cf2cc42ac9c36468a74b404596ad0f8d2c9",
+      "installed_at": "2026-07-27T18:41:00Z"
     },
     "router": {
-      "wasm_hash": "ce7600720242dedac68013a06f8008ced00216da0f7c1f9c9f9d6f6a1fd28035",
-      "installed_at": "2026-07-22T14:17:30Z"
-    },
-    "mock_vault": {
-      "wasm_hash": "b9c566baa4c45624a2ca3b97c6ea72010fe72642120c6f317b88c24dc115dcb7",
-      "installed_at": "2026-07-18T00:48:32Z"
+      "wasm_hash": "6a45bccc5ccc2a9823e92b079ea3e205e924bf9cacab0b267849767ff1fba2c8",
+      "installed_at": "2026-07-29T03:10:00Z",
+      "notes": "Expired exit reordered so the LP withdrawal and yield claim land before a single YM redemption; duplicate balance and query_asset reads removed."
     }
   },
   "contracts": {
     "blend_vault": {
-      "id": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
-      "wasm_hash": "8fd0424a64b8720a1138130b374dba82d1962259f2da7d9d55cc6203eed26c3e",
-      "deployed_at": "2026-07-05T00:35:58Z",
+      "id": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
+      "wasm_hash": "1486725ed61cdc8ecf7121b4fa1f7fc06dec65160e0d1389533a9437835d9993",
+      "deployed_at": "2026-07-27T17:48:41Z",
       "asset": {
         "symbol": "XLM",
         "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
-      }
+      },
+      "blend_pool": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "supersedes": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
+      "notes": "Adds query_asset and redeem; fixes withdraw authorization. get_signer is null, so deposits are permissionless."
+    },
+    "treasury": {
+      "id": "CDUJHED3PWFD5EIX4MEA774R6UDBOKQIRLWC6U4TQWCSMYSBU2EE3L7T",
+      "deployed_at": "2026-07-27T18:39:00Z",
+      "wasm_hash": "826bebe4a34ddff8beec071b014b9bf83f007f2aa7e0598e0a5b25e378d55ba9",
+      "owner": "GBY3LP4JSZMAQGDAIPJIRF6QKA6MNRIJEFEEK3GNB2GA7W4RERE3II3B"
     },
     "factory": {
-      "id": "CDWSOGGUO2NMTDXWONERIVZX5CAEDZFGNTFFZC3NLA6RCFUKZFH4AKFL",
-      "deployed_at": "2026-07-22T14:18:00Z",
-      "wasm_hash": "51796db72249f132e02e0b7663a6d012aa367c8515da8bcf141459c15acde364",
-      "admin": "GBY3LP4JSZMAQGDAIPJIRF6QKA6MNRIJEFEEK3GNB2GA7W4RERE3II3B"
+      "id": "CCEPZTQWAHIBQVZEDGI6J7D3FVNJIZPUDHCORMOGVA3HZAIRVQTY2V5L",
+      "deployed_at": "2026-07-27T18:41:00Z",
+      "wasm_hash": "63cabd5be3311e4dad4d563dd5df6cf2cc42ac9c36468a74b404596ad0f8d2c9",
+      "owner": "GBY3LP4JSZMAQGDAIPJIRF6QKA6MNRIJEFEEK3GNB2GA7W4RERE3II3B",
+      "fee_config": {
+        "treasury": "CDUJHED3PWFD5EIX4MEA774R6UDBOKQIRLWC6U4TQWCSMYSBU2EE3L7T",
+        "reserve_fee_rate": 1000000,
+        "note": "1e7-scaled fraction OF each trade's fee (10%), not of trade volume. Snapshotted into each market at creation; set_fee_config is prospective only."
+      },
+      "supersedes": "CCBJTE33TRK4OA3YC3IMZZW3PTH73G23IAJSF53XAWR5L5IJ7JCJALVV"
     },
     "router": {
-      "id": "CDW7J6K2XOFXADRVIDQMHGNFXVSSZGS2AHOBJIM6FYPEOPPZ2M5KG3GW",
-      "deployed_at": "2026-07-22T14:18:30Z",
-      "wasm_hash": "ce7600720242dedac68013a06f8008ced00216da0f7c1f9c9f9d6f6a1fd28035",
-      "factory": "CDWSOGGUO2NMTDXWONERIVZX5CAEDZFGNTFFZC3NLA6RCFUKZFH4AKFL"
+      "id": "CBXG7TKSE5TD7NLAT2MU7CCGC2XN34PNANJZBT6M2SEIOZWZ5DPVK4HV",
+      "deployed_at": "2026-07-29T03:12:00Z",
+      "wasm_hash": "6a45bccc5ccc2a9823e92b079ea3e205e924bf9cacab0b267849767ff1fba2c8",
+      "factory": "CCEPZTQWAHIBQVZEDGI6J7D3FVNJIZPUDHCORMOGVA3HZAIRVQTY2V5L",
+      "supersedes": "CD47PJNTYJALB3GQULVCE5LJUAX2DZLMYEBQRXQTONRC7EV3JUAUZIPV",
+      "notes": "No upgrade entrypoint, so a new address each time - cheap, since the router custodies nothing and holds no approvals."
     }
   },
   "markets": [
     {
-      "name": "bVS-1787356800",
-      "vault": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
       "asset": "XLM",
-      "maturity": 1787356800,
-      "maturity_date": "2026-08-22T00:00:00Z",
-      "ym": "CAV7XKKUWHT2R34FJQTVQEQFDXUOVBWKAC3ECGMDVKXJ5CRKMHXNYBUU",
-      "pt": "CCMFOT4MNPQTMUSSANFL7YQBGBCZRPYEXVYHEMRKQTEM2DSPW45TLCP2",
-      "yt": "CDRHZQW2PLHIGSHOI64D5ESWTF2VXY5I77YC5FCIRXGPKOPEHCJ73JQF",
-      "pool": "CAVDFUBCKZCRMEU3EVKT3ZIEYAAMNWEWQQDYLEB3V3BRSD6K4ACRBVLN",
-      "scalar_root": 250000000,
-      "initial_anchor": 11000000,
-      "fee_rate_root": 500000,
-      "last_implied_rate": 13862944,
-      "created_at": "2026-07-22T23:58:00Z"
+      "maturity": 1789517001,
+      "maturity_date": "2026-09-15T22:43:21Z",
+      "ym": "CAHJQBNDR4WTLDV3EGE6JE2CEECYYRZ6GD63YUOYDNJU5ZULB4Z5QPBU",
+      "pt": "CADJDJ3B5CYBT25AWHQES2T5ATNBPGGFHAIS6FTNLI74L7K23YVR2ZAV",
+      "yt": "CDYSN5AGFCEI3UELYJNHQPQCQUUZ4G7FVTJOEEMJUB34NQR4UO646OUB",
+      "pool": "CDMKTRPTGWXD3RBCHYSW73I76R6EWA5LOW74BX3KBKS5M2FBAYTZ4UKT",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-07-27T21:42:00Z",
+      "status": "superseded",
+      "seeded": true,
+      "deployed_wasm": {
+        "amm": "f910f83a89b4bb327f6274890cf690b213d59d7288486a51ef1de82df250c970",
+        "ym": "4ebac6b145d2500fee1287ca775ea4cce72cf139092e949f9aa0bc45e4770866",
+        "yt": "6b0004f50ce16602b221487a791f30bf47d97463beb0c99d6d3e4410487a3af3"
+      },
+      "verified_onchain": [
+        "zap_asset_for_split",
+        "zap_split_for_asset",
+        "zap_asset_for_lp",
+        "zap_asset_for_pt"
+      ],
+      "broken": [
+        "zap_asset_for_yt",
+        "zap_yt_for_asset",
+        "exit_expired_to_asset"
+      ],
+      "notes": "STALE. Created 2026-07-27T21:42, two minutes after the new AMM was installed but two days BEFORE yt 18bcafd9 / ym 067d8228. Markets are immutable, so it is frozen on the pre-fix YT (which looked the rate up twice per transfer) and a YM that does not expose exit_expired_to_asset at all. Both YT zaps exceed budget here; exit_expired_to_asset will fail as an unknown function when this market matures 2026-09-16. Share-denominated exit_expired still works. This market is what every 'YT zaps are structurally impossible' measurement was taken against - see docs/YT_ZAP_BUDGET.md."
     },
     {
-      "name": "bVS-1794873600",
-      "vault": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ",
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
       "asset": "XLM",
-      "maturity": 1794873600,
-      "maturity_date": "2026-11-17T00:00:00Z",
-      "ym": "CBM23KDXNTIMZ5A7MSIZEEJZFROGE3PJP3DFBWIUKTH7M5U2KGSWVT7K",
-      "pt": "CDK36UK4PG5MA4V2UWP4WQI3JHHE2NL7DNVZWFEJDGM2OYPADTA5PGXO",
-      "yt": "CCPVXSXVZR26RVIROJNTGGQNS2ZVJAXVFYRDLMSTKHU6W2R537VNAYDH",
-      "pool": "CCPSCQBJZY5NTTLHZNXPI6QPS2N54AEDE4IM5WXXLATIMCYLNUMXKAZ6",
-      "scalar_root": 250000000,
-      "initial_anchor": 11000000,
-      "fee_rate_root": 500000,
-      "last_implied_rate": 13862944,
-      "created_at": "2026-07-22T14:22:00Z"
+      "maturity": 1817100000,
+      "maturity_date": "2027-07-30T15:20:00Z",
+      "ym": "CDQUUMSJX3ECMY4DNWGJ743RM67SFGSL5CXQIAYCUXVIRJTQLRA4LP2E",
+      "pt": "CBF3OMPBVDFHACAOX3JDZPRR7AUTVIQDEVCWN2WRNHAC2WZFFJGX3JOD",
+      "yt": "CAZIHNHQIZ76NC73BH3BS3BLSMOULVB2KGINDJWZMUEIX7AOI46P2CDH",
+      "pool": "CCKLJN7WEYTWI63WJT5C76XSDJ4P5XSBHDMUPNSRFFDFXRELVJSOBA64",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-07-31T00:00:00Z",
+      "status": "superseded",
+      "seeded": true,
+      "deployed_wasm": {
+        "amm": "f910f83a89b4bb327f6274890cf690b213d59d7288486a51ef1de82df250c970",
+        "ym": "067d82285666e4baf57287e95693620e52cdfdda3b042137033d9e7a62519e2e",
+        "yt": "18bcafd9f62d499f9697bca37af17bbecb353674bbe6013b4a3eba8f868d4b7f"
+      },
+      "notes": "Diagnostic baseline, pre-R2. Created to isolate stale WASM from the budget problem: on this market zap_yt_for_asset SUCCEEDS (31,462,249 instr) where it fails on the 1789517001 market, proving that failure was stale bytecode rather than anything structural. zap_asset_for_yt still exceeded here, which is what R2 then fixed. Kept for comparison; superseded by 1817200000. Pool seeded 1e9 PT / 6.24e8 V."
+    },
+    {
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
+      "asset": "XLM",
+      "maturity": 1817200000,
+      "maturity_date": "2027-07-31T19:06:40Z",
+      "ym": "CBGILN3IHQPYCEVF7AABRT7AXBS2SZB7MLYDXB63R44VXLQVR3BWBYV5",
+      "pt": "CBOH24SHAPJJ6ENSSDYBL6C5AHTWZ4LMT7HR5QAOAQIMNNK4KQIHGOLO",
+      "yt": "CBOG5GXPCNNVLTID6DNCRPZBI56Q6ZJ57O2R65HXY6QJDAZWXZJKHMTQ",
+      "pool": "CAFX5YV5E2ZC5PQGQK6UUKYF7ZL3VRSG2W3OZPJMJG7PH7J3JTSLAOET",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-07-31T00:00:00Z",
+      "status": "live",
+      "seeded": true,
+      "deployed_wasm": {
+        "amm": "b079327df8d9233939daf0fb21fbe02ba1c9243df9409b4507e5685f6f86e94a",
+        "ym": "ceff0ceb8ed99e7a45714bf65d159c24f0fcb0bb6c0a5770582da2408e366c8f",
+        "yt": "18bcafd9f62d499f9697bca37af17bbecb353674bbe6013b4a3eba8f868d4b7f"
+      },
+      "verified_onchain": [
+        "zap_asset_for_pt",
+        "zap_pt_for_asset",
+        "zap_asset_for_yt",
+        "zap_yt_for_asset",
+        "zap_asset_for_split",
+        "zap_split_for_asset",
+        "zap_asset_for_lp",
+        "zap_lp_for_asset",
+        "swap_v_for_pt",
+        "swap_pt_for_v",
+        "swap_v_for_yt",
+        "swap_yt_for_v"
+      ],
+      "notes": "First market on the R2 contracts. EVERY zap simulates within budget here, including zap_asset_for_yt (32,136,043 instr), which no earlier market could execute. Pool seeded 1e9 PT / 6.24e8 V, matching 1817100000 so the two are directly comparable. Post-maturity paths (exit_expired, exit_expired_to_asset) are NOT verified - this market matures 2027."
+    },
+    {
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
+      "asset": "XLM",
+      "maturity": 1789077038,
+      "maturity_date": "2026-09-10T20:30:38Z",
+      "ym": "CDN24FGEV4G42OQGMG2KNUUMBBPAWE5ASUJQYOKUB5C7KMKTMQMSVNQT",
+      "pt": "CCXBGFWZ2YM4V4C7OPYP2DALDB3SLNPAF6SPTZ45POWWX472WRL333C7",
+      "yt": "CCBSDFSVSO3CUGZVA6S6NVMOWSTVOUHMOM3EFZV2MTD2ZESO3HRFG667",
+      "pool": "CBMN2B6A6B3NT3YTXU5GHYUXRY4EYB2JJAAP6HAJ6FZR3JM3KAGJLM3Z",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-07-27T20:07:00Z",
+      "status": "superseded",
+      "notes": "Pre-rate-caching AMM. Verified here: the full 100 XLM split round trip, zap_asset_for_pt, zap_pt_for_asset, zap_lp_for_asset. zap_asset_for_lp exceeded budget on this AMM."
     }
-  ]
+  ],
+  "stale_markets": {
+    "note": "Created before the signature-drift rework. They function for share-denominated operations but their zaps cannot be signed: the YT they carry demands the holder's signature over a live exchange rate, and their AMM prices the amount a user must pre-authorize. Markets are immutable, so these are abandoned rather than fixed.",
+    "entries": [
+      {
+        "maturity": 1787769600,
+        "pool": "CCWV52J7M2LD3WXOCWXF7HUJZ3XQEOTCMB3TDLO7G6QWACL6RHTQQ2V2"
+      },
+      {
+        "maturity": 1816713600,
+        "pool": "CBRTSINLP43MWKZEMR5LH4EAOO7KCQ3DZZRQEHIIX2PTRZRYLN7NSMNX"
+      },
+      {
+        "maturity": 1788643799,
+        "pool": "CDAWGWB2K7N3IQN7IRD36KYWRNBLXHCSLNLQYPROB7X5ILJODUIXHXFJ"
+      }
+    ]
+  },
+  "test_accounts": {
+    "user1": "GCLJS4CCA4Y4BJPVIPNVDTGODBDWDZ6THGJWTXKR6OB56FI7PP77KJYI"
+  },
+  "superseded": {
+    "note": "The 2026-07-18 deployment is abandoned, not migrated. Its markets point at the old Blend vault, carry the pre-fix yield token (self-transfer minted YT), and none of PT/YT/YM/AMM/router expose an upgrade entrypoint. The old factory could not be upgraded either: its constructor gained FeeConfig, and upgrade does not re-run a constructor, so get_fee_config would panic on unset storage.",
+    "factory": "CCBJTE33TRK4OA3YC3IMZZW3PTH73G23IAJSF53XAWR5L5IJ7JCJALVV",
+    "router": "CCRCIKK27VDK3NDEKCGCMRR6RALFVPEWTIN6226SDVGZRBFXGBYXXCAO",
+    "blend_vault": "CCFLZNF75CNV57KBP5KVH3CGNFEBKFQ77KVKLQRNCV63CRVPCMJISVIJ"
+  },
+  "budget_findings": {
+    "measured_on": "market 1817200000 (R2 contracts), pool seeded 1e9 PT / 6.24e8 V, 10-unit trades",
+    "works_onchain": [
+      "zap_asset_for_pt",
+      "zap_pt_for_asset",
+      "zap_asset_for_yt",
+      "zap_yt_for_asset",
+      "zap_asset_for_split",
+      "zap_split_for_asset",
+      "zap_asset_for_lp",
+      "zap_lp_for_asset",
+      "swap_v_for_pt",
+      "swap_pt_for_v",
+      "swap_v_for_yt",
+      "swap_yt_for_v"
+    ],
+    "exceeds_budget": [],
+    "unverified": [
+      "exit_expired",
+      "exit_expired_to_asset"
+    ],
+    "instructions": {
+      "zap_asset_for_yt": 32136043,
+      "zap_asset_for_lp": 30498817,
+      "zap_yt_for_asset": 29873810,
+      "zap_asset_for_pt": 24808698,
+      "zap_lp_for_asset": 23587876,
+      "swap_yt_for_v": 23312984,
+      "swap_v_for_yt": 21403993,
+      "zap_pt_for_asset": 19880824,
+      "zap_asset_for_split": 17417349,
+      "zap_split_for_asset": 16991089,
+      "swap_v_for_pt": 14110653,
+      "swap_pt_for_v": 13399031
+    },
+    "note": "No zap exceeds budget any more. The earlier 'the two YT zaps are structurally impossible' finding was wrong on two counts: it was measured against market 1789517001, which is frozen on pre-fix YT/YM bytecode, and it reasoned from CPU when the binding limit is memory. Every path above sits at 13-32% of the 100M instruction limit, so instruction percentage is NOT headroom - zap_asset_for_yt failed at an estimated ~36% before R2. See docs/YT_ZAP_BUDGET.md.",
+    "unverified_note": "Both expired-exit paths revert on the maturity assert on every current market (all mature 2027+), so neither has ever run on R2 contracts. exit_expired_to_asset is the heaviest path in the system. The factory only enforces maturity > now, so a market dated ~10 minutes out would close this gap cheaply.",
+    "exit_expired_caveat": "Converts the caller ENTIRE vault-share balance up to sweep_allowance, not just what the call produced - the YM authenticates from, so its figure must be a pre-signed ceiling. Observed live sweeping unrelated leftover shares. Size sweep_allowance to the expected proceeds.",
+    "abi_coupling": "amm b079327d and yield_manager ceff0ceb changed the flash-callback ABI together and are NOT interchangeable with their predecessors. Installing one without the other produces markets whose flash swaps fail. Verify factory.get_wasm_hashes() before create_market."
+  }
 }

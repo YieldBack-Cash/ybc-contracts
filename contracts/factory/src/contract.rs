@@ -1,7 +1,11 @@
-use crate::events::{AdminChanged, ContractUpgraded, MarketCreated, WasmHashesUpdated};
+use crate::events::{ContractUpgraded, FeeConfigUpdated, MarketCreated, WasmHashesUpdated};
 use crate::storage;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
+};
+use stellar_access::ownable::{self as ownable, Ownable};
+use stellar_macros::only_owner;
 use yield_manager_interface::{VaultType, YieldManagerClient};
 
 #[contracttype]
@@ -25,25 +29,42 @@ pub struct WasmHashes {
     pub amm: BytesN<32>,
 }
 
+/// Protocol fee configuration snapshotted into each market at creation.
+/// Changing it never reaches live markets — their pools bake the values in
+/// at construction and expose no setters.
+#[contracttype]
+#[derive(Clone)]
+pub struct FeeConfig {
+    /// Fee sink every new pool remits its reserve cut to.
+    pub treasury: Address,
+    /// Treasury's share of each trade's fee (1e7-scaled fraction of the fee,
+    /// e.g. `1_000_000` = 10% of the fee; not a share of the trade).
+    pub reserve_fee_rate: i128,
+}
+
 pub trait FactoryTrait {
-    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes);
+    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes, fee_config: FeeConfig);
 
     fn create_market(
         env: Env,
+        creator: Address,
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market;
 
     fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
     fn get_wasm_hashes(env: Env) -> WasmHashes;
+    fn get_fee_config(env: Env) -> FeeConfig;
 
-    fn set_admin(env: Env, new_admin: Address);
+    // Ownership (get_owner / two-step transfer_ownership + accept_ownership /
+    // renounce_ownership) comes from the stellar-access Ownable impl below.
     fn set_wasm_hashes(env: Env, new_hashes: WasmHashes);
+    fn set_fee_config(env: Env, new_config: FeeConfig);
     fn upgrade(env: Env, new_wasm_hashes: BytesN<32>);
 }
 
@@ -54,6 +75,11 @@ pub struct Factory;
 /// seconds). Generous for any realistic fixed-yield product; mainly catches
 /// unit mistakes like passing milliseconds.
 const MAX_MATURITY_HORIZON: u64 = 10 * 365 * 24 * 60 * 60;
+
+/// Cap on the treasury's share of the trading fee (1e7-scaled; 50% of the
+/// fee). Mirrors the AMM constructor's own bound so a bad config fails here,
+/// at config time, rather than on the next `create_market`.
+const MAX_RESERVE_FEE_RATE: i128 = 5_000_000;
 
 fn next_salt(env: &Env) -> BytesN<32> {
     let counter = storage::get_salt_counter(env);
@@ -116,28 +142,38 @@ pub(crate) fn build_token_string(
 
 #[contractimpl]
 impl FactoryTrait for Factory {
-    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes) {
-        storage::set_admin(&env, &admin);
+    fn __constructor(env: Env, owner: Address, wasm_hashes: WasmHashes, fee_config: FeeConfig) {
+        assert!(
+            fee_config.reserve_fee_rate >= 0 && fee_config.reserve_fee_rate <= MAX_RESERVE_FEE_RATE,
+            "reserve_fee_rate out of range"
+        );
+        ownable::set_owner(&env, &owner);
         storage::set_wasm_hashes(&env, &wasm_hashes);
+        storage::set_fee_config(&env, &fee_config);
     }
 
-    // TODO: support permissionless market creation — drop the admin gate (or add a
-    // separate ungated entry point) so any user can create a market for any vault.
-    // Needs: validation that `vault` is a real vault (not just any token contract),
-    // spam/duplicate-market protection, and a story for who curates what the
-    // frontend/indexer surfaces.
+    /// Creates a market for `vault` at `maturity`. Permissionless: any address
+    /// may create a market by authorizing as `creator` — the creator is
+    /// published in `MarketCreated` so off-chain curation can distinguish who
+    /// deployed what. Curve parameters are APY-denominated (1e7-scaled) and
+    /// validated/derived by the AMM constructor.
+    ///
+    /// The vault is taken on trust: there is no on-chain way to prove it is an
+    /// honest vault, and a malicious one can only harm users who opt into its
+    /// market — every market gets its own YM/PT/YT/pool touching only its own
+    /// vault. Which markets are surfaced to users is an off-chain concern.
     fn create_market(
         env: Env,
+        creator: Address,
         vault: Address,
         vault_type: VaultType,
         maturity: u64,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
+        creator.require_auth();
         storage::extend_instance_ttl(&env);
 
         // Fail early with a clear message rather than deep inside the AMM
@@ -168,14 +204,14 @@ impl FactoryTrait for Factory {
             env.clone(),
             vault.clone(),
             ym_addr,
-            market_name,
-            scalar_root,
-            initial_anchor,
-            fee_rate_root,
-            last_implied_rate,
+            current_apy,
+            apy_min,
+            apy_max,
+            fee_apy,
         );
 
         MarketCreated {
+            creator,
             vault: vault.clone(),
             market: market.clone(),
         }
@@ -184,23 +220,8 @@ impl FactoryTrait for Factory {
         market
     }
 
-    fn set_admin(env: Env, new_admin: Address) {
-        let old_admin = storage::get_admin(&env);
-        old_admin.require_auth();
-        storage::extend_instance_ttl(&env);
-
-        storage::set_admin(&env, &new_admin);
-
-        AdminChanged {
-            old_admin,
-            new_admin,
-        }
-        .publish(&env);
-    }
-
+    #[only_owner]
     fn set_wasm_hashes(env: Env, new_hashes: WasmHashes) {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
         storage::extend_instance_ttl(&env);
 
         let old_hashes = storage::get_wasm_hashes(&env);
@@ -213,9 +234,30 @@ impl FactoryTrait for Factory {
         .publish(&env);
     }
 
+    /// (Owner only) Updates the fee config for markets created *afterward*.
+    /// Live markets are untouched: their pools snapshotted the config at
+    /// creation and have no setters.
+    #[only_owner]
+    fn set_fee_config(env: Env, new_config: FeeConfig) {
+        storage::extend_instance_ttl(&env);
+
+        assert!(
+            new_config.reserve_fee_rate >= 0 && new_config.reserve_fee_rate <= MAX_RESERVE_FEE_RATE,
+            "reserve_fee_rate out of range"
+        );
+
+        let old_config = storage::get_fee_config(&env);
+        storage::set_fee_config(&env, &new_config);
+
+        FeeConfigUpdated {
+            old_config,
+            new_config,
+        }
+        .publish(&env);
+    }
+
+    #[only_owner]
     fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin = storage::get_admin(&env);
-        admin.require_auth();
         storage::extend_instance_ttl(&env);
 
         env.deployer()
@@ -233,7 +275,15 @@ impl FactoryTrait for Factory {
         storage::extend_instance_ttl(&env);
         storage::get_wasm_hashes(&env)
     }
+
+    fn get_fee_config(env: Env) -> FeeConfig {
+        storage::extend_instance_ttl(&env);
+        storage::get_fee_config(&env)
+    }
 }
+
+#[contractimpl(contracttrait)]
+impl Ownable for Factory {}
 
 impl Factory {
     fn deploy_yield_manager_internal(
@@ -245,6 +295,9 @@ impl Factory {
         let wasm_hashes = storage::get_wasm_hashes(&env);
         let vault_symbol = TokenClient::new(&env, &vault).symbol();
 
+        // Same snapshot as the pool: the YM keeps this treasury forever.
+        let treasury = storage::get_fee_config(&env).treasury;
+
         let ym_addr = env
             .deployer()
             .with_current_contract(next_salt(&env))
@@ -255,6 +308,7 @@ impl Factory {
                     vault.clone(),
                     vault_type,
                     maturity,
+                    treasury,
                 ),
             );
 
@@ -299,11 +353,10 @@ impl Factory {
         env: Env,
         vault: Address,
         ym_addr: Address,
-        name: String,
-        scalar_root: i128,
-        initial_anchor: i128,
-        fee_rate_root: i128,
-        last_implied_rate: i128,
+        current_apy: i128,
+        apy_min: i128,
+        apy_max: i128,
+        fee_apy: i128,
     ) -> Market {
         let wasm_hashes = storage::get_wasm_hashes(&env);
 
@@ -311,6 +364,10 @@ impl Factory {
         let pt = ym_client.get_principal_token();
         let yt = ym_client.get_yield_token();
         let maturity = ym_client.get_maturity();
+
+        // Snapshot the current fee config into the pool: the market keeps
+        // these values forever, so later config changes are prospective only.
+        let fee_config = storage::get_fee_config(&env);
 
         let pool_addr = env
             .deployer()
@@ -323,11 +380,13 @@ impl Factory {
                     // trades against PT
                     vault.clone(),
                     maturity,
-                    scalar_root,
-                    initial_anchor,
-                    fee_rate_root,
-                    last_implied_rate,
+                    current_apy,
+                    apy_min,
+                    apy_max,
+                    fee_apy,
                     ym_addr.clone(),
+                    fee_config.treasury,
+                    fee_config.reserve_fee_rate,
                 ),
             );
 

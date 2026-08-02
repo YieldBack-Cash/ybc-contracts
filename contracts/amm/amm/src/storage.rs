@@ -10,7 +10,6 @@ pub struct MarketState {
     pub expiry_ts: u64,
     pub last_implied_rate: i128,
     pub scalar_root: i128,
-    pub initial_anchor: i128,
     pub fee_rate_root: i128,
 }
 
@@ -23,6 +22,13 @@ pub enum DataKey {
     /// Trusted flash-swap receiver (the yield manager). Only this address may be
     /// passed as `receiver` to `flash_swap_pt` / `flash_swap_v`.
     Ym,
+    /// Protocol fee sink. The reserve cut of each trade's fee is transferred
+    /// here inline, so fees never accumulate in the pool's own balance.
+    Treasury,
+    /// Fraction of each trade's fee remitted to the treasury (1e7-scaled,
+    /// e.g. 1_000_000 = 10% of the fee). Snapshotted at construction — no
+    /// one can change it on a live market.
+    ReserveFeeRate,
 }
 
 pub const DAY_IN_LEDGERS: u32 = 17280;
@@ -54,6 +60,22 @@ pub fn set_ym(e: &Env, ym: &Address) {
 
 pub fn get_ym(e: &Env) -> Address {
     e.storage().instance().get(&DataKey::Ym).unwrap()
+}
+
+pub fn set_treasury(e: &Env, treasury: &Address) {
+    e.storage().instance().set(&DataKey::Treasury, treasury);
+}
+
+pub fn get_treasury(e: &Env) -> Address {
+    e.storage().instance().get(&DataKey::Treasury).unwrap()
+}
+
+pub fn set_reserve_fee_rate(e: &Env, rate: i128) {
+    e.storage().instance().set(&DataKey::ReserveFeeRate, &rate);
+}
+
+pub fn get_reserve_fee_rate(e: &Env) -> i128 {
+    e.storage().instance().get(&DataKey::ReserveFeeRate).unwrap()
 }
 
 pub fn get_token_a(e: &Env) -> Address {

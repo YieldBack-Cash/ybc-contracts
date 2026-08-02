@@ -12,6 +12,8 @@ pub enum DataKey {
     ExchangeRate,
     RateLocked,
     Pool,
+    Treasury,
+    SurplusShares,
 }
 
 pub const DAY_IN_LEDGERS: u32 = 17280;
@@ -140,4 +142,30 @@ pub fn get_pool(env: &Env) -> Address {
 
 pub fn is_pool_set(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Pool)
+}
+
+// Protocol fee sink for collect_surplus (immutable after construction).
+pub fn set_treasury(env: &Env, treasury: &Address) {
+    env.storage().instance().set(&DataKey::Treasury, treasury);
+}
+
+pub fn get_treasury(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Treasury)
+        .expect("Treasury not set")
+}
+
+// Vault shares freed by post-maturity redemptions/claims above the locked
+// rate — protocol surplus awaiting collection. Only ever holds shares no
+// user has a claim on.
+pub fn get_surplus_shares(env: &Env) -> i128 {
+    env.storage()
+        .instance()
+        .get(&DataKey::SurplusShares)
+        .unwrap_or(0)
+}
+
+pub fn set_surplus_shares(env: &Env, amount: i128) {
+    env.storage().instance().set(&DataKey::SurplusShares, &amount);
 }

@@ -29,7 +29,7 @@ impl MockFlashVReceiver {
 
 #[contractimpl]
 impl FlashSwapVReceiver for MockFlashVReceiver {
-    fn on_flash_receive_v(e: Env, pt_borrowed: i128, v_owed: i128, _user: Address, _min_v_out: i128, amm: Address) {
+    fn on_flash_receive_v(e: Env, pt_borrowed: i128, v_owed: i128, _user: Address, _min_v_out: i128, _vault_rate: i128, amm: Address) {
         let v_token: Address = e.storage().instance().get(&VTOK).unwrap();
         let pt_token: Address = e.storage().instance().get(&PTOK).unwrap();
         let mode: u32 = e.storage().instance().get(&MODE).unwrap();
@@ -65,7 +65,7 @@ impl MockFlashPtReceiver {
 
 #[contractimpl]
 impl FlashSwapPtReceiver for MockFlashPtReceiver {
-    fn on_flash_receive_pt(e: Env, yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, amm: Address) {
+    fn on_flash_receive_pt(e: Env, yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, _vault_rate: i128, amm: Address) {
         let pt_token: Address = e.storage().instance().get(&PT_TOK).unwrap();
         let repay_ok: bool = e.storage().instance().get(&REPAY_OK).unwrap();
         let me = e.current_contract_address();
@@ -258,7 +258,7 @@ pub struct MockReentrantReceiver;
 
 #[contractimpl]
 impl FlashSwapVReceiver for MockReentrantReceiver {
-    fn on_flash_receive_v(e: Env, _pt_borrowed: i128, _v_owed: i128, _user: Address, _min_v_out: i128, amm: Address) {
+    fn on_flash_receive_v(e: Env, _pt_borrowed: i128, _v_owed: i128, _user: Address, _min_v_out: i128, _vault_rate: i128, amm: Address) {
         // Attempt to re-enter the pool mid-flash; the host rejects this.
         let me = e.current_contract_address();
         AmmClient::new(&e, &amm).swap_pt_for_v(&me, &1i128, &1i128);
@@ -284,7 +284,7 @@ pub struct MockReentrantPtReceiver;
 
 #[contractimpl]
 impl FlashSwapPtReceiver for MockReentrantPtReceiver {
-    fn on_flash_receive_pt(e: Env, _yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, amm: Address) {
+    fn on_flash_receive_pt(e: Env, _yt_out: i128, _v_from_pool: i128, _user: Address, _max_v_in: i128, _vault_rate: i128, amm: Address) {
         // Attempt to re-enter the pool mid-flash; the host rejects this.
         let me = e.current_contract_address();
         AmmClient::new(&e, &amm).swap_v_for_pt(&me, &1i128, &1i128);

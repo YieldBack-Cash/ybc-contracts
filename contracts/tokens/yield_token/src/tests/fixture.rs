@@ -45,9 +45,10 @@ impl<'a> YieldTokenTest<'a> {
         let current_time = env.ledger().timestamp();
         let maturity = current_time + 1000;
 
+        let treasury = Address::generate(&env);
         let yield_manager_id = env.register(
             YieldManager,
-            (&admin, &vault_address, &VaultType::Vault4626, &maturity),
+            (&admin, &vault_address, &VaultType::Vault4626, &maturity, &treasury),
         );
 
         // Mint vault shares directly to yield manager for distributing yield

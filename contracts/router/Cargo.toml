@@ -11,6 +11,7 @@ soroban-sdk = { workspace = true }
 amm-interface = { path = "../amm/amm-interface" }
 yield_manager_interface = { path = "../yield/yield_manager_interface" }
 yield_token_interface = { path = "../tokens/yield_token_interface" }
+vault_interface = { path = "../../vault/vault_interface" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

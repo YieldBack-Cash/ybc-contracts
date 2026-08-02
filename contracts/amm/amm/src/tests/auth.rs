@@ -8,10 +8,10 @@ use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal, String, Symbol
 use crate::contract::LiquidityPool;
 use mock_vault::MockVault;
 
-const SCALAR_ROOT: i128 = 250_000_000;
-const FEE_RATE_ROOT: i128 = 500_000;
-const INITIAL_ANCHOR: i128 = 11_000_000;
-const LAST_IMPLIED_RATE: i128 = 1_000_000;
+const CURRENT_APY: i128 = 1_000_000;
+const APY_MIN: i128 = 200_000;
+const APY_MAX: i128 = 2_000_000;
+const FEE_APY: i128 = 100_000;
 const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
 fn register_pool(env: &Env) -> (Address, Address, Address) {
@@ -27,9 +27,11 @@ fn register_pool(env: &Env) -> (Address, Address, Address) {
     );
 
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
+    let ym = Address::generate(env);
+    let treasury = Address::generate(env);
     let pool_addr = env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, SCALAR_ROOT, INITIAL_ANCHOR, FEE_RATE_ROOT, LAST_IMPLIED_RATE),
+        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym, &treasury, 0i128),
     );
     (pt_addr, vault_addr, pool_addr)
 }

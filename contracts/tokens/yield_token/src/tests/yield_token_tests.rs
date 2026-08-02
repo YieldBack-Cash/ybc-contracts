@@ -331,3 +331,24 @@ fn test_zero_balance_user_can_claim() {
     let claimed = test.claim_yield(&test.user1);
     assert_eq!(claimed, 0);
 }
+
+/// A YT self-transfer must be a no-op on the balance.
+///
+/// `transfer` reads `from_balance` before the accrual calls and `to_balance`
+/// after, then writes both. When `from == to` those are the same storage key, so
+/// the second write (`to_balance + amount`) simply overwrites the first
+/// (`from_balance - amount`) — minting `amount` YT out of nothing, and with it a
+/// claim on yield the yield manager never received backing for.
+#[test]
+fn self_transfer_does_not_inflate_balance() {
+    let t = YieldTokenTest::setup();
+
+    t.mint_yt(&t.user1, 1_000_000, 10_000_000);
+    let before = t.get_balance(&t.user1);
+    let supply_before = t.get_total_supply();
+
+    t.transfer(&t.user1, &t.user1, 14);
+
+    assert_eq!(t.get_balance(&t.user1), before, "self-transfer changed the balance");
+    assert_eq!(t.get_total_supply(), supply_before, "self-transfer changed total supply");
+}

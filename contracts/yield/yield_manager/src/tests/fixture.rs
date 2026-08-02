@@ -19,6 +19,7 @@ pub struct YieldManagerTest {
     pub yt: Address,
     pub pool: Address,
     pub maturity: u64,
+    pub treasury: Address,
 }
 
 impl YieldManagerTest {
@@ -43,7 +44,11 @@ impl YieldManagerTest {
         let current_time = env.ledger().timestamp();
         let maturity = current_time + 1000;
 
-        let yield_manager_id = env.register(YieldManager, (&admin, &vault_addr, VaultType::Vault4626, maturity));
+        let treasury = Address::generate(&env);
+        let yield_manager_id = env.register(
+            YieldManager,
+            (&admin, &vault_addr, VaultType::Vault4626, maturity, &treasury),
+        );
 
         let pt_id = env.register(
             PrincipalToken,
@@ -88,6 +93,7 @@ impl YieldManagerTest {
             yt: yt_id,
             pool: pool_addr,
             maturity,
+            treasury,
         }
     }
 
@@ -99,6 +105,15 @@ impl YieldManagerTest {
     pub fn set_vault_exchange_rate(&self, rate: i128) {
         let vault_client = MockVaultClient::new(&self.env, &self.vault_addr);
         vault_client.set_exchange_rate(&rate);
+    }
+
+    /// The vault's rate as the AMM would observe it, probed at the same 1e7 scale
+    /// the protocol uses everywhere. The flash callbacks now take this as an
+    /// argument, so tests driving them directly must pass what a real pool would
+    /// have read — reading it live keeps that honest across
+    /// `set_vault_exchange_rate`.
+    pub fn vault_exchange_rate(&self) -> i128 {
+        MockVaultClient::new(&self.env, &self.vault_addr).convert_to_assets(&10_000_000)
     }
 
     pub fn vault_balance(&self, user: &Address) -> i128 {

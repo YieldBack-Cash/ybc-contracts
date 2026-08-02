@@ -11,10 +11,13 @@ fn invoke_flash_receive_v(
     min_v_out: i128,
     amm: &Address,
 ) {
+    // The pool supplies the rate in production; read it live here so the tests
+    // pass whatever a real AMM would have observed at this point.
+    let vault_rate = test.vault_exchange_rate();
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "on_flash_receive_v"),
-        (pt_borrowed, v_owed, user, min_v_out, amm).into_val(&test.env),
+        (pt_borrowed, v_owed, user, min_v_out, vault_rate, amm).into_val(&test.env),
     );
 }
 
@@ -44,10 +47,11 @@ fn invoke_flash_receive_pt(
     max_v_in: i128,
     amm: &Address,
 ) {
+    let vault_rate = test.vault_exchange_rate();
     test.env.invoke_contract::<()>(
         &test.yield_manager,
         &Symbol::new(&test.env, "on_flash_receive_pt"),
-        (yt_out, v_from_pool, user, max_v_in, amm).into_val(&test.env),
+        (yt_out, v_from_pool, user, max_v_in, vault_rate, amm).into_val(&test.env),
     );
 }
 

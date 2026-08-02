@@ -13,11 +13,15 @@ use soroban_sdk::{token, Address, Env, String};
 use crate::contract::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::MockVaultClient;
 
-// Market params, mirroring tests/fixture.rs (all 1e7-scaled).
-const SCALAR_ROOT: i128 = 250_000_000; // 25.0
-const FEE_RATE_ROOT: i128 = 500_000; // 0.05
-const INITIAL_ANCHOR: i128 = 11_000_000; // 1.1
-const LAST_IMPLIED_RATE: i128 = 1_000_000; // 0.1
+// Market params, mirroring tests/fixture.rs (all 1e7-scaled APYs).
+const CURRENT_APY: i128 = 1_000_000; // 10%
+const APY_MIN: i128 = 200_000; // 2%
+const APY_MAX: i128 = 2_000_000; // 20%
+const FEE_APY: i128 = 100_000; // 1%
+/// Treasury's cut of the fee (1e7-scaled). Deliberately nonzero so every
+/// fuzzed swap exercises the remit path and the reserves-vs-balances
+/// invariant checks the fee accounting.
+const RESERVE_FEE_RATE: i128 = 2_000_000; // 20% of the fee
 const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
 /// Total of each token minted per holder (admin and user).
@@ -54,6 +58,8 @@ pub struct Harness<'a> {
     pub pool: LiquidityPoolClient<'a>,
     /// actors[0] is the admin (seeds initial liquidity); all are funded equally.
     pub actors: [Address; NUM_ACTORS],
+    /// Protocol fee sink; receives the reserve cut of every fuzzed trade.
+    pub treasury: Address,
 }
 
 impl<'a> Harness<'a> {
@@ -93,6 +99,7 @@ impl<'a> Harness<'a> {
         assert!(pt_addr < vault_addr, "counter addresses must be sequential");
 
         let ym = Address::generate(env);
+        let treasury = Address::generate(env);
         let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
         let pool_addr = env.register(
             LiquidityPool,
@@ -100,11 +107,13 @@ impl<'a> Harness<'a> {
                 pt_addr,
                 vault_addr,
                 expiry,
-                SCALAR_ROOT,
-                INITIAL_ANCHOR,
-                FEE_RATE_ROOT,
-                LAST_IMPLIED_RATE,
+                CURRENT_APY,
+                APY_MIN,
+                APY_MAX,
+                FEE_APY,
                 ym,
+                treasury.clone(),
+                RESERVE_FEE_RATE,
             ),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
@@ -117,7 +126,7 @@ impl<'a> Harness<'a> {
 
         pool.deposit(&admin, &POOL_SEED, &0, &POOL_SEED, &0);
 
-        Harness { env: env.clone(), pt, vault, pool, actors }
+        Harness { env: env.clone(), pt, vault, pool, actors, treasury }
     }
 
     fn actor(&self, idx: u8) -> &Address {
@@ -213,14 +222,19 @@ impl<'a> Harness<'a> {
         assert!(self.pool.get_implied_rate() >= 0, "implied rate went negative");
 
         // 4. Token conservation: pool operations only move tokens between the
-        //    actors and the pool; nothing is minted, burned, or leaked.
+        //    actors, the pool, and the treasury (reserve-fee remittances);
+        //    nothing is minted, burned, or leaked.
         for (tok, label) in [(&pt_token, "PT"), (&v_token, "V")] {
-            let mut sum = tok.balance(pool_addr);
+            let mut sum = tok.balance(pool_addr) + tok.balance(&self.treasury);
             for actor in &self.actors {
                 sum += tok.balance(actor);
             }
             assert_eq!(sum, NUM_ACTORS as i128 * HOLDER_FUNDS, "{} tokens not conserved", label);
         }
+
+        // 5. The treasury only ever receives V (fees are charged in V), and
+        //    its balance must never decrease — the pool cannot claw fees back.
+        assert_eq!(pt_token.balance(&self.treasury), 0, "treasury received PT");
     }
 }
 

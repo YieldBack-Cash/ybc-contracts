@@ -167,7 +167,7 @@ pub(crate) fn get_exchange_rate_from_trade(
 /// - `rate_scalar`         — time-adjusted curve steepness (1e7-scaled)
 /// - `rate_anchor`         — curve anchor, derived from current implied rate (1e7-scaled)
 /// - `fee_factor`          — time-aware fee multiplier: `e^(fee_rate_root * t)`, always >= 1.0 (1e7-scaled)
-/// - `reserve_fee_percent` — fraction of fee that goes to the reserve, as a whole-number percent (0–100)
+/// - `reserve_fee_rate`    — fraction of the fee that goes to the reserve, 1e7-scaled (e.g. 1_000_000 = 10%)
 /// - `net_pt_to_account`   — signed PT flow to the user: positive = PT out to user, negative = PT in from user
 ///
 /// # Returns
@@ -181,7 +181,7 @@ pub(crate) fn calc_trade(
     rate_scalar: i128,
     rate_anchor: i128,
     fee_factor: i128,
-    reserve_fee_percent: i128,
+    reserve_fee_rate: i128,
     net_pt_to_account: i128,
 ) -> (i128, i128, i128) {
     assert!(reserve_pt > 0, "reserve_pt must be positive");
@@ -190,8 +190,8 @@ pub(crate) fn calc_trade(
     assert!(rate_anchor > 0, "rate_anchor must be positive");
     assert!(fee_factor >= math::FP_SCALE, "fee_factor must be >= 1.0");
     assert!(
-        reserve_fee_percent >= 0 && reserve_fee_percent <= 100,
-        "reserve_fee_percent must be between 0 and 100"
+        reserve_fee_rate >= 0 && reserve_fee_rate <= math::FP_SCALE,
+        "reserve_fee_rate must be between 0 and 1.0"
     );
 
     // Pendle-style liquidity check:
@@ -252,8 +252,9 @@ pub(crate) fn calc_trade(
 
     assert!(net_v_fee >= 0, "net_v_fee must be non-negative");
 
-    // 4) Reserve fee split (base-100 percent).
-    let net_v_to_reserve = (net_v_fee * reserve_fee_percent) / 100;
+    // 4) Reserve fee split (1e7-scaled fraction of the fee), floored so the
+    //    rounding dust stays with the LPs.
+    let net_v_to_reserve = math::mul_down(net_v_fee, reserve_fee_rate);
 
     (net_v_to_account, net_v_fee, net_v_to_reserve)
 }
