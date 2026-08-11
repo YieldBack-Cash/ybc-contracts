@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc fc1a6e47d1f58f23e511573b9ae35e01ed3ff31a60869858005908ace450e243 # shrinks to steps = [AdvanceTime { secs: 31536000 }, ExitExpiredToAsset { actor: 15, pct: 1, min_asset_out: 1 }]
