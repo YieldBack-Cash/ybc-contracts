@@ -353,6 +353,12 @@ impl<'a> RouterHarness<'a> {
             pt_owed,
         );
     }
+
+    /// A holder's accrual index — the rate their current balance earns from.
+    fn yt_index(&self, who: &soroban_sdk::Address) -> i128 {
+        let e = &self.f.env;
+        e.invoke_contract::<i128>(&self.f.yt, &Symbol::new(e, "user_index"), (who,).into_val(e))
+    }
 }
 
 // ── Strategies ───────────────────────────────────────────────────────────────
@@ -409,6 +415,49 @@ fn step() -> impl Strategy<Value = Step> {
 }
 
 // ── Properties ───────────────────────────────────────────────────────────────
+
+/// Regression, shrunk from a `router_stateful_invariants_hold` failure.
+///
+/// A holder who is empty across a rate rise must not carry a stale accrual
+/// index into their next acquisition. `mint` and `transfer` both accrue BEFORE
+/// raising the balance, so a zero-balance holder's index is what gets applied
+/// to tokens they are about to receive. While that index was left parked, such
+/// a holder could claim yield for growth that predated their ownership — paid
+/// out of other holders' principal backing, driving the YM insolvent.
+#[test]
+fn stale_index_cannot_claim_yield_predating_ownership() {
+    let env = quiet_env();
+    let mut h = RouterHarness::new(&env);
+
+    // actor 1 holds no YT, but claiming initialises their index at the old rate.
+    h.apply(Step::ClaimYield { actor: 1 });
+    // The rate rises while actor 1 holds nothing — none of this growth is theirs.
+    h.apply(Step::RaiseVaultRate { pct: 1 });
+    h.apply(Step::ClaimYield { actor: 0 });
+
+    // actor 1 acquires YT. Their index must be stamped to the CURRENT rate.
+    h.apply(Step::YmDeposit { actor: 1, shares: 1100 });
+    let actor1 = h.actor(1);
+    assert!(h.f.yt_balance(&actor1) > 0, "actor 1 should hold YT after depositing");
+    assert_eq!(
+        h.yt_index(&actor1),
+        h.ym_rate(),
+        "index left stale at acquisition: holder would accrue across a rate rise \
+         that predates their ownership"
+    );
+
+    // Claiming must therefore pay nothing: they have held YT across no rate move.
+    let v_before = h.f.vault.balance(&actor1);
+    h.apply(Step::ClaimYield { actor: 1 });
+    assert_eq!(
+        h.f.vault.balance(&actor1),
+        v_before,
+        "holder was paid yield for growth predating their ownership"
+    );
+
+    // And the YM must still cover principal.
+    h.assert_invariants();
+}
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(48))]

@@ -39,8 +39,18 @@ impl YieldToken {
             return current_rate;
         }
 
-        // Early return if no balance (but index is already initialized above)
+        // No balance: nothing to accrue, but the index must still track the live
+        // rate. Leaving it parked lets a holder who was empty across a rate rise
+        // carry a stale index into their next acquisition — `mint` and `transfer`
+        // both accrue BEFORE raising the balance, so this branch is what runs at
+        // acquisition time — and then claim yield for growth that predates their
+        // ownership, which is paid out of other holders' principal backing.
+        // Guarded so an unchanged rate still costs no storage write, and so a
+        // (never-expected) lower rate can never move the index backwards.
         if balance == 0 {
+            if current_rate > old_index {
+                storage::set_user_index(env, user, current_rate);
+            }
             return current_rate;
         }
 
