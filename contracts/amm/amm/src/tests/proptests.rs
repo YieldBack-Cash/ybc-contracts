@@ -252,11 +252,52 @@ fn round_trip_does_not_profit_near_expiry() {
     );
 }
 
+/// Step sizes for the monotonicity check, weighted toward tiny gaps. `ln_fp`
+/// normalizes by repeated halving/doubling, so an ordering break would live
+/// between neighbouring values that straddle a power-of-two boundary and take a
+/// different number of steps. A delta drawn uniformly across the whole range
+/// would essentially never generate those.
+fn ln_delta() -> impl Strategy<Value = i128> {
+    prop_oneof![
+        3 => 1i128..=10,
+        2 => 1i128..=10_000,
+        1 => 1i128..=1_000 * FP_SCALE,
+    ]
+}
+
+/// Targeted companion to `ln_fp_is_monotone`. Normalization changes step count
+/// exactly at powers of two, making those the likeliest place for the artanh
+/// approximation to step backwards — and exactly where uniform random sampling
+/// over a 1e10-wide range almost never lands. Walks adjacent values across every
+/// such boundary in the production range.
+#[test]
+fn ln_fp_is_monotone_across_power_of_two_boundaries() {
+    let mut boundary = FP_SCALE;
+    while boundary <= 1_000 * FP_SCALE {
+        for x in (boundary - 4)..=(boundary + 4) {
+            assert!(
+                crate::math::ln_fp(x, FP_SCALE) <= crate::math::ln_fp(x + 1, FP_SCALE),
+                "ln_fp stepped backwards between {} and {}",
+                x,
+                x + 1
+            );
+        }
+        boundary *= 2;
+    }
+}
+
 proptest! {
-    /// ln is strictly monotone over its useful range.
+    /// ln is monotone over its useful range. Non-strict on purpose: `ln_fp` is a
+    /// truncating fixed-point approximation, so neighbouring inputs legitimately
+    /// share an output. Asserting `<` here would fail on correct code.
+    ///
+    /// The second point is built as `a + delta` rather than drawn independently
+    /// and filtered with `prop_assume!(a < b)`: independent draws discard ~50% of
+    /// inputs, which exhausts proptest's global reject budget (1024) and aborts
+    /// the run once the case count is raised much past the default.
     #[test]
-    fn ln_fp_is_monotone(a in 1_000i128..=1_000 * FP_SCALE, b in 1_000i128..=1_000 * FP_SCALE) {
-        prop_assume!(a < b);
+    fn ln_fp_is_monotone(a in 1_000i128..=1_000 * FP_SCALE, delta in ln_delta()) {
+        let b = a + delta;
         prop_assert!(
             crate::math::ln_fp(a, FP_SCALE) <= crate::math::ln_fp(b, FP_SCALE),
             "ln_fp not monotone between {} and {}", a, b
