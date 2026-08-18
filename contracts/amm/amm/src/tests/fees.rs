@@ -151,7 +151,7 @@ fn test_flash_swap_pt_remits_fee_to_treasury() {
     let receiver = env.register_at(
         &f.ym,
         MockFlashPtReceiver,
-        (f.pool.address.clone(), f.pt.address.clone(), true),
+        (f.pool.address.clone(), f.pt.address.clone(), f.vault.address.clone(), true),
     );
     f.pt.mint(&receiver, &1_000_000_000);
 

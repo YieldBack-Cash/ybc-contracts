@@ -8,6 +8,13 @@ use amm_interface::{AmmClient, FlashSwapPtReceiver, FlashSwapVReceiver};
 //   0 — repay exactly `v_owed` in V; keep the borrowed PT (the correct behaviour)
 //   1 — repay `v_owed - 1` in V (under-repay → AMM must revert)
 //   2 — repay `v_owed` in V *and* hand the borrowed PT back (→ AMM must revert)
+//
+// These sit at the pool's trusted receiver address, i.e. they REPLACE the real
+// yield manager the fixture deploys — the real one cannot under-repay, and
+// under-repayment is exactly what these tests exist to catch. That means they
+// must also answer the rate query the pool makes before every trade, so each
+// mirrors the vault's live rate. Sound here because no test in this file lowers
+// it, so a real YM's high-water mark would report the same number.
 
 const POOL: &str = "pool";
 const VTOK: &str = "vtok";
@@ -24,6 +31,13 @@ impl MockFlashVReceiver {
         e.storage().instance().set(&VTOK, &v_token);
         e.storage().instance().set(&PTOK, &pt_token);
         e.storage().instance().set(&MODE, &mode);
+    }
+
+    /// Stands in for the yield manager's rate, which the pool reads to price the
+    /// trade. Mirrors the vault directly — see the note above.
+    pub fn get_exchange_rate(e: Env) -> i128 {
+        let v_token: Address = e.storage().instance().get(&VTOK).unwrap();
+        mock_vault::MockVaultClient::new(&e, &v_token).convert_to_assets(&10_000_000)
     }
 }
 
@@ -49,6 +63,7 @@ impl FlashSwapVReceiver for MockFlashVReceiver {
 
 const PT_POOL: &str = "ptpool";
 const PT_TOK: &str = "pttok";
+const PT_VTOK: &str = "ptvtok";
 const REPAY_OK: &str = "repay";
 
 #[contract]
@@ -56,10 +71,18 @@ pub struct MockFlashPtReceiver;
 
 #[contractimpl]
 impl MockFlashPtReceiver {
-    pub fn __constructor(e: Env, pool: Address, pt_token: Address, repay_ok: bool) {
+    pub fn __constructor(e: Env, pool: Address, pt_token: Address, v_token: Address, repay_ok: bool) {
         e.storage().instance().set(&PT_POOL, &pool);
         e.storage().instance().set(&PT_TOK, &pt_token);
+        e.storage().instance().set(&PT_VTOK, &v_token);
         e.storage().instance().set(&REPAY_OK, &repay_ok);
+    }
+
+    /// Stands in for the yield manager's rate, which the pool reads to price the
+    /// trade. Mirrors the vault directly — see the note above.
+    pub fn get_exchange_rate(e: Env) -> i128 {
+        let v_token: Address = e.storage().instance().get(&PT_VTOK).unwrap();
+        mock_vault::MockVaultClient::new(&e, &v_token).convert_to_assets(&10_000_000)
     }
 }
 
@@ -92,7 +115,7 @@ fn pt_receiver(f: &AmmFixture, repay_ok: bool) -> Address {
     let addr = f.env.register_at(
         &f.ym,
         MockFlashPtReceiver,
-        (f.pool.address.clone(), f.pt.address.clone(), repay_ok),
+        (f.pool.address.clone(), f.pt.address.clone(), f.vault.address.clone(), repay_ok),
     );
     // Fund it with PT so it can deliver the bought PT to the pool (stands in for the YM
     // minting it — the pool only observes the PT arriving).

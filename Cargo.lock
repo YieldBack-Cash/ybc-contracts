@@ -31,6 +31,8 @@ dependencies = [
  "soroban-fixed-point-math",
  "soroban-sdk 26.1.1",
  "vault_interface",
+ "yield_manager",
+ "yield_manager_interface",
 ]
 
 [[package]]

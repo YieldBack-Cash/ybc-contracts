@@ -3,6 +3,7 @@ use soroban_sdk::testutils::{Address as _, Ledger};
 
 use crate::contract::{LiquidityPool, LiquidityPoolClient};
 use mock_vault::MockVaultClient;
+use yield_manager::{VaultType, YieldManager};
 
 // Default market params (all 1e7-scaled APYs)
 pub const CURRENT_APY: i128 = 1_000_000; // 10% — opening implied rate
@@ -20,8 +21,14 @@ pub struct AmmFixture<'a> {
     pub pool: LiquidityPoolClient<'a>,
     pub admin: Address,
     pub user: Address,
-    /// The pool's trusted flash-swap receiver. Flash tests deploy their mock
-    /// receiver at this address via `env.register_at` so it is accepted by the pool.
+    /// The real yield manager, pointed at `vault`. The pool reads its exchange
+    /// rate from here on every swap, so this is a live `YieldManager` and not a
+    /// stand-in — a stub would be free to answer with the vault's rate and hide
+    /// the divergence that PT pricing depends on.
+    ///
+    /// Flash tests replace it, via `env.register_at`, with a receiver that can
+    /// misbehave on purpose; the real YM cannot under-repay, which is the whole
+    /// point of those tests.
     pub ym: Address,
     /// Protocol fee sink baked into the pool at construction.
     pub treasury: Address,
@@ -61,21 +68,25 @@ impl<'a> AmmFixture<'a> {
 
         assert!(pt_addr < vault_addr, "counter addresses must be sequential");
 
-        // Trusted flash-swap receiver. Held as a plain address here; flash tests
-        // deploy a mock receiver at this address (via `env.register_at`) so the
-        // pool accepts it, while other tests never touch the flash entrypoints.
-        let ym = Address::generate(env);
-        let treasury = Address::generate(env);
+        vault.set_exchange_rate(&1_000_0000);
 
+        let treasury = Address::generate(env);
         let now    = env.ledger().timestamp();
         let expiry = now + ONE_YEAR_SECS;
+
+        // The real yield manager, sharing the pool's expiry so its rate locks in
+        // step with the market. It needs no PT/YT wiring for these tests: the pool
+        // only calls `get_exchange_rate`, which the constructor alone satisfies.
+        let ym = env.register(
+            YieldManager,
+            (admin.clone(), vault_addr.clone(), VaultType::Vault4626, expiry, treasury.clone()),
+        );
+
         let pool_addr = env.register(
             LiquidityPool,
             (pt_addr.clone(), vault_addr.clone(), expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, ym.clone(), treasury.clone(), reserve_fee_rate),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
-
-        vault.set_exchange_rate(&1_000_0000);
 
         pt.mint(&admin, &1_000_000_000);
         pt.mint(&user,  &1_000_000_000);

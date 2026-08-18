@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # Enables the stateful fuzz/property-test harness (src/fuzz_harness.rs) for
 # out-of-crate consumers, i.e. the cargo-fuzz targets in fuzz/.
-testutils = ["soroban-sdk/testutils", "dep:mock_vault"]
+testutils = ["soroban-sdk/testutils", "dep:mock_vault", "dep:yield_manager"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -17,9 +17,16 @@ soroban-fixed-point-math = { workspace = true }
 amm-interface = { path = "../amm-interface" }
 num-integer = { version = "0.1.46", default-features = false }
 vault_interface = { path = "../../../vault/vault_interface" }
+yield_manager_interface = { path = "../../yield/yield_manager_interface" }
 mock_vault = { path = "../../mocks/mock_vault", optional = true }
+# Tests and the fuzz harness stand up the REAL yield manager rather than a stub,
+# because the pool now reads its rate from it — a stub would be free to answer
+# with the vault's rate and hide exactly the divergence that made PT mispriced.
+# Acyclic: yield_manager depends on amm-interface, not on this crate.
+yield_manager = { path = "../../yield/yield_manager", optional = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 mock_vault = { path = "../../mocks/mock_vault" }
+yield_manager = { path = "../../yield/yield_manager" }
 proptest = "1"

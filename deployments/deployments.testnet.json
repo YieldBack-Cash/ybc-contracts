@@ -14,8 +14,8 @@
       "installed_at": "2026-07-31T23:15:57Z"
     },
     "amm": {
-      "wasm_hash": "b079327df8d9233939daf0fb21fbe02ba1c9243df9409b4507e5685f6f86e94a",
-      "installed_at": "2026-07-31T23:16:02Z"
+      "wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
+      "installed_at": "2026-08-17T00:00:00Z"
     },
     "treasury": {
       "wasm_hash": "826bebe4a34ddff8beec071b014b9bf83f007f2aa7e0598e0a5b25e378d55ba9",
@@ -65,17 +65,19 @@
     {
       "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
       "asset": "XLM",
-      "maturity": 1817856000,
-      "maturity_date": "2027-08-10T00:00:00Z",
-      "ym": "CACOHEMLCA4NFTKT35X3LPBDG2MPYAU7LS6CLIUEUHF72LRTCO76KON3",
-      "pt": "CCBFN7K5FI23ZH53DGFXNU4UO4CJK6D6PDBENWAGLGDKM5T2E46OHTFR",
-      "yt": "CA5XD4VV73APA7MUKVAWAS4LQKTHGLEJTIDR7H3W6L3KK7C3CFJC5OYK",
-      "pool": "CA24MNRTEFPOCXHEGBYF22FXMP2PSULUPTL4V43ORJUFDGPRL57J6ABG",
+      "maturity": 1820448000,
+      "maturity_date": "2027-09-09T00:00:00Z",
+      "ym": "CDEXIWYJW7M2TRTGIYFHKOISBVEGY7GDKVWYTZHY2ZP4T2HZJN3A2L3U",
+      "pt": "CBSOTP6BPY34ZSS7N25HMSXABOMNHM2KXJEMPVWIC2SZ3V4AIE6DFIV4",
+      "yt": "CCOADKJSRDXXEMK4V5OHLB77PAENLX2DWYNG2CDM3YFQW52UQ2OLPZ22",
+      "pool": "CA7VFEA6FWT3MRGTK6NDUFVIH4VQFY6W4UNMHD7KM7WYUN6VQ3XQBZJQ",
       "current_apy": 1000000,
       "apy_min": 200000,
       "apy_max": 2000000,
       "fee_apy": 100000,
-      "created_at": "2026-08-11T01:17:32Z"
+      "created_at": "2026-08-17T00:00:00Z",
+      "amm_wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
+      "note": "AMM reads the YM exchange rate; verified live with swap + buy-YT + sell-YT"
     }
   ]
 }

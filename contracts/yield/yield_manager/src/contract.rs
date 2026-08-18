@@ -33,6 +33,12 @@ impl YieldManager {
 
     /// Refreshes the stored rate before maturity (rate can only increase, and locks
     /// once maturity is reached) and returns the resulting current rate.
+    ///
+    /// This is the protocol's single source of truth for the rate, and the AMM
+    /// reads it through `get_exchange_rate` rather than probing the vault itself.
+    /// It has to: PT settles at this number, so anything pricing PT against the
+    /// vault's own rate misprices it the moment the two diverge. See
+    /// `amm/src/vault.rs` and `tests/integration/src/tests/rate_divergence.rs`.
     fn update_exchange_rate(env: &Env) -> i128 {
         if storage::is_rate_locked(env) {
             return storage::get_exchange_rate(env);
@@ -54,21 +60,22 @@ impl YieldManager {
     /// full round trip into the underlying lending pool.
     ///
     /// Every piece of policy stays here: the non-decreasing floor still applies and
-    /// the maturity lock is still set. The caller supplies only the raw observation.
+    /// the maturity lock is still set. The caller supplies only the observation.
     ///
-    /// Two conditions make that safe, and both must keep holding:
+    /// The figure the pool passes is now THIS contract's own rate making a round
+    /// trip: the pool obtains it from `get_exchange_rate` to price the trade, which
+    /// has already committed the ratchet, so re-applying it here is idempotent and
+    /// the floor below is a no-op. That is a stronger guarantee than the one this
+    /// function used to rest on, which was that the pool passed a raw vault reading
+    /// and never an already-high-water-marked one — a precondition that could only
+    /// be documented, not enforced, and whose failure direction (a value too HIGH)
+    /// would have ratcheted the stored rate up permanently. The pool can no longer
+    /// supply any value except the one already in storage.
     ///
-    ///   * The figure is read straight from the vault, never one already
-    ///     high-water-marked or otherwise derived. Passing a stale-high rate back in
-    ///     would ratchet the stored rate up permanently — the floor discards values
-    ///     that are too LOW, so an inflated one is the direction that does harm.
-    ///   * The caller's vault is this yield manager's vault. Guaranteed by
-    ///     construction rather than checked: `create_market` threads one `vault`
-    ///     value into both this contract and the pool's share-token slot, and
-    ///     `set_pool` is one-shot, so the pairing cannot be re-pointed afterwards.
-    ///     Before this parameter existed the yield manager was self-consistent
-    ///     whatever the AMM referenced, so this is a new dependency — anything that
-    ///     ever lets the two be deployed apart has to re-establish it.
+    /// The pairing is guaranteed by construction rather than checked: `create_market`
+    /// threads one `vault` value into both this contract and the pool's share-token
+    /// slot, and `set_pool` is one-shot, so the two cannot be re-pointed afterwards.
+    /// Anything that ever lets them be deployed apart has to re-establish that.
     fn update_exchange_rate_from(env: &Env, vault_rate: i128) -> i128 {
         if storage::is_rate_locked(env) {
             return storage::get_exchange_rate(env);

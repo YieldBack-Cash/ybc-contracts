@@ -98,9 +98,25 @@ impl<'a> Harness<'a> {
         let vault = MockVaultClient::new(env, &vault_addr);
         assert!(pt_addr < vault_addr, "counter addresses must be sequential");
 
-        let ym = Address::generate(env);
+        vault.set_exchange_rate(&10_000_000);
+
         let treasury = Address::generate(env);
         let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
+
+        // The real yield manager: the pool prices every swap off its exchange
+        // rate, so a stub answering with the vault's rate would quietly restore
+        // the divergence these invariants are supposed to hold across.
+        let ym = env.register(
+            yield_manager::YieldManager,
+            (
+                admin.clone(),
+                vault_addr.clone(),
+                yield_manager::VaultType::Vault4626,
+                expiry,
+                treasury.clone(),
+            ),
+        );
+
         let pool_addr = env.register(
             LiquidityPool,
             (
@@ -117,8 +133,6 @@ impl<'a> Harness<'a> {
             ),
         );
         let pool = LiquidityPoolClient::new(env, &pool_addr);
-
-        vault.set_exchange_rate(&10_000_000);
         for actor in &actors {
             pt.mint(actor, &HOLDER_FUNDS);
             vault.mint(actor, &HOLDER_FUNDS);
