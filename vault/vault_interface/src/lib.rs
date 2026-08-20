@@ -51,8 +51,10 @@ pub trait VaultTrait {
     /// out of the same transaction.
     fn query_asset(e: &Env) -> Address;
 
-    /// Assets per share. The yield manager reads this as its exchange rate and
-    /// the AMM prices its vault-share reserve through it.
+    /// Assets per share. Read ONLY by the yield manager, which high-water-marks
+    /// it into the exchange rate the rest of the protocol prices and settles
+    /// against — the AMM reads that rate from the yield manager rather than
+    /// calling this itself.
     fn convert_to_assets(e: &Env, shares: i128) -> i128;
 
     fn deposit(e: &Env, assets: i128, receiver: Address, from: Address, operator: Address) -> i128;

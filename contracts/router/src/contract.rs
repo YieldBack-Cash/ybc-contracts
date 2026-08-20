@@ -94,6 +94,27 @@ pub trait RouterInterface {
         lp_shares: i128,
         min_shares_out: i128,
     ) -> i128;
+
+    // ── Split / recombine, denominated in vault shares ───────────────────────
+    //
+    // Thin wrappers over the yield manager's own entrypoints, which stay public
+    // and callable directly. What routing adds is the same thing it adds
+    // everywhere else: the market is resolved through the factory, so the caller
+    // cannot aim the operation at a yield manager the factory never deployed,
+    // and the entrypoint survives the market recreation that every contract-level
+    // fix forces (ARCHITECTURE.md §4.10).
+    //
+    // Named `split`/`recombine` because `deposit`/`withdraw` above are the AMM's
+    // LP pair.
+    fn split(
+        env: Env,
+        vault: Address,
+        maturity: u64,
+        to: Address,
+        shares_amount: i128,
+        allow_expiry: u32,
+    );
+    fn recombine(env: Env, vault: Address, maturity: u64, to: Address, amount: i128);
     fn get_reserves(env: Env, vault: Address, maturity: u64) -> (i128, i128);
     fn balance_shares(env: Env, vault: Address, maturity: u64, user: Address) -> i128;
 
@@ -505,6 +526,64 @@ impl RouterInterface for RouterContract {
         .publish(&e);
 
         shares_out
+    }
+
+    /// Split `shares_amount` vault shares into equal amounts of PT and YT.
+    ///
+    /// The YM pulls the shares with `transfer_from`, so it needs an allowance.
+    /// Granting it here rather than leaving it to the caller is what keeps the
+    /// YM's address out of the frontend: the wallet obtains this entry by
+    /// simulating, and signs it without ever having resolved the market itself.
+    ///
+    /// Both arguments of that approve are the caller's own — the split size they
+    /// asked for, and an absolute `allow_expiry` ledger — so the entry matches at
+    /// execution. `allow_expiry` is a parameter for exactly that reason and must
+    /// NOT be derived from the current ledger: an earlier revision of
+    /// `zap_asset_for_split` approved with a measured amount and
+    /// `env.ledger().sequence()`, and failed on testnet with Auth/InvalidAction
+    /// every single time. See `tests/integration/src/tests/zap_auth_entries.rs`.
+    ///
+    /// The allowance is sized to exactly `shares_amount` and consumed in full by
+    /// the deposit, so nothing lingers afterwards.
+    fn split(
+        e: Env,
+        vault: Address,
+        maturity: u64,
+        to: Address,
+        shares_amount: i128,
+        allow_expiry: u32,
+    ) {
+        to.require_auth();
+        extend_instance_ttl(&e);
+        assert!(shares_amount > 0, "shares_amount must be positive");
+
+        let market = resolve_market(&e, &vault, maturity);
+
+        token::TokenClient::new(&e, &vault).approve(
+            &to,
+            &market.ym,
+            &shares_amount,
+            &allow_expiry,
+        );
+        YieldManagerClient::new(&e, &market.ym).deposit(&to, &shares_amount);
+    }
+
+    /// Recombine `amount` of PT + YT back into vault shares, before maturity.
+    ///
+    /// No allowance and no expiry: the YM burns the pair straight out of the
+    /// caller's balances, and the PT burn — whose arguments are both
+    /// caller-chosen — is what authenticates them. The YT burn carries the live
+    /// exchange rate but is admin-gated, so that rate never reaches the user's
+    /// signature.
+    ///
+    /// Reverts after maturity; PT redeems through `exit_expired` from then on.
+    fn recombine(e: Env, vault: Address, maturity: u64, to: Address, amount: i128) {
+        to.require_auth();
+        extend_instance_ttl(&e);
+        assert!(amount > 0, "amount must be positive");
+
+        let market = resolve_market(&e, &vault, maturity);
+        YieldManagerClient::new(&e, &market.ym).redeem_combined(&to, &amount);
     }
 
     fn get_reserves(e: Env, vault: Address, maturity: u64) -> (i128, i128) {

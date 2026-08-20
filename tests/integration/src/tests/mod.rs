@@ -10,6 +10,7 @@ mod exit_expired;
 mod multi_market;
 mod proptests;
 mod rate_divergence;
+mod router_split;
 mod router_swaps;
 mod test_amm;
 mod test_maturity;

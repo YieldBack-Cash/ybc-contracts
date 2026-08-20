@@ -50,14 +50,14 @@ impl YieldManager {
         YieldManager::update_exchange_rate_from(env, YieldManager::get_vault_exchange_rate(env))
     }
 
-    /// As [`YieldManager::update_exchange_rate`], but with the vault's current rate
+    /// As [`YieldManager::update_exchange_rate`], but with the current rate
     /// supplied by the caller rather than read here.
     ///
-    /// For callers that have ALREADY read it from the vault directly in this same
-    /// transaction — today only the flash-swap callbacks, where the AMM loads the
-    /// rate to price the trade and hands it down. The rate cannot move within a
-    /// transaction, so reading it again returns the same number for the price of a
-    /// full round trip into the underlying lending pool.
+    /// For callers that have ALREADY loaded it in this same transaction — today
+    /// only the flash-swap callbacks, where the AMM reads the rate to price the
+    /// trade and hands it down. The rate cannot move within a transaction, so
+    /// reading it again returns the same number for the price of a full round
+    /// trip (pre-maturity this reaches through to the underlying lending pool).
     ///
     /// Every piece of policy stays here: the non-decreasing floor still applies and
     /// the maturity lock is still set. The caller supplies only the observation.
@@ -709,7 +709,7 @@ impl FlashSwapPtReceiver for YieldManager {
         let vault_client = token::Client::new(&env, &vault_addr);
         let pt_client = token::Client::new(&env, &pt_addr);
 
-        // Supplied by the pool, which read it from the vault to price this trade —
+        // Supplied by the pool, which read it from THIS contract to price this trade —
         // see `update_exchange_rate_from` for why that is the only safe source.
         let exchange_rate = YieldManager::update_exchange_rate_from(&env, vault_rate);
         assert!(exchange_rate > 0, "exchange rate is zero");
@@ -777,7 +777,7 @@ impl FlashSwapVReceiver for YieldManager {
         let yt_client = YieldTokenClient::new(&env, &yt_addr);
         let vault_client = token::Client::new(&env, &vault_addr);
 
-        // Supplied by the pool, which read it from the vault to price this trade —
+        // Supplied by the pool, which read it from THIS contract to price this trade —
         // see `update_exchange_rate_from` for why that is the only safe source. All
         // YT calls below take it as a hint too, so the YT contract never calls back
         // into the YM, which would re-enter while this callback is executing.

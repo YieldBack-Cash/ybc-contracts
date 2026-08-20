@@ -18,22 +18,26 @@ pub trait AmmInterface {
     fn get_total_shares(env: Env) -> i128;
 }
 
-// `vault_rate` on both callbacks below is the vault's share/asset rate — assets per
-// 1e7 shares, exactly what `convert_to_assets(1e7)` returns — read by the AMM at the
-// top of the flash swap for its own pricing and handed down rather than re-fetched.
+// `vault_rate` on both callbacks below is the share/asset rate — assets per 1e7
+// shares — that the AMM loaded at the top of the flash swap to price the trade, handed
+// down rather than re-fetched.
 //
-// It exists purely to remove a redundant read. Against a lending vault the call is
-// expensive (it accrues interest and materialises the pool's whole reserve record),
-// and the rate cannot move mid-transaction, so the receiver asking again would spend
-// that cost to recompute a value the caller is already holding.
+// The NAME is historical. The AMM sources this from `YieldManager::get_exchange_rate`,
+// NOT from the vault: PT settles at the yield manager's rate, and the two diverge the
+// moment a vault loses value. See `amm/src/vault.rs` for the full argument.
 //
-// The direction matters. The value flows from the contract that read the vault
-// DIRECTLY to the contract that applies policy on top of it, never the reverse: a
-// receiver must not source its rate from a caller that itself holds only a derived
-// or high-water-marked figure. Receivers should still treat it as an input to
-// validate, not a fact — the yield manager, for instance, keeps its own
-// non-decreasing floor, so a too-low value is absorbed and only the registered pool
-// can supply one at all.
+// It exists purely to remove a redundant read. Pre-maturity the YM turns the call into
+// a vault read, and against a lending vault that is expensive (it accrues interest and
+// materialises the pool's whole reserve record); the rate cannot move mid-transaction,
+// so the receiver asking again would spend that cost to recompute a value the caller
+// is already holding.
+//
+// The direction matters. The value flows from the contract that OWNS the number the
+// protocol settles at to the one that merely prices against it, never the reverse. In
+// practice that makes this hint the yield manager's own stored figure round-tripping
+// back to it, so applying it is idempotent and its non-decreasing floor is a no-op —
+// the pool cannot supply any other value. Receivers should still treat it as an input
+// to validate rather than a fact, and only the registered pool can supply one at all.
 
 #[contractclient(name = "FlashSwapPtReceiverClient")]
 pub trait FlashSwapPtReceiver {
