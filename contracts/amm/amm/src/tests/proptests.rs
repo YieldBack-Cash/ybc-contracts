@@ -162,7 +162,7 @@ proptest! {
     ) {
         // Buy: x PT out of the pool; user pays v_in.
         let (net_v, _, _) =
-            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x);
+            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x).unwrap();
         prop_assert!(net_v < 0, "buying PT must cost V");
         let v_in = -net_v;
 
@@ -175,7 +175,7 @@ proptest! {
             fee_factor,
             0,
             -x,
-        );
+        ).unwrap();
         prop_assert!(net_v_back > 0, "selling PT must return V");
 
         prop_assert!(
@@ -195,9 +195,9 @@ proptest! {
         let smaller = x / 2;
 
         let (net_small, _, _) =
-            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, smaller);
+            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, smaller).unwrap();
         let (net_large, _, _) =
-            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x);
+            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x).unwrap();
 
         prop_assert!(
             -net_large >= -net_small,
@@ -214,7 +214,7 @@ proptest! {
     ) {
         let net_pt = if sell { -x } else { x };
         let (_, fee, _) =
-            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, net_pt);
+            calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, net_pt).unwrap();
         prop_assert!(fee >= 0, "negative fee: {}", fee);
     }
 }
@@ -238,13 +238,13 @@ fn round_trip_does_not_profit_near_expiry() {
 
     // Buy x PT out; user pays v_in.
     let (net_v, _, _) =
-        calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x);
+        calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x).unwrap();
     let v_in = -net_v;
 
     // Sell the same x back at the post-trade reserves.
     let (net_v_back, _, _) = calc_trade(
         reserve_pt - x, reserve_v + v_in, rate_scalar, rate_anchor, fee_factor, 0, -x,
-    );
+    ).unwrap();
 
     assert!(
         net_v_back <= v_in,

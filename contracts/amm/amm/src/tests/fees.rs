@@ -5,8 +5,8 @@
 // and must never enter LP accounting: stored reserves have to keep matching
 // the pool's actual balances exactly.
 
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::testutils::{Address as _, Events, Ledger};
+use soroban_sdk::{xdr, Address, Env, String, Symbol, TryFromVal};
 
 use super::fixture::{AmmFixture, APY_MAX, APY_MIN, CURRENT_APY, FEE_APY, ONE_YEAR_SECS};
 use super::flash::{MockFlashPtReceiver, MockFlashVReceiver};
@@ -24,6 +24,39 @@ fn assert_reserves_match_balances(f: &AmmFixture) {
     let (reserve_pt, reserve_v) = f.pool.get_reserves();
     assert_eq!(reserve_pt, f.pt.balance(&f.pool.address), "PT reserve diverged from balance");
     assert_eq!(reserve_v, f.vault.balance(&f.pool.address), "V reserve diverged from balance");
+}
+
+/// Reads `(fee, reserve_fee)` off the trade event the pool emitted in the last
+/// invocation. Both are the trailing fields of every swap event, so this checks
+/// the event name and takes the last two data items.
+/// `events().all()` only holds the most recent invocation, so call this right
+/// after the trade, before any other client call (even a balance read).
+fn last_trade_fees(f: &AmmFixture, event_name: &str) -> (i128, i128) {
+    let events = f.env.events().all().filter_by_contract(&f.pool.address);
+    let event = events.events().last().expect("pool emitted no events").clone();
+    let xdr::ContractEventBody::V0(body) = event.body;
+
+    let name = Symbol::try_from_val(&f.env, &body.topics[0]).expect("topic 0 is not a symbol");
+    assert_eq!(name, Symbol::new(&f.env, event_name), "last pool event is not the trade");
+
+    let xdr::ScVal::Vec(Some(data)) = body.data else {
+        panic!("trade event data is not a vec");
+    };
+    let as_i128 = |v: &xdr::ScVal| -> i128 {
+        let xdr::ScVal::I128(parts) = v else { panic!("expected an i128 field") };
+        ((parts.hi as i128) << 64) | parts.lo as i128
+    };
+    let n = data.len();
+    (as_i128(&data[n - 2]), as_i128(&data[n - 1]))
+}
+
+/// The event's `reserve_fee` is exactly what the treasury received, and the
+/// LPs keep a non-negative remainder of `fee`.
+fn assert_event_fees_match_treasury(f: &AmmFixture, event_name: &str) {
+    let (fee, reserve_fee) = last_trade_fees(f, event_name);
+    assert!(fee > 0, "{event_name} emitted no fee");
+    assert_eq!(reserve_fee, f.vault.balance(&f.treasury), "reserve_fee differs from treasury gain");
+    assert!(fee >= reserve_fee, "reserve cut exceeds the whole fee");
 }
 
 fn register_pool_with_rate(env: &Env, rate: i128) {
@@ -59,14 +92,14 @@ fn test_pool_stores_fee_config() {
 }
 
 #[test]
-#[should_panic(expected = "reserve_fee_rate out of range")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_constructor_rejects_rate_above_cap() {
     let env = Env::default();
     register_pool_with_rate(&env, HALF_OF_FEE + 1);
 }
 
 #[test]
-#[should_panic(expected = "reserve_fee_rate out of range")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_constructor_rejects_negative_rate() {
     let env = Env::default();
     register_pool_with_rate(&env, -1);
@@ -82,6 +115,7 @@ fn test_zero_rate_swaps_pay_treasury_nothing() {
     f.swap_pt_for_v(&f.user, 1_000_000, 1);
     f.swap_v_for_pt(&f.user, 1_000_000, 2_000_000);
 
+    assert_event_fees_match_treasury(&f, "swap_v_for_pt");
     assert_eq!(f.vault.balance(&f.treasury), 0, "zero-rate market must not pay the treasury");
     assert_reserves_match_balances(&f);
 }
@@ -95,6 +129,7 @@ fn test_swap_v_for_pt_remits_fee_to_treasury() {
 
     f.swap_v_for_pt(&f.user, 1_000_000, 2_000_000);
 
+    assert_event_fees_match_treasury(&f, "swap_v_for_pt");
     assert!(f.vault.balance(&f.treasury) > 0, "treasury received no fee");
     assert_eq!(f.pt.balance(&f.treasury), 0, "treasury must only receive V");
     assert_reserves_match_balances(&f);
@@ -109,6 +144,7 @@ fn test_swap_pt_for_v_remits_fee_to_treasury() {
 
     f.swap_pt_for_v(&f.user, 1_000_000, 1);
 
+    assert_event_fees_match_treasury(&f, "swap_pt_for_v");
     assert!(f.vault.balance(&f.treasury) > 0, "treasury received no fee");
     assert_eq!(f.pt.balance(&f.treasury), 0, "treasury must only receive V");
     assert_reserves_match_balances(&f);
@@ -157,6 +193,7 @@ fn test_flash_swap_pt_remits_fee_to_treasury() {
 
     f.pool.flash_swap_pt(&receiver, &1_000_000, &f.user, &2_000_000);
 
+    assert_event_fees_match_treasury(&f, "flash_swap_pt");
     assert!(f.vault.balance(&f.treasury) > 0, "flash PT swap paid no fee");
     assert_reserves_match_balances(&f);
 }
@@ -178,6 +215,7 @@ fn test_flash_swap_v_remits_fee_to_treasury() {
 
     f.pool.flash_swap_v(&receiver, &1_000_000, &f.user, &1);
 
+    assert_event_fees_match_treasury(&f, "flash_swap_v");
     assert!(f.vault.balance(&f.treasury) > 0, "flash V swap paid no fee");
     assert_reserves_match_balances(&f);
 }

@@ -14,8 +14,9 @@
       "installed_at": "2026-07-31T23:15:57Z"
     },
     "amm": {
-      "wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
-      "installed_at": "2026-08-17T00:00:00Z"
+      "wasm_hash": "cee8bc2f9f75f5be86385e4c6f81f9bb0ab105910afc7d0b3a05a43be90692d1",
+      "installed_at": "2026-09-13T00:00:00Z",
+      "note": "AmmError codes + fee/reserve_fee on swap events (issue #19). Set on the factory via set_wasm_hashes (tx 3b287ff5); markets created before this keep fe767c67."
     },
     "treasury": {
       "wasm_hash": "826bebe4a34ddff8beec071b014b9bf83f007f2aa7e0598e0a5b25e378d55ba9",
@@ -26,8 +27,8 @@
       "installed_at": "2026-08-10T18:13:54Z"
     },
     "router": {
-      "wasm_hash": "666e92743f1437be304ca0ab812c721a8df065273b4f76a716e027f59e7a60e4",
-      "installed_at": "2026-08-10T18:15:09Z"
+      "wasm_hash": "97da9415fbbfa153482be5b1ed57cd070236e176cbbd0c6a347711a87f4c9f3f",
+      "installed_at": "2026-09-13T00:00:00Z"
     }
   },
   "contracts": {
@@ -55,10 +56,12 @@
       "reserve_fee_rate": 1000000
     },
     "router": {
-      "id": "CAE4X6IYFI3YNQCEM4NSJRBILT35CZ5RJBCS3FPL3NQ2OLSVFICMZ2MF",
-      "deployed_at": "2026-08-11T01:17:02Z",
-      "wasm_hash": "666e92743f1437be304ca0ab812c721a8df065273b4f76a716e027f59e7a60e4",
-      "factory": "CDFS6EHNHKNKCNTSFOG722GXZYTFGEFPIPP5XLSP64UCKE7LZMPTILOS"
+      "id": "CCUV5QY3AQPUV2EC4WBWCT6BDNZ5N5XB4IFVPDNEERQIMSIENSG3DYW6",
+      "deployed_at": "2026-09-13T00:00:00Z",
+      "wasm_hash": "97da9415fbbfa153482be5b1ed57cd070236e176cbbd0c6a347711a87f4c9f3f",
+      "factory": "CDFS6EHNHKNKCNTSFOG722GXZYTFGEFPIPP5XLSP64UCKE7LZMPTILOS",
+      "previous_id": "CAE4X6IYFI3YNQCEM4NSJRBILT35CZ5RJBCS3FPL3NQ2OLSVFICMZ2MF",
+      "note": "RouterError codes; zaps/exits return Result (issue #19). Verified: the issue's zap_asset_for_lp now fails with Error(Contract, #5) instead of UnreachableCodeReached. The previous router still works against the same factory."
     }
   },
   "markets": [
@@ -78,6 +81,40 @@
       "created_at": "2026-08-17T00:00:00Z",
       "amm_wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
       "note": "AMM reads the YM exchange rate; verified live with swap + buy-YT + sell-YT"
+    },
+    {
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
+      "asset": "XLM",
+      "maturity": 1794873600,
+      "maturity_date": "2026-11-17T00:00:00Z",
+      "ym": "CAAT35NBXLQVJUBOTYABWPC62AJB3NOBOSO5JJDEBSZ4YEBMNRIYSLRC",
+      "pt": "CDDPX3MNNVTDMDM4ILH4XENRK766JTIS4ZNAFD4ISVBKC5CQVLSE6G5M",
+      "yt": "CB3ZAKXLYJFKO3DO373SZO5TXDX36ANKMXYZG2TDV566OVHUWJSFSIGS",
+      "pool": "CBZSHEET4RWRETPKMWU4QPV6SO7A6QYQPF7ZJENXJTO344E7R4NA4GWV",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-09-09T00:00:00Z",
+      "amm_wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
+      "note": "Replaces the November market on the superseded vault CCFLZNF7 (no query_asset, no redeem). Same params as the 2027 market. Seeded with 200 XLM: reserves PT 1000006595 / V 506020847, 711353768 LP shares to GCLJS4CC; verified live with swap_v_for_pt."
+    },
+    {
+      "vault": "CCWNH24WDHWW6U7LPZ3K2TFLF7IVOKGN6GQMJXUCTYV6Z7AQ6BX7FYGB",
+      "asset": "XLM",
+      "maturity": 1790208000,
+      "maturity_date": "2026-09-24T00:00:00Z",
+      "ym": "CDLD5VOQ2H7TT3MMP2JSBUA522JPWXIGLERJB3OOMVRJRLIBJ7AFT26Y",
+      "pt": "CANLBEDPYTZNYW3SNSLSTNUIVA3OY746MTTJWIY6R72HKWHWDLC4HEMH",
+      "yt": "CA2M7MCBW5CSG4UELWO3H7U25EBMV7UKBTVDJ6SF2FY6SBCDIGZXELAH",
+      "pool": "CA4ZW36GOKPNPQLZRM7R5VXFLOHQSQKGRJT63KFQAVGPMNGKEX3HSLIA",
+      "current_apy": 1000000,
+      "apy_min": 200000,
+      "apy_max": 2000000,
+      "fee_apy": 100000,
+      "created_at": "2026-09-10T00:00:00Z",
+      "amm_wasm_hash": "fe767c673af716856b0fe200b8a2140d4c2b7eac081de09733be38834d4f3c2b",
+      "note": "Two-week maturity. Created at ledger 4607109. Seeded with 200 XLM: reserves PT 1000001571 / V 503536544, 709603646 LP shares to GCLJS4CC; verified live with swap_v_for_pt."
     }
   ]
 }

@@ -241,7 +241,7 @@ fn test_flash_swap_pt_under_deliver_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "trade pushes pool proportion out of bounds")]
+#[should_panic(expected = "Error(Contract, #13)")]
 fn test_flash_swap_pt_oversized_trade_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -258,7 +258,7 @@ fn test_flash_swap_pt_oversized_trade_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "expected pool to pay V for PT")]
+#[should_panic(expected = "Error(Contract, #15)")]
 fn test_flash_swap_pt_dust_amount_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -329,7 +329,7 @@ fn test_flash_swap_pt_reentrancy_blocked() {
 }
 
 #[test]
-#[should_panic(expected = "trusted yield manager")]
+#[should_panic(expected = "Error(Contract, #18)")]
 fn test_flash_swap_v_untrusted_receiver_reverts() {
     let env = Env::default();
     env.mock_all_auths();
@@ -342,7 +342,7 @@ fn test_flash_swap_v_untrusted_receiver_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "trusted yield manager")]
+#[should_panic(expected = "Error(Contract, #18)")]
 fn test_flash_swap_pt_untrusted_receiver_reverts() {
     let env = Env::default();
     env.mock_all_auths();

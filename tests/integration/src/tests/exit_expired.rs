@@ -75,7 +75,7 @@ fn test_exit_expired_with_no_lp_redeems_wallet_pt() {
 }
 
 #[test]
-#[should_panic(expected = "market not expired")]
+#[should_panic(expected = "Error(Contract, #3)")]
 fn test_exit_expired_before_maturity_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -85,7 +85,7 @@ fn test_exit_expired_before_maturity_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "min_shares_out not satisfied")]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_exit_expired_min_shares_out_reverts() {
     let env = Env::default();
     let f = seeded(&env);

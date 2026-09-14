@@ -1,3 +1,4 @@
+use amm_interface::AmmError;
 use soroban_sdk::{token, Address, Env};
 
 /// Transfers tokens from the contract to a recipient.
@@ -53,33 +54,33 @@ pub(crate) fn get_deposit_amounts(
     min_b: i128,
     reserve_a: i128,
     reserve_b: i128,
-) -> (i128, i128) {
+) -> Result<(i128, i128), AmmError> {
     if reserve_a == 0 && reserve_b == 0 {
-        return (desired_a, desired_b);
+        return Ok((desired_a, desired_b));
     }
 
-    assert!(
-        reserve_a > 0 && reserve_b > 0,
-        "reserves must both be positive or both be zero"
-    );
+    // Reserves both positive or both zero; anything else is corrupt state.
+    if reserve_a <= 0 || reserve_b <= 0 {
+        return Err(AmmError::InvalidPoolState);
+    }
 
     let amount_b = desired_a
         .checked_mul(reserve_b)
-        .expect("overflow computing proportional amount_b")
+        .ok_or(AmmError::MathOverflow)?
         / reserve_a;
     if amount_b <= desired_b {
         if amount_b < min_b {
-            panic!("amount_b less than min")
+            return Err(AmmError::DepositMinNotMet);
         }
-        (desired_a, amount_b)
+        Ok((desired_a, amount_b))
     } else {
         let amount_a = desired_b
             .checked_mul(reserve_a)
-            .expect("overflow computing proportional amount_a")
+            .ok_or(AmmError::MathOverflow)?
             / reserve_b;
         if amount_a > desired_a || amount_a < min_a {
-            panic!("amount_a invalid")
+            return Err(AmmError::DepositMinNotMet);
         }
-        (amount_a, desired_b)
+        Ok((amount_a, desired_b))
     }
 }

@@ -10,6 +10,7 @@
 //! See `zap_fixture.rs` for why these run against OpenZeppelin's vault rather
 //! than `mock_vault`.
 
+use router::RouterError;
 use soroban_sdk::Env;
 
 use super::zap_fixture::{ZapFixture, SWEEP};
@@ -361,7 +362,7 @@ fn exit_expired_to_asset_fits_network_tx_budget() {
 }
 
 #[test]
-#[should_panic(expected = "min_asset_out not satisfied")]
+#[should_panic(expected = "Error(Contract, #7)")]
 fn zap_out_respects_min_asset_out() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -389,7 +390,7 @@ fn zap_out_respects_min_asset_out() {
 }
 
 #[test]
-#[should_panic(expected = "sweep_allowance below the shares this zap produced")]
+#[should_panic(expected = "Error(Contract, #10)")]
 fn sweep_allowance_is_enforced() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -427,4 +428,27 @@ fn zap_in_reverts_when_the_asset_budget_is_too_small() {
         &SWEEP,
         &f.expiry(),
     );
+}
+
+/// Issue #19: a `max_v_in` above the shares the deposit mints used to trap with
+/// an opaque `UnreachableCodeReached`. It must come back as a typed error.
+#[test]
+fn zap_asset_for_lp_reports_an_unfunded_max_v_in() {
+    let env = Env::default();
+    let f = ZapFixture::new(&env);
+
+    let result = f.router.try_zap_asset_for_lp(
+        &f.vault,
+        &f.maturity,
+        &f.user,
+        &400_000_000,
+        &200_000_000,
+        &4_000_000_000,
+        &150_000_000,
+        &1,
+        &SWEEP,
+        &f.expiry(),
+    );
+
+    assert_eq!(result, Err(Ok(RouterError::DepositDidNotFundMaxVIn)));
 }

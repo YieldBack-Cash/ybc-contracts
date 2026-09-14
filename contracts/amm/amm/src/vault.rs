@@ -1,5 +1,6 @@
 use crate::math::FP_SCALE;
 use crate::storage::get_ym;
+use amm_interface::AmmError;
 use soroban_sdk::Env;
 use yield_manager_interface::YieldManagerClient;
 
@@ -65,13 +66,12 @@ pub(crate) struct VaultRate {
 }
 
 impl VaultRate {
-    pub(crate) fn load(e: &Env) -> Self {
+    pub(crate) fn load(e: &Env) -> Result<Self, AmmError> {
         let assets_per_scale = YieldManagerClient::new(e, &get_ym(e)).get_exchange_rate();
-        assert!(
-            assets_per_scale > 0,
-            "yield manager reported a zero exchange rate"
-        );
-        VaultRate { assets_per_scale }
+        if assets_per_scale <= 0 {
+            return Err(AmmError::ZeroExchangeRate);
+        }
+        Ok(VaultRate { assets_per_scale })
     }
 
     /// Value of `shares` vault shares, denominated in the underlying asset.
@@ -80,11 +80,11 @@ impl VaultRate {
     /// exact amount, so it stays the arithmetic inverse of `to_shares` — the
     /// two are now mutually consistent, which the previous mix of a direct call
     /// and a probe-derived division was not.
-    pub(crate) fn to_assets(&self, shares: i128) -> i128 {
-        shares
+    pub(crate) fn to_assets(&self, shares: i128) -> Result<i128, AmmError> {
+        Ok(shares
             .checked_mul(self.assets_per_scale)
-            .expect("overflow converting shares to assets")
-            / FP_SCALE
+            .ok_or(AmmError::MathOverflow)?
+            / FP_SCALE)
     }
 
     /// The rate itself: assets per `FP_SCALE` shares.
@@ -100,10 +100,10 @@ impl VaultRate {
     }
 
     /// Vault shares equivalent to `assets` units of the underlying.
-    pub(crate) fn to_shares(&self, assets: i128) -> i128 {
-        assets
+    pub(crate) fn to_shares(&self, assets: i128) -> Result<i128, AmmError> {
+        Ok(assets
             .checked_mul(FP_SCALE)
-            .expect("overflow converting assets to shares")
-            / self.assets_per_scale
+            .ok_or(AmmError::MathOverflow)?
+            / self.assets_per_scale)
     }
 }

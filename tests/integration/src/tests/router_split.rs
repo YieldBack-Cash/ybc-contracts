@@ -71,7 +71,7 @@ fn split_leaves_no_residual_allowance() {
 }
 
 #[test]
-#[should_panic(expected = "shares_amount must be positive")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn split_rejects_a_non_positive_amount() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -81,7 +81,7 @@ fn split_rejects_a_non_positive_amount() {
 }
 
 #[test]
-#[should_panic(expected = "no market for vault and maturity")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn split_rejects_an_unknown_market() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -125,7 +125,7 @@ fn recombine_returns_the_shares_split_in() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn recombine_rejects_a_non_positive_amount() {
     let env = Env::default();
     let f = ZapFixture::new(&env);

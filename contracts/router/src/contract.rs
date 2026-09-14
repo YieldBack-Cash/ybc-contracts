@@ -1,11 +1,13 @@
 use amm_interface::AmmClient;
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, token, Address, Env, String,
+    contract, contractclient, contractimpl, contracttype, panic_with_error, token, Address, Env,
+    String,
 };
 use vault_interface::VaultContractClient;
 use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
 
+use crate::errors::RouterError;
 use crate::events::{ExitedExpired, ExitedExpiredToAsset, RoutedYtBuy, RoutedYtSell, ZappedIn, ZappedOut};
 use crate::storage::{extend_instance_ttl, get_factory, set_factory};
 
@@ -93,7 +95,7 @@ pub trait RouterInterface {
         to: Address,
         lp_shares: i128,
         min_shares_out: i128,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
 
     // ── Split / recombine, denominated in vault shares ───────────────────────
     //
@@ -131,6 +133,12 @@ pub trait RouterInterface {
     //
     // Bounds double as funding: a `max_*` bound is pulled in full and the
     // excess refunded, so the account must actually hold it at that leg.
+    //
+    // Zaps and exits return `Result` because their failures — slippage bounds,
+    // unfunded legs, allowances — are ones a client is expected to handle, and
+    // listing `RouterError` in their spec is what lets it. The thin wrappers
+    // above only fail on a bad market or amount, and signal that with
+    // `panic_with_error!`, which carries the same codes.
     fn zap_asset_for_pt(
         env: Env,
         vault: Address,
@@ -141,7 +149,7 @@ pub trait RouterInterface {
         max_v_in: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_pt_for_asset(
         env: Env,
         vault: Address,
@@ -151,7 +159,7 @@ pub trait RouterInterface {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_asset_for_yt(
         env: Env,
         vault: Address,
@@ -162,7 +170,7 @@ pub trait RouterInterface {
         max_v_in: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_yt_for_asset(
         env: Env,
         vault: Address,
@@ -172,7 +180,7 @@ pub trait RouterInterface {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_asset_for_split(
         env: Env,
         vault: Address,
@@ -180,7 +188,7 @@ pub trait RouterInterface {
         to: Address,
         asset_in: i128,
         min_tokens_out: i128,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_split_for_asset(
         env: Env,
         vault: Address,
@@ -188,7 +196,7 @@ pub trait RouterInterface {
         to: Address,
         amount: i128,
         min_asset_out: i128,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_asset_for_lp(
         env: Env,
         vault: Address,
@@ -201,7 +209,7 @@ pub trait RouterInterface {
         min_lp_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn zap_lp_for_asset(
         env: Env,
         vault: Address,
@@ -212,7 +220,7 @@ pub trait RouterInterface {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
     fn exit_expired_to_asset(
         env: Env,
         vault: Address,
@@ -224,7 +232,7 @@ pub trait RouterInterface {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128;
+    ) -> Result<i128, RouterError>;
 }
 
 #[contract]
@@ -237,7 +245,7 @@ pub struct RouterContract;
 fn resolve_market(e: &Env, vault: &Address, maturity: u64) -> Market {
     FactoryViewClient::new(e, &get_factory(e))
         .get_market(vault, &maturity)
-        .expect("no market for vault and maturity")
+        .unwrap_or_else(|| panic_with_error!(e, RouterError::MarketNotFound))
 }
 
 /// The vault's underlying asset, per SEP-56. Resolve this ONCE per invocation
@@ -256,12 +264,20 @@ fn vault_asset(e: &Env, vault: &Address) -> Address {
 /// the user's signed tree (this deposit and its nested asset transfer) is
 /// drift-free by construction. The share count, which nobody can predict at
 /// signing time, is only ever *measured* here, never signed.
-fn deposit_assets(e: &Env, vault: &Address, asset: &Address, to: &Address, assets: i128) -> i128 {
+fn deposit_assets(
+    e: &Env,
+    vault: &Address,
+    asset: &Address,
+    to: &Address,
+    assets: i128,
+) -> Result<i128, RouterError> {
     let vault_token = token::TokenClient::new(e, vault);
     let shares_before = vault_token.balance(to);
     VaultContractClient::new(e, vault).deposit(&assets, to, to, to);
     let shares_out = vault_token.balance(to) - shares_before;
-    assert!(shares_out > 0, "vault minted no shares");
+    if shares_out <= 0 {
+        return Err(RouterError::VaultMintedNoShares);
+    }
 
     ZappedIn {
         vault: vault.clone(),
@@ -272,7 +288,7 @@ fn deposit_assets(e: &Env, vault: &Address, asset: &Address, to: &Address, asset
     }
     .publish(e);
 
-    shares_out
+    Ok(shares_out)
 }
 
 /// Converts every vault share `to` gained since `shares_before` back into the
@@ -295,16 +311,15 @@ fn sweep_gained_shares(
     shares_before: i128,
     sweep_allowance: i128,
     sweep_expiry: u32,
-) -> i128 {
+) -> Result<i128, RouterError> {
     let vault_token = token::TokenClient::new(e, vault);
     let gained = vault_token.balance(to) - shares_before;
     if gained <= 0 {
-        return 0;
+        return Ok(0);
     }
-    assert!(
-        gained <= sweep_allowance,
-        "sweep_allowance below the shares this zap produced"
-    );
+    if gained > sweep_allowance {
+        return Err(RouterError::SweepAllowanceTooLow);
+    }
 
     // User-signed, fixed-argument. The one thing a caller must NOT do is derive
     // `sweep_expiry` from the current ledger — that is exactly the
@@ -325,18 +340,22 @@ fn sweep_gained_shares(
     }
     .publish(e);
 
-    asset_out
+    Ok(asset_out)
 }
 
 /// Shared body of the share-denominated expired-market exit: burns the LP
 /// position, redeems the user's whole PT balance and sweeps YT yield. Returns
 /// `(vault shares gained, PT redeemed)`. Applies no slippage bound — the caller
 /// denominates that in the unit it settles in.
-fn unwind_expired(e: &Env, market: &Market, to: &Address, lp_shares: i128) -> (i128, i128) {
-    assert!(
-        e.ledger().timestamp() >= market.maturity,
-        "market not expired"
-    );
+fn unwind_expired(
+    e: &Env,
+    market: &Market,
+    to: &Address,
+    lp_shares: i128,
+) -> Result<(i128, i128), RouterError> {
+    if e.ledger().timestamp() < market.maturity {
+        return Err(RouterError::MarketNotExpired);
+    }
 
     let vault_token = token::TokenClient::new(e, &market.vault);
     let shares_before = vault_token.balance(to);
@@ -357,7 +376,7 @@ fn unwind_expired(e: &Env, market: &Market, to: &Address, lp_shares: i128) -> (i
 
     YieldTokenClient::new(e, &market.yt).claim_yield(to);
 
-    (vault_token.balance(to) - shares_before, pt_balance)
+    Ok((vault_token.balance(to) - shares_before, pt_balance))
 }
 
 #[contractimpl]
@@ -412,8 +431,9 @@ impl RouterInterface for RouterContract {
     ) {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(yt_out > 0, "yt_out must be positive");
-        assert!(max_v_in > 0, "max_v_in must be positive");
+        if yt_out <= 0 || max_v_in <= 0 {
+            panic_with_error!(&e, RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
 
@@ -441,8 +461,9 @@ impl RouterInterface for RouterContract {
     ) {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(yt_in > 0, "yt_in must be positive");
-        assert!(min_v_out > 0, "min_v_out must be positive");
+        if yt_in <= 0 || min_v_out <= 0 {
+            panic_with_error!(&e, RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
 
@@ -506,14 +527,18 @@ impl RouterInterface for RouterContract {
         to: Address,
         lp_shares: i128,
         min_shares_out: i128,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(lp_shares >= 0, "lp_shares must be non-negative");
+        if lp_shares < 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
-        let (shares_out, pt_redeemed) = unwind_expired(&e, &market, &to, lp_shares);
-        assert!(shares_out >= min_shares_out, "min_shares_out not satisfied");
+        let (shares_out, pt_redeemed) = unwind_expired(&e, &market, &to, lp_shares)?;
+        if shares_out < min_shares_out {
+            return Err(RouterError::MinSharesOutNotMet);
+        }
 
         ExitedExpired {
             vault,
@@ -525,7 +550,7 @@ impl RouterInterface for RouterContract {
         }
         .publish(&e);
 
-        shares_out
+        Ok(shares_out)
     }
 
     /// Split `shares_amount` vault shares into equal amounts of PT and YT.
@@ -555,7 +580,9 @@ impl RouterInterface for RouterContract {
     ) {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(shares_amount > 0, "shares_amount must be positive");
+        if shares_amount <= 0 {
+            panic_with_error!(&e, RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
 
@@ -580,7 +607,9 @@ impl RouterInterface for RouterContract {
     fn recombine(e: Env, vault: Address, maturity: u64, to: Address, amount: i128) {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            panic_with_error!(&e, RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         YieldManagerClient::new(&e, &market.ym).redeem_combined(&to, &amount);
@@ -619,6 +648,9 @@ impl RouterInterface for RouterContract {
     //   * Nothing trusts a vault's self-reported amount. Every quantity crossing
     //     the vault boundary is measured, because SEP-56 leaves fees and
     //     rounding to the implementation.
+    //
+    // An `Err` returned after a leg has already moved tokens reverts the whole
+    // invocation exactly as a panic would, so it strands nothing.
 
     /// Buy exactly `pt_out` PT using the base asset. `max_asset_in` is deposited
     /// in full and `max_v_in` handed to the pool, which keeps only what the
@@ -634,12 +666,12 @@ impl RouterInterface for RouterContract {
         max_v_in: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(pt_out > 0, "pt_out must be positive");
-        assert!(max_asset_in > 0, "max_asset_in must be positive");
-        assert!(max_v_in > 0, "max_v_in must be positive");
+        if pt_out <= 0 || max_asset_in <= 0 || max_v_in <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -652,15 +684,19 @@ impl RouterInterface for RouterContract {
         // Both bounds are the caller's own numbers, so both are signable. The
         // deposit's share yield is measured only to check the pool's bound can
         // actually be funded — it never reaches an auth entry.
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in);
-        assert!(shares_in >= max_v_in, "deposit did not fund max_v_in");
+        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in)?;
+        if shares_in < max_v_in {
+            return Err(RouterError::DepositDidNotFundMaxVIn);
+        }
         AmmClient::new(&e, &market.pool).swap_v_for_pt(&to, &pt_out, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry);
+        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
-        assert!(asset_spent <= max_asset_in, "vault took more than max_asset_in");
-        asset_spent
+        if asset_spent > max_asset_in {
+            return Err(RouterError::AssetSpentOverMax);
+        }
+        Ok(asset_spent)
     }
 
     /// Sell exactly `pt_in` PT and leave holding the base asset. Returns the
@@ -674,11 +710,12 @@ impl RouterInterface for RouterContract {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(pt_in > 0, "pt_in must be positive");
-        assert!(min_asset_out > 0, "min_asset_out must be positive");
+        if pt_in <= 0 || min_asset_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -692,9 +729,11 @@ impl RouterInterface for RouterContract {
 
         let asset_out = sweep_gained_shares(
             &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
-        );
-        assert!(asset_out >= min_asset_out, "min_asset_out not satisfied");
-        asset_out
+        )?;
+        if asset_out < min_asset_out {
+            return Err(RouterError::MinAssetOutNotMet);
+        }
+        Ok(asset_out)
     }
 
     /// Buy exactly `yt_out` YT using the base asset. Returns the asset spent.
@@ -708,12 +747,12 @@ impl RouterInterface for RouterContract {
         max_v_in: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(yt_out > 0, "yt_out must be positive");
-        assert!(max_asset_in > 0, "max_asset_in must be positive");
-        assert!(max_v_in > 0, "max_v_in must be positive");
+        if yt_out <= 0 || max_asset_in <= 0 || max_v_in <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -725,17 +764,21 @@ impl RouterInterface for RouterContract {
 
         // The YM's flash callback already pulls exactly `max_v_in` and refunds
         // the rest — the pull-the-bound pattern this whole design generalises.
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in);
-        assert!(shares_in >= max_v_in, "deposit did not fund max_v_in");
+        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in)?;
+        if shares_in < max_v_in {
+            return Err(RouterError::DepositDidNotFundMaxVIn);
+        }
         AmmClient::new(&e, &market.pool).flash_swap_pt(&market.ym, &yt_out, &to, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry);
+        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
-        assert!(asset_spent <= max_asset_in, "vault took more than max_asset_in");
+        if asset_spent > max_asset_in {
+            return Err(RouterError::AssetSpentOverMax);
+        }
 
         RoutedYtBuy { vault, to, maturity, yt_out, max_v_in }.publish(&e);
-        asset_spent
+        Ok(asset_spent)
     }
 
     /// Sell exactly `yt_in` YT and leave holding the base asset. Returns the
@@ -749,11 +792,12 @@ impl RouterInterface for RouterContract {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(yt_in > 0, "yt_in must be positive");
-        assert!(min_asset_out > 0, "min_asset_out must be positive");
+        if yt_in <= 0 || min_asset_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -768,11 +812,13 @@ impl RouterInterface for RouterContract {
 
         let asset_out = sweep_gained_shares(
             &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
-        );
-        assert!(asset_out >= min_asset_out, "min_asset_out not satisfied");
+        )?;
+        if asset_out < min_asset_out {
+            return Err(RouterError::MinAssetOutNotMet);
+        }
 
         RoutedYtSell { vault, to, maturity, yt_in, min_v_out: min_asset_out }.publish(&e);
-        asset_out
+        Ok(asset_out)
     }
 
     /// Split the base asset straight into PT + YT: deposit into the vault, then
@@ -785,10 +831,12 @@ impl RouterInterface for RouterContract {
         to: Address,
         asset_in: i128,
         min_tokens_out: i128,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(asset_in > 0, "asset_in must be positive");
+        if asset_in <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
 
@@ -799,7 +847,7 @@ impl RouterInterface for RouterContract {
         // share count, with an expiry read from the current ledger; both of
         // those are execution-time values, and it failed on testnet with
         // Auth/InvalidAction every single time.
-        YieldManagerClient::new(&e, &market.ym).deposit_asset(&to, &asset_in, &min_tokens_out)
+        Ok(YieldManagerClient::new(&e, &market.ym).deposit_asset(&to, &asset_in, &min_tokens_out))
     }
 
     /// Recombine `amount` of PT + YT back into the base asset before maturity.
@@ -811,19 +859,20 @@ impl RouterInterface for RouterContract {
         to: Address,
         amount: i128,
         min_asset_out: i128,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(amount > 0, "amount must be positive");
-        assert!(min_asset_out > 0, "min_asset_out must be positive");
+        if amount <= 0 || min_asset_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
 
         // The YM burns the pair (both amounts caller-chosen, so signable) and
         // redeems the owed shares from its OWN custody, with the vault paying
         // the user directly. No share count reaches the user's signature.
-        YieldManagerClient::new(&e, &market.ym)
-            .redeem_combined_to_asset(&to, &amount, &min_asset_out)
+        Ok(YieldManagerClient::new(&e, &market.ym)
+            .redeem_combined_to_asset(&to, &amount, &min_asset_out))
     }
 
     /// Provide liquidity starting from the base asset alone: deposit `asset_in`
@@ -858,13 +907,12 @@ impl RouterInterface for RouterContract {
         min_lp_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(asset_in > 0, "asset_in must be positive");
-        assert!(pt_to_buy >= 0, "pt_to_buy must be non-negative");
-        assert!(desired_v > 0, "desired_v must be positive");
-        assert!(min_lp_out > 0, "min_lp_out must be positive");
+        if asset_in <= 0 || pt_to_buy < 0 || desired_v <= 0 || min_lp_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -876,9 +924,11 @@ impl RouterInterface for RouterContract {
         let pt_before = pt_token.balance(&to);
         let lp_before = pool.balance_shares(&to);
 
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, asset_in);
+        let shares_in = deposit_assets(&e, &vault, &asset, &to, asset_in)?;
         if pt_to_buy > 0 {
-            assert!(shares_in >= max_v_in, "deposit did not fund max_v_in");
+            if shares_in < max_v_in {
+                return Err(RouterError::DepositDidNotFundMaxVIn);
+            }
             pool.swap_v_for_pt(&to, &pt_to_buy, &max_v_in);
         }
 
@@ -886,17 +936,18 @@ impl RouterInterface for RouterContract {
         // its ratio and refunds the rest, so per-leg mins stay 0 and `min_lp_out`
         // is the real bound. PT bought is exactly `pt_to_buy`, so that side is
         // known without measuring.
-        assert!(
-            pt_token.balance(&to) - pt_before >= pt_to_buy,
-            "PT leg short of pt_to_buy"
-        );
+        if pt_token.balance(&to) - pt_before < pt_to_buy {
+            return Err(RouterError::PtLegShort);
+        }
         pool.deposit(&to, &pt_to_buy, &0, &desired_v, &0);
 
         let lp_out = pool.balance_shares(&to) - lp_before;
-        assert!(lp_out >= min_lp_out, "min_lp_out not satisfied");
+        if lp_out < min_lp_out {
+            return Err(RouterError::MinLpOutNotMet);
+        }
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry);
-        lp_out
+        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        Ok(lp_out)
     }
 
     /// Withdraw an LP position and leave holding the base asset: burn
@@ -926,12 +977,12 @@ impl RouterInterface for RouterContract {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(lp_shares > 0, "lp_shares must be positive");
-        assert!(pt_to_sell >= 0, "pt_to_sell must be non-negative");
-        assert!(min_asset_out > 0, "min_asset_out must be positive");
+        if lp_shares <= 0 || pt_to_sell < 0 || min_asset_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
@@ -946,18 +997,19 @@ impl RouterInterface for RouterContract {
         pool.withdraw(&to, &lp_shares, &0, &0);
 
         if pt_to_sell > 0 {
-            assert!(
-                pt_token.balance(&to) >= pt_to_sell,
-                "PT balance short of pt_to_sell"
-            );
+            if pt_token.balance(&to) < pt_to_sell {
+                return Err(RouterError::PtBalanceShort);
+            }
             pool.swap_pt_for_v(&to, &pt_to_sell, &1);
         }
 
         let asset_out = sweep_gained_shares(
             &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
-        );
-        assert!(asset_out >= min_asset_out, "min_asset_out not satisfied");
-        asset_out
+        )?;
+        if asset_out < min_asset_out {
+            return Err(RouterError::MinAssetOutNotMet);
+        }
+        Ok(asset_out)
     }
 
     /// Base-asset counterpart of `exit_expired`: unwinds the LP position, all
@@ -982,19 +1034,17 @@ impl RouterInterface for RouterContract {
         min_asset_out: i128,
         sweep_allowance: i128,
         sweep_expiry: u32,
-    ) -> i128 {
+    ) -> Result<i128, RouterError> {
         to.require_auth();
         extend_instance_ttl(&e);
-        assert!(lp_shares >= 0, "lp_shares must be non-negative");
-        assert!(max_pt > 0, "max_pt must be positive");
-        assert!(sweep_allowance > 0, "sweep_allowance must be positive");
-        assert!(min_asset_out > 0, "min_asset_out must be positive");
+        if lp_shares < 0 || max_pt <= 0 || sweep_allowance <= 0 || min_asset_out <= 0 {
+            return Err(RouterError::InvalidAmount);
+        }
 
         let market = resolve_market(&e, &vault, maturity);
-        assert!(
-            e.ledger().timestamp() >= market.maturity,
-            "market not expired"
-        );
+        if e.ledger().timestamp() < market.maturity {
+            return Err(RouterError::MarketNotExpired);
+        }
 
         // Order matters. Both of these pay the user in vault shares, and they
         // must land BEFORE the yield manager gathers them up, so the whole exit
@@ -1037,6 +1087,6 @@ impl RouterInterface for RouterContract {
         }
         .publish(&e);
 
-        asset_out
+        Ok(asset_out)
     }
 }

@@ -245,6 +245,11 @@ The yield manager already uses a `contracterror` enum (`YieldManagerError`). The
 `assert!` throughout. Converting them would give frontends real error codes at the cost of some
 WASM size.
 
+**Resolved 2026-09-13 (issue #19).** The router (`RouterError`) and the AMM (`AmmError`) now fail
+with `Error(Contract, #n)`; zaps, exits, swaps, flash swaps, deposit and withdraw return `Result`
+so the codes appear in their specs. Live on testnet as router `CCUV5QY3…` and AMM wasm
+`cee8bc2f…` (new markets only). Code tables: `docs/FRONTEND_LP.md` §8.
+
 ### I5 — Get a real memory measurement
 
 §2's conclusion is a deduction: the RPC returns `cost.mem_bytes: 0`, so no tool here reports the

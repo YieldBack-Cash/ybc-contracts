@@ -64,7 +64,7 @@ fn test_valid_params_derive_expected_implied_rate() {
 }
 
 #[test]
-#[should_panic(expected = "band too narrow")]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn test_band_too_narrow_panics() {
     let env = Env::default();
     // 0.5-point band, below the 1-point minimum.
@@ -72,7 +72,7 @@ fn test_band_too_narrow_panics() {
 }
 
 #[test]
-#[should_panic(expected = "apy_max too high")]
+#[should_panic(expected = "Error(Contract, #3)")]
 fn test_apy_max_above_cap_panics() {
     let env = Env::default();
     // 150% top of band, above the 100% cap.
@@ -80,35 +80,35 @@ fn test_apy_max_above_cap_panics() {
 }
 
 #[test]
-#[should_panic(expected = "current_apy must be inside the band")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_current_apy_below_band_panics() {
     let env = Env::default();
     register_pool(&env, 100_000, APY_MIN, APY_MAX, FEE_APY);
 }
 
 #[test]
-#[should_panic(expected = "current_apy must be inside the band")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_current_apy_above_band_panics() {
     let env = Env::default();
     register_pool(&env, 3_000_000, APY_MIN, APY_MAX, FEE_APY);
 }
 
 #[test]
-#[should_panic(expected = "apy_min must be non-negative")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_negative_apy_min_panics() {
     let env = Env::default();
     register_pool(&env, CURRENT_APY, -100_000, APY_MAX, FEE_APY);
 }
 
 #[test]
-#[should_panic(expected = "fee_apy out of range")]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn test_zero_fee_panics() {
     let env = Env::default();
     register_pool(&env, CURRENT_APY, APY_MIN, APY_MAX, 0);
 }
 
 #[test]
-#[should_panic(expected = "fee_apy out of range")]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn test_fee_above_cap_panics() {
     let env = Env::default();
     // 5% fee spread, above the 2% cap.

@@ -39,6 +39,10 @@ pub struct SwapVForPt {
     pub new_implied_rate: i128,
     pub new_reserve_a: i128,
     pub new_reserve_b: i128,
+    /// Total trading fee charged on this trade, in vault shares.
+    pub fee: i128,
+    /// Treasury's cut of `fee`, in vault shares; the LPs keep `fee - reserve_fee`.
+    pub reserve_fee: i128,
 }
 
 #[contractevent(topics = ["swap_pt_for_v"], data_format = "vec")]
@@ -50,6 +54,10 @@ pub struct SwapPtForV {
     pub new_implied_rate: i128,
     pub new_reserve_a: i128,
     pub new_reserve_b: i128,
+    /// Total trading fee charged on this trade, in vault shares.
+    pub fee: i128,
+    /// Treasury's cut of `fee`, in vault shares; the LPs keep `fee - reserve_fee`.
+    pub reserve_fee: i128,
 }
 
 #[contractevent(topics = ["flash_swap_pt"], data_format = "vec")]
@@ -63,6 +71,10 @@ pub struct FlashSwapPt {
     pub new_implied_rate: i128,
     pub new_reserve_a: i128,
     pub new_reserve_b: i128,
+    /// Total trading fee charged on this trade, in vault shares.
+    pub fee: i128,
+    /// Treasury's cut of `fee`, in vault shares; the LPs keep `fee - reserve_fee`.
+    pub reserve_fee: i128,
 }
 
 #[contractevent(topics = ["flash_swap_v"], data_format = "vec")]
@@ -76,6 +88,10 @@ pub struct FlashSwapV {
     pub new_implied_rate: i128,
     pub new_reserve_a: i128,
     pub new_reserve_b: i128,
+    /// Total trading fee charged on this trade, in vault shares.
+    pub fee: i128,
+    /// Treasury's cut of `fee`, in vault shares; the LPs keep `fee - reserve_fee`.
+    pub reserve_fee: i128,
 }
 
 #[contractevent(topics = ["deposit"], data_format = "vec")]
