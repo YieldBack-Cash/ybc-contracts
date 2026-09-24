@@ -283,6 +283,19 @@ harness).
     `(vault, maturity)` through the factory on every entrypoint, and a missing
     record panics.
 
+**Amounts and balances**
+
+20. **Every amount argument is validated before any storage access, and no
+    balance write depends on a read taken before the debit.** Token entrypoints
+    reject `amount < 0` (PT and YT both carry `check_nonnegative_amount`); the
+    AMM rejects a non-positive `share_amount` and negative minimums on
+    `withdraw`; and every transfer debits `from` before reading `to`, so a
+    self-transfer is a no-op. The balance helpers are plain arithmetic, so
+    without the first rule a negative `transfer` moves value *into* `from`, and
+    without the second a self-transfer mints it. Both were live bugs (see
+    [THREAT_MODEL.md](./THREAT_MODEL.md) §7), which is why this is stated as an
+    invariant rather than left to each contract's discretion.
+
 ---
 
 ## 5. Parameter bounds (reference)

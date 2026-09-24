@@ -90,9 +90,40 @@ fn next_salt(env: &Env) -> BytesN<32> {
 }
 
 const MAX_TOKEN_STRING_LEN: usize = 64;
-// Builds "<prefix><vault-symbol>" or "<prefix><vault-symbol>-<maturity>" as
-// a soroban_sdk::String. Manual byte-buffer construction since this is a
-// #![no_std] contract with no alloc/format! available.
+
+/// The UTC calendar date of a Unix timestamp as `(year, month, day)`.
+///
+/// Howard Hinnant's `civil_from_days`, integer-only, valid for every date a
+/// maturity can reasonably be. A `no_std` contract has no date library.
+pub(crate) fn civil_date(timestamp: u64) -> (u64, u64, u64) {
+    let days = timestamp / 86_400;
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    (year, month, day)
+}
+
+const MONTHS: [&[u8; 3]; 12] = [
+    b"JAN", b"FEB", b"MAR", b"APR", b"MAY", b"JUN", b"JUL", b"AUG", b"SEP", b"OCT", b"NOV", b"DEC",
+];
+
+/// Builds "<prefix><vault-symbol>" or "<prefix><vault-symbol>-DDMMMYYYY" as a
+/// soroban_sdk::String, e.g. `PT-bvXLM-23DEC2026`.
+///
+/// The maturity is rendered as a calendar date rather than a Unix timestamp
+/// because the string is what a wallet shows: `1797984000` tells a holder
+/// nothing, `23DEC2026` tells them when their PT settles. Fixed width,
+/// uppercase month, no separators inside the date (the convention Pendle
+/// uses), so two maturities on one vault are distinguishable by symbol alone.
+///
+/// Manual byte-buffer construction since this is a `#![no_std]` contract with
+/// no alloc/format! available.
 pub(crate) fn build_token_string(
     env: &Env,
     prefix: &str,
@@ -107,34 +138,28 @@ pub(crate) fn build_token_string(
     position += prefix_bytes.len();
 
     let symbol_len = vault_symbol.len() as usize;
+    // "-DDMMMYYYY" is 10 bytes; leave room for it whether or not it is used so
+    // the symbol and the dated name never disagree on which vault symbols fit.
     assert!(
-        position + symbol_len <= MAX_TOKEN_STRING_LEN,
+        position + symbol_len + 10 <= MAX_TOKEN_STRING_LEN,
         "vault symbol too long for token name"
     );
     vault_symbol.copy_into_slice(&mut buffer[position..position + symbol_len]);
     position += symbol_len;
 
     if let Some(maturity) = maturity {
-        buffer[position] = b'-';
-        position += 1;
+        let (year, month, day) = civil_date(maturity);
+        assert!(year <= 9999, "maturity year does not fit four digits");
 
-        let digits_start = position;
-        if maturity == 0 {
-            buffer[position] = b'0';
-            position += 1;
-        } else {
-            let mut value = maturity;
-            while value > 0 {
-                assert!(
-                    position < MAX_TOKEN_STRING_LEN,
-                    "token name exceeds max length"
-                );
-                buffer[position] = b'0' + (value % 10) as u8;
-                value /= 10;
-                position += 1;
-            }
-            buffer[digits_start..position].reverse();
-        }
+        buffer[position] = b'-';
+        buffer[position + 1] = b'0' + (day / 10) as u8;
+        buffer[position + 2] = b'0' + (day % 10) as u8;
+        buffer[position + 3..position + 6].copy_from_slice(MONTHS[(month - 1) as usize]);
+        buffer[position + 6] = b'0' + (year / 1000) as u8;
+        buffer[position + 7] = b'0' + (year / 100 % 10) as u8;
+        buffer[position + 8] = b'0' + (year / 10 % 10) as u8;
+        buffer[position + 9] = b'0' + (year % 10) as u8;
+        position += 10;
     }
 
     String::from_bytes(env, &buffer[..position])
@@ -321,7 +346,7 @@ impl Factory {
                 (
                     ym_addr.clone(),
                     build_token_string(&env, "PT-", &vault_symbol, Some(maturity)),
-                    build_token_string(&env, "PT-", &vault_symbol, None),
+                    build_token_string(&env, "PT-", &vault_symbol, Some(maturity)),
                     7u32,
                 ),
             );
@@ -334,7 +359,7 @@ impl Factory {
                 (
                     ym_addr.clone(),
                     build_token_string(&env, "YT-", &vault_symbol, Some(maturity)),
-                    build_token_string(&env, "YT-", &vault_symbol, None),
+                    build_token_string(&env, "YT-", &vault_symbol, Some(maturity)),
                     7u32,
                 ),
             );

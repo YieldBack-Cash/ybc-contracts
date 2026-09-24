@@ -795,6 +795,14 @@ impl AmmInterface for LiquidityPool {
     ) -> Result<(i128, i128), AmmError> {
         to.require_auth();
         extend_instance_ttl(&e);
+        // A non-positive share_amount passes the balance check below (0 < -n is
+        // false) and reaches burn_shares, where subtracting a negative MINTS LP
+        // shares. Reject it here rather than rely on a token leg refusing the
+        // resulting zero/negative transfer — PT does not, and which vault-share
+        // token does depends on the market.
+        if share_amount <= 0 || min_a < 0 || min_b < 0 {
+            return Err(AmmError::InvalidAmount);
+        }
 
         let current_shares = get_shares(&e, &to);
         if current_shares < share_amount {

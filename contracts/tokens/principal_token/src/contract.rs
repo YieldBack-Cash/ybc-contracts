@@ -10,6 +10,17 @@ use crate::storage::{
     decrease_total_supply, read_total_supply,
 };
 
+/// Every mutating entrypoint rejects a negative amount before touching
+/// storage. `spend_balance` / `receive_balance` are plain arithmetic, so a
+/// negative `transfer` would otherwise credit `from` and debit `to` — the
+/// holder's own signature would be enough to pull PT out of any address.
+/// Same guard the yield token carries.
+fn check_nonnegative_amount(amount: i128) {
+    if amount < 0 {
+        panic!("negative amount is not allowed: {}", amount)
+    }
+}
+
 #[contract]
 pub struct PrincipalToken;
 
@@ -22,6 +33,7 @@ impl TokenInterface for PrincipalToken {
 
     fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32) {
         from.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 
@@ -43,6 +55,7 @@ impl TokenInterface for PrincipalToken {
 
     fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) {
         from.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 
@@ -61,6 +74,7 @@ impl TokenInterface for PrincipalToken {
 
     fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
         spender.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 
@@ -81,6 +95,7 @@ impl TokenInterface for PrincipalToken {
         from.require_auth();
         let admin = read_administrator(&env);
         admin.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 
@@ -94,6 +109,7 @@ impl TokenInterface for PrincipalToken {
         spender.require_auth();
         let admin = read_administrator(&env);
         admin.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 
@@ -144,6 +160,7 @@ impl PrincipalTokenTrait for PrincipalToken {
     fn mint(env: Env, to: Address, amount: i128) {
         let admin = read_administrator(&env);
         admin.require_auth();
+        check_nonnegative_amount(amount);
 
         extend_instance_ttl(&env);
 

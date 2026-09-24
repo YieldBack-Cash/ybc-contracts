@@ -162,7 +162,14 @@ AMM constructor, which retains none of them directly:
 1. The **YM**, constructed with the factory's current `FeeConfig.treasury` and
    seeding its exchange rate from the vault.
 2. **PT** and **YT**, both admin-owned by the YM, registered back through
-   `set_token_contracts`.
+   `set_token_contracts`. Their `name` and `symbol` are both
+   `PT-<vault symbol>-DDMMMYYYY` / `YT-…` (for example `PT-bvXLM-23MAR2027`),
+   and the market record's `name` is `<vault symbol>-DDMMMYYYY`. The maturity
+   is rendered as a UTC calendar date rather than a Unix timestamp so a wallet
+   shows a holder when their PT settles, and it is in the symbol as well as the
+   name so two maturities on one vault are distinguishable by symbol alone.
+   The vault's share token carries no date: a vault has no maturity and backs
+   every market created on it.
 3. The **AMM**, taking the derived curve params plus that same `treasury` and the
    current `reserve_fee_rate`, then registered on the YM through one-shot
    `set_pool` as the sole trusted flash-swap driver.

@@ -197,44 +197,82 @@ fn test_ym_knows_its_tokens() {
     assert_eq!(ym_client.get_yield_token(), market.yt);
 }
 
+/// 2026-12-23T00:00:00Z: the maturity of the first markets on the ybc-vaults
+/// adapters, so the expected strings below are the ones live on testnet.
+const DEC_23_2026: u64 = 1_797_984_000;
+
+/// Token names carry the maturity as a calendar date, in both name and
+/// symbol, so a wallet can tell two maturities on one vault apart.
+/// Moves the ledger to a month before `DEC_23_2026`, inside the factory's
+/// maturity horizon.
+fn set_clock_before_dec_2026(test: &FactoryTest) {
+    test.env
+        .ledger()
+        .with_mut(|li| li.timestamp = DEC_23_2026 - 30 * 24 * 60 * 60);
+}
+
 #[test]
 fn test_deployed_pt_metadata() {
     let test = FactoryTest::setup();
-    let maturity = test.env.ledger().timestamp() + 1000;
-    let market = test.create_market(maturity);
+    set_clock_before_dec_2026(&test);
+    let market = test.create_market(DEC_23_2026);
 
     let pt_token = TokenClient::new(&test.env, &market.pt);
-    let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
-
-    assert_eq!(
-        pt_token.name(),
-        crate::contract::build_token_string(&test.env, "PT-", &vault_symbol, Some(maturity))
-    );
-    assert_eq!(
-        pt_token.symbol(),
-        crate::contract::build_token_string(&test.env, "PT-", &vault_symbol, None)
-    );
+    assert_eq!(pt_token.name(), String::from_str(&test.env, "PT-MVT-23DEC2026"));
+    assert_eq!(pt_token.symbol(), String::from_str(&test.env, "PT-MVT-23DEC2026"));
     assert_eq!(pt_token.decimals(), 7);
+    assert_eq!(market.name, String::from_str(&test.env, "MVT-23DEC2026"));
 }
 
 #[test]
 fn test_deployed_yt_metadata() {
     let test = FactoryTest::setup();
-    let maturity = test.env.ledger().timestamp() + 1000;
-    let market = test.create_market(maturity);
+    set_clock_before_dec_2026(&test);
+    let market = test.create_market(DEC_23_2026);
 
     let yt_token = TokenClient::new(&test.env, &market.yt);
-    let vault_symbol = TokenClient::new(&test.env, &test.vault_addr).symbol();
-
-    assert_eq!(
-        yt_token.name(),
-        crate::contract::build_token_string(&test.env, "YT-", &vault_symbol, Some(maturity))
-    );
-    assert_eq!(
-        yt_token.symbol(),
-        crate::contract::build_token_string(&test.env, "YT-", &vault_symbol, None)
-    );
+    assert_eq!(yt_token.name(), String::from_str(&test.env, "YT-MVT-23DEC2026"));
+    assert_eq!(yt_token.symbol(), String::from_str(&test.env, "YT-MVT-23DEC2026"));
     assert_eq!(yt_token.decimals(), 7);
+}
+
+/// The timestamp-to-date conversion, pinned against dates a calendar agrees
+/// on, including the leap-day and year-boundary cases integer date maths gets
+/// wrong when it is off by one.
+#[test]
+fn test_civil_date() {
+    use crate::contract::civil_date;
+    assert_eq!(civil_date(0), (1970, 1, 1));
+    assert_eq!(civil_date(DEC_23_2026), (2026, 12, 23));
+    assert_eq!(civil_date(1_835_395_200), (2028, 2, 29)); // leap day
+    assert_eq!(civil_date(1_835_481_600), (2028, 3, 1));
+    assert_eq!(civil_date(1_798_761_599), (2026, 12, 31)); // last second of the year
+    assert_eq!(civil_date(1_798_761_600), (2027, 1, 1));
+    assert_eq!(civil_date(4_102_444_800), (2100, 1, 1)); // 2100 is not a leap year
+    assert_eq!(civil_date(4_107_542_400), (2100, 3, 1));
+}
+
+#[test]
+fn test_build_token_string_formats() {
+    use crate::contract::build_token_string;
+    let env = Env::default();
+    let symbol = String::from_str(&env, "bvXLM");
+    assert_eq!(
+        build_token_string(&env, "PT-", &symbol, Some(DEC_23_2026)),
+        String::from_str(&env, "PT-bvXLM-23DEC2026")
+    );
+    assert_eq!(
+        build_token_string(&env, "", &symbol, Some(1_835_395_200)),
+        String::from_str(&env, "bvXLM-29FEB2028")
+    );
+    assert_eq!(
+        build_token_string(&env, "YT-", &symbol, Some(0)),
+        String::from_str(&env, "YT-bvXLM-01JAN1970")
+    );
+    assert_eq!(
+        build_token_string(&env, "PT-", &symbol, None),
+        String::from_str(&env, "PT-bvXLM")
+    );
 }
 
 #[test]
