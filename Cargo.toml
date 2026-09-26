@@ -18,11 +18,13 @@ members = [
   "vault/vault_interface",
   "contracts/router",
   "tests/integration",
-  "tests/vaults",
 ]
-# cargo-fuzz crates build with nightly + sanitizer flags; keep them out of
-# normal workspace builds.
-exclude = ["contracts/amm/amm/fuzz"]
+# Not members: the cargo-fuzz crate builds with nightly + sanitizer flags, and
+# tests/vaults depends on vault-testkit from the sibling ybc-vaults checkout.
+# Keeping that out of the workspace lets `stellar contract build` succeed on
+# this repo alone (clean clones, Stellar Expert release builds). Run it with
+# `cargo test --manifest-path tests/vaults/Cargo.toml`, or `make test`.
+exclude = ["contracts/amm/amm/fuzz", "tests/vaults"]
 
 [workspace.dependencies]
 # 26.1 is the newest SDK the OpenZeppelin 0.7.2 crates support (no OZ release

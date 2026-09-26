@@ -7,8 +7,16 @@ description = "YBC markets on the real vault adapter binaries from ybc-vaults"
 [lib]
 crate-type = ["rlib"]
 
+# Its own workspace, excluded from the root one: this crate needs ybc-vaults
+# checked out beside the repo, and the contract build must not. It has its own
+# target directory on purpose: sharing the root one poisons the root
+# workspace's test build (duplicate soroban-sdk instances). The fixture still
+# imports the binaries `stellar contract build` writes to ../../target.
+[workspace]
+
 [dev-dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
+# Same pin as the root workspace; mixed SDK versions make Env/Address types incompatible.
+soroban-sdk = { version = "26.1.1", features = ["testutils"] }
 amm = { path = "../../contracts/amm/amm", features = ["testutils"] }
 factory = { path = "../../contracts/factory" }
 router = { path = "../../contracts/router" }

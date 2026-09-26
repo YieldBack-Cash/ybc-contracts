@@ -8,10 +8,11 @@ build:
 	stellar contract build
 	@ls -l target/wasm32v1-none/release/*.wasm
 
-# What CI runs (.github/workflows/ci.yml). tests/vaults needs ybc-vaults
-# checked out beside this repo.
+# What CI runs (.github/workflows/ci.yml). tests/vaults is its own workspace
+# (it needs ybc-vaults checked out beside this repo), so it is run separately.
 test:
 	cargo test --workspace
+	cargo test --manifest-path tests/vaults/Cargo.toml
 
 # Rewrite the parity fixtures the frontend and indexer pin their TypeScript
 # to, after changing the yield token's accrual or the AMM's curve.
