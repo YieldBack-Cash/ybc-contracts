@@ -1,9 +1,10 @@
 // ── Amount validation for PrincipalToken ─────────────────────────────────────
 //
-// Every mutating entrypoint must reject a negative amount. The balance helpers
-// are plain arithmetic, so without the guard a negative `transfer` credits
-// `from` and debits `to` — a holder's own signature would move PT out of any
-// address. Regression tests for that guard; the yield token has the same one.
+// Every mutating entrypoint must reject a negative amount. The hand-rolled
+// ledger this token used to carry did plain arithmetic, so a negative
+// `transfer` credited `from` and debited `to` — a holder's own signature would
+// move PT out of any address. The ledger is OpenZeppelin's now, which raises
+// `LessThanZero` (#103) before any write; these pin that it stays so.
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
@@ -20,7 +21,7 @@ fn register_pt(env: &Env) -> PrincipalTokenClient<'_> {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn transfer_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -33,7 +34,7 @@ fn transfer_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn transfer_from_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -46,7 +47,7 @@ fn transfer_from_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn approve_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -58,7 +59,7 @@ fn approve_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn mint_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -69,7 +70,7 @@ fn mint_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn burn_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -81,7 +82,7 @@ fn burn_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "negative amount is not allowed")]
+#[should_panic(expected = "Error(Contract, #103)")]
 fn burn_from_rejects_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();

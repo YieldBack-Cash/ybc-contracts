@@ -3,8 +3,9 @@
 //! YBC markets created through the real factory on the real vault adapter
 //! binaries (`wasms/blend_vault.wasm`, `wasms/xoxno_vault.wasm`, built from
 //! the `ybc-vaults` workspace). The Blend adapter runs on a real Blend
-//! deployment from `wasms/blend/`; the XOXNO adapter on a mock controller that
-//! reproduces the two behaviours its correctness depends on.
+//! deployment and the XOXNO adapter on a mock controller, both from
+//! `vault_testkit::protocols`, the same fixtures the adapters' own suites run
+//! on.
 //!
 //! Every test body takes a `&VaultStack` and is run once per adapter through
 //! `on_every_vault!`, so a property of "a YBC market" is asserted against both
@@ -34,9 +35,7 @@ macro_rules! on_every_vault {
     };
 }
 
-mod blend_protocol;
 mod fixture;
-mod mock_controller;
 
 mod asset_paths;
 mod split;

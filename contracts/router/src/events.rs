@@ -26,13 +26,16 @@ pub struct RoutedYtSell {
 /// vault and became `shares_out` vault shares. Emitted at the vault boundary
 /// itself rather than per-zap, so an indexer sees every asset inflow through one
 /// event no matter which zap produced it. The leg that consumes those shares
-/// (AMM swap, YM mint) publishes its own event as usual.
+/// (AMM swap, YM mint) publishes its own event as usual. Carries the market's
+/// maturity so the indexer can file it under the market without joining on the
+/// transaction.
 #[contractevent(topics = ["zap_in"], data_format = "vec")]
 pub struct ZappedIn {
     #[topic]
     pub vault: Address,
     #[topic]
     pub to: Address,
+    pub maturity: u64,
     pub asset: Address,
     pub asset_in: i128,
     pub shares_out: i128,
@@ -46,6 +49,7 @@ pub struct ZappedOut {
     pub vault: Address,
     #[topic]
     pub to: Address,
+    pub maturity: u64,
     pub asset: Address,
     pub shares_in: i128,
     pub asset_out: i128,

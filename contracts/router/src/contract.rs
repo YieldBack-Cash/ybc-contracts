@@ -1,8 +1,6 @@
 use amm_interface::AmmClient;
-use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, panic_with_error, token, Address, Env,
-    String,
-};
+use factory_interface::{FactoryClient, Market};
+use soroban_sdk::{contract, contractclient, contractimpl, panic_with_error, token, Address, Env};
 use vault_interface::VaultContractClient;
 use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
@@ -10,29 +8,6 @@ use yield_token_interface::YieldTokenClient;
 use crate::errors::RouterError;
 use crate::events::{ExitedExpired, ExitedExpiredToAsset, RoutedYtBuy, RoutedYtSell, ZappedIn, ZappedOut};
 use crate::storage::{extend_instance_ttl, get_factory, set_factory};
-
-/// Mirror of the factory's `Market` record. Field names and types must match
-/// the factory's struct exactly so its return value decodes into this one.
-#[contracttype]
-#[derive(Clone)]
-pub struct Market {
-    pub name: String,
-    pub ym: Address,
-    pub pt: Address,
-    pub yt: Address,
-    pub pool: Address,
-    pub maturity: u64,
-    pub vault: Address,
-}
-
-/// Minimal view of the factory: just enough to resolve a single market.
-/// The trait itself is never implemented or called — it exists only as the
-/// source for the generated FactoryViewClient, which dead_code can't see.
-#[allow(dead_code)]
-#[contractclient(name = "FactoryViewClient")]
-pub trait FactoryView {
-    fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
-}
 
 #[contractclient(name = "RouterClient")]
 pub trait RouterInterface {
@@ -243,7 +218,7 @@ pub struct RouterContract;
 /// market directly by (vault, maturity) and forbids overwriting it, so this is a
 /// single O(1) lookup rather than a scan of the vault's whole market history.
 fn resolve_market(e: &Env, vault: &Address, maturity: u64) -> Market {
-    FactoryViewClient::new(e, &get_factory(e))
+    FactoryClient::new(e, &get_factory(e))
         .get_market(vault, &maturity)
         .unwrap_or_else(|| panic_with_error!(e, RouterError::MarketNotFound))
 }
@@ -267,6 +242,7 @@ fn vault_asset(e: &Env, vault: &Address) -> Address {
 fn deposit_assets(
     e: &Env,
     vault: &Address,
+    maturity: u64,
     asset: &Address,
     to: &Address,
     assets: i128,
@@ -282,6 +258,7 @@ fn deposit_assets(
     ZappedIn {
         vault: vault.clone(),
         to: to.clone(),
+        maturity,
         asset: asset.clone(),
         asset_in: assets,
         shares_out,
@@ -306,6 +283,7 @@ fn deposit_assets(
 fn sweep_gained_shares(
     e: &Env,
     vault: &Address,
+    maturity: u64,
     asset: &Address,
     to: &Address,
     shares_before: i128,
@@ -334,6 +312,7 @@ fn sweep_gained_shares(
     ZappedOut {
         vault: vault.clone(),
         to: to.clone(),
+        maturity,
         asset: asset.clone(),
         shares_in: gained,
         asset_out,
@@ -684,13 +663,13 @@ impl RouterInterface for RouterContract {
         // Both bounds are the caller's own numbers, so both are signable. The
         // deposit's share yield is measured only to check the pool's bound can
         // actually be funded — it never reaches an auth entry.
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in)?;
+        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, max_asset_in)?;
         if shares_in < max_v_in {
             return Err(RouterError::DepositDidNotFundMaxVIn);
         }
         AmmClient::new(&e, &market.pool).swap_v_for_pt(&to, &pt_out, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
         if asset_spent > max_asset_in {
@@ -728,7 +707,7 @@ impl RouterInterface for RouterContract {
         AmmClient::new(&e, &market.pool).swap_pt_for_v(&to, &pt_in, &1);
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);
@@ -764,13 +743,13 @@ impl RouterInterface for RouterContract {
 
         // The YM's flash callback already pulls exactly `max_v_in` and refunds
         // the rest — the pull-the-bound pattern this whole design generalises.
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, max_asset_in)?;
+        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, max_asset_in)?;
         if shares_in < max_v_in {
             return Err(RouterError::DepositDidNotFundMaxVIn);
         }
         AmmClient::new(&e, &market.pool).flash_swap_pt(&market.ym, &yt_out, &to, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
         if asset_spent > max_asset_in {
@@ -811,7 +790,7 @@ impl RouterInterface for RouterContract {
         AmmClient::new(&e, &market.pool).flash_swap_v(&market.ym, &yt_in, &to, &1);
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);
@@ -924,7 +903,7 @@ impl RouterInterface for RouterContract {
         let pt_before = pt_token.balance(&to);
         let lp_before = pool.balance_shares(&to);
 
-        let shares_in = deposit_assets(&e, &vault, &asset, &to, asset_in)?;
+        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, asset_in)?;
         if pt_to_buy > 0 {
             if shares_in < max_v_in {
                 return Err(RouterError::DepositDidNotFundMaxVIn);
@@ -946,7 +925,7 @@ impl RouterInterface for RouterContract {
             return Err(RouterError::MinLpOutNotMet);
         }
 
-        sweep_gained_shares(&e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
         Ok(lp_out)
     }
 
@@ -1004,7 +983,7 @@ impl RouterInterface for RouterContract {
         }
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);

@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "principal_token"
 version = "0.1.0"
 edition = "2021"
@@ -12,7 +12,8 @@ contract = []
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-token-sdk = { workspace = true }
+stellar-tokens = { workspace = true }
+ybc_common = { workspace = true }
 principal_token_interface = { path = "../principal_token_interface" }
 
 [dev-dependencies]

@@ -1,0 +1,12 @@
+[package]
+name = "factory_interface"
+version = "0.1.0"
+edition = "2021"
+description = "The factory's public types and client, shared by the factory, the router and the test harnesses"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+yield_manager_interface = { path = "../../yield/yield_manager_interface" }

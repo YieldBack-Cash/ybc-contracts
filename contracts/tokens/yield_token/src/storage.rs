@@ -1,145 +1,62 @@
-use soroban_sdk::{contracttype, Address, Env, String};
+use soroban_sdk::{contracttype, Address, Env};
+use ybc_common::ttl::extend_persistent_ttl;
+
+// Balances, allowances, total supply and metadata are OpenZeppelin's
+// (`stellar_tokens::fungible::Base`) and never appear here. What is here is
+// the accrual layer: per holder, the rate they last settled at and the yield
+// accrued since, in vault shares.
+
+pub use ybc_common::ttl::extend_instance_ttl;
 
 #[contracttype]
-#[derive(Clone)]
-pub struct YieldTokenMetadata {
-    // renamed distinctly from soroban_token_sdk::metadata::TokenMetadata
-    // since a shared name breaks contractimport! for anyone importing this wasm.
-    pub name: String,
-    pub symbol: String,
-    pub decimal: u32,
-}
-
-#[contracttype]
-#[derive(Clone)]
 pub enum DataKey {
-    Balance(Address),
-    UserIndex(Address), // vault exchange rate the user last interacted at
+    /// The yield manager: the only address that may mint, and the source of
+    /// the exchange rate.
+    Admin,
+    /// The vault exchange rate the holder last settled at.
+    UserIndex(Address),
+    /// Yield accrued since, in vault shares, awaiting `claim_yield`.
     AccruedYield(Address),
 }
 
-const ADMIN_KEY: &str = "admin";
-const METADATA_KEY: &str = "metadata";
-const TOTAL_SUPPLY_KEY: &str = "total_supply";
-
-pub const DAY_IN_LEDGERS: u32 = 17280;
-pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
-pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-/// Extends the instance TTL (admin, metadata, total supply). Call once per
-/// entrypoint so the contract's own config doesn't expire from inactivity.
-pub fn extend_instance_ttl(env: &Env) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-}
-
 pub fn set_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&ADMIN_KEY, admin);
+    env.storage().instance().set(&DataKey::Admin, admin);
 }
 
 pub fn get_admin(env: &Env) -> Address {
     env.storage()
         .instance()
-        .get(&ADMIN_KEY)
+        .get(&DataKey::Admin)
         .expect("Admin not set")
 }
 
-pub fn set_metadata(env: &Env, name: String, symbol: String, decimal: u32) {
-    let metadata = YieldTokenMetadata {
-        name,
-        symbol,
-        decimal,
-    };
-    env.storage().instance().set(&METADATA_KEY, &metadata);
+fn set_persistent(env: &Env, key: DataKey, value: i128) {
+    env.storage().persistent().set(&key, &value);
+    extend_persistent_ttl(env, &key);
 }
 
-pub fn get_metadata(env: &Env) -> YieldTokenMetadata {
-    env.storage()
-        .instance()
-        .get(&METADATA_KEY)
-        .expect("Metadata not set")
-}
-
-pub fn set_total_supply(env: &Env, supply: i128) {
-    env.storage().instance().set(&TOTAL_SUPPLY_KEY, &supply);
-}
-
-pub fn get_total_supply(env: &Env) -> i128 {
-    env.storage().instance().get(&TOTAL_SUPPLY_KEY).unwrap_or(0)
-}
-
-pub fn set_balance(env: &Env, address: &Address, balance: i128) {
-    let key = DataKey::Balance(address.clone());
-    env.storage().persistent().set(&key, &balance);
-    env.storage().persistent().extend_ttl(
-        &key,
-        PERSISTENT_LIFETIME_THRESHOLD,
-        PERSISTENT_BUMP_AMOUNT,
-    );
-}
-
-pub fn get_balance(env: &Env, address: &Address) -> i128 {
-    let key = DataKey::Balance(address.clone());
-    if let Some(balance) = env.storage().persistent().get(&key) {
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
-        balance
-    } else {
-        0
+fn get_persistent(env: &Env, key: DataKey) -> i128 {
+    match env.storage().persistent().get(&key) {
+        Some(value) => {
+            extend_persistent_ttl(env, &key);
+            value
+        }
+        None => 0,
     }
 }
 
 pub fn set_user_index(env: &Env, address: &Address, index: i128) {
-    let key = DataKey::UserIndex(address.clone());
-    env.storage().persistent().set(&key, &index);
-    env.storage().persistent().extend_ttl(
-        &key,
-        PERSISTENT_LIFETIME_THRESHOLD,
-        PERSISTENT_BUMP_AMOUNT,
-    );
+    set_persistent(env, DataKey::UserIndex(address.clone()), index);
 }
 
 pub fn get_user_index(env: &Env, address: &Address) -> i128 {
-    let key = DataKey::UserIndex(address.clone());
-    if let Some(index) = env.storage().persistent().get(&key) {
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
-        index
-    } else {
-        0
-    }
+    get_persistent(env, DataKey::UserIndex(address.clone()))
 }
 
 pub fn set_accrued_yield(env: &Env, address: &Address, amount: i128) {
-    let key = DataKey::AccruedYield(address.clone());
-    env.storage().persistent().set(&key, &amount);
-    env.storage().persistent().extend_ttl(
-        &key,
-        PERSISTENT_LIFETIME_THRESHOLD,
-        PERSISTENT_BUMP_AMOUNT,
-    );
+    set_persistent(env, DataKey::AccruedYield(address.clone()), amount);
 }
 
 pub fn get_accrued_yield(env: &Env, address: &Address) -> i128 {
-    let key = DataKey::AccruedYield(address.clone());
-    if let Some(amount) = env.storage().persistent().get(&key) {
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
-        amount
-    } else {
-        0
-    }
+    get_persistent(env, DataKey::AccruedYield(address.clone()))
 }

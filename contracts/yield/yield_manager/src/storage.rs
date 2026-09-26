@@ -16,18 +16,10 @@ pub enum DataKey {
     SurplusShares,
 }
 
-pub const DAY_IN_LEDGERS: u32 = 17280;
-pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-/// Extends the instance TTL (admin, vault/token addresses, exchange rate,
-/// maturity). Call once per entrypoint -- if this expires the whole protocol
-/// is bricked, not just one user's data.
-pub fn extend_instance_ttl(env: &Env) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-}
+/// Instance TTL (admin, vault/token addresses, exchange rate, maturity). Call
+/// once per entrypoint -- if this expires the whole protocol is bricked, not
+/// just one user's data.
+pub use ybc_common::ttl::extend_instance_ttl;
 
 pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);

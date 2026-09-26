@@ -178,17 +178,6 @@ impl<'a> ZapFixture<'a> {
         token::TokenClient::new(&self.env, token_addr).balance(who)
     }
 
-    /// The YM's current exchange rate, refreshed exactly as a real operation
-    /// would see it. Needed by the auth-entry tests, which must reproduce the
-    /// rate hint the YT burn is called with.
-    pub fn ym_exchange_rate(&self) -> i128 {
-        self.env.invoke_contract::<i128>(
-            &self.ym,
-            &Symbol::new(&self.env, "get_exchange_rate"),
-            soroban_sdk::Vec::new(&self.env),
-        )
-    }
-
     pub fn total_supply(&self, token_addr: &Address) -> i128 {
         self.env.invoke_contract::<i128>(
             token_addr,

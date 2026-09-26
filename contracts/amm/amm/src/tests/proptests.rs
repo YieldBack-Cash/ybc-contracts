@@ -276,7 +276,7 @@ fn ln_fp_is_monotone_across_power_of_two_boundaries() {
     while boundary <= 1_000 * FP_SCALE {
         for x in (boundary - 4)..=(boundary + 4) {
             assert!(
-                crate::math::ln_fp(x, FP_SCALE) <= crate::math::ln_fp(x + 1, FP_SCALE),
+                crate::math::ln_fp(x, FP_SCALE).unwrap() <= crate::math::ln_fp(x + 1, FP_SCALE).unwrap(),
                 "ln_fp stepped backwards between {} and {}",
                 x,
                 x + 1
@@ -299,7 +299,7 @@ proptest! {
     fn ln_fp_is_monotone(a in 1_000i128..=1_000 * FP_SCALE, delta in ln_delta()) {
         let b = a + delta;
         prop_assert!(
-            crate::math::ln_fp(a, FP_SCALE) <= crate::math::ln_fp(b, FP_SCALE),
+            crate::math::ln_fp(a, FP_SCALE).unwrap() <= crate::math::ln_fp(b, FP_SCALE).unwrap(),
             "ln_fp not monotone between {} and {}", a, b
         );
     }
@@ -309,9 +309,9 @@ proptest! {
     /// The artanh-series ln_fp is good to ~1e-5, so truncation noise dominates.
     #[test]
     fn exp_ln_round_trip(x in FP_SCALE..=7 * FP_SCALE) {
-        let ln_x = crate::math::ln_fp(x, FP_SCALE);
+        let ln_x = crate::math::ln_fp(x, FP_SCALE).unwrap();
         prop_assume!(ln_x >= 0); // exp_fp domain
-        let round_trip = crate::math::exp_fp(ln_x);
+        let round_trip = crate::math::exp_fp(ln_x).unwrap();
         let error = (round_trip - x).abs();
         prop_assert!(
             error <= x / 1000,

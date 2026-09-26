@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "yield_token"
 version = "0.1.0"
 edition = "2021"
@@ -8,7 +8,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-token-sdk = { workspace = true }
+stellar-tokens = { workspace = true }
+ybc_common = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
 yield_manager_interface = { path = "../../yield/yield_manager_interface" }
 yield_token_interface = { path = "../../tokens/yield_token_interface" }

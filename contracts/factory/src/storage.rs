@@ -1,5 +1,6 @@
-use crate::contract::{FeeConfig, Market, WasmHashes};
+use factory_interface::{FeeConfig, Market, WasmHashes};
 use soroban_sdk::{contracttype, Address, Env};
+use ybc_common::ttl::{PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
 
 // The owner entry is managed by the stellar-access Ownable module under its
 // own storage key.
@@ -11,21 +12,10 @@ enum DataKey {
     Market(Address, u64),
 }
 
-pub const DAY_IN_LEDGERS: u32 = 17280;
-pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
-pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-/// Extends the instance TTL (admin, wasm hashes, salt counter). Call once per
-/// entrypoint -- if this expires, the factory (and with it market resolution
-/// for the router) is bricked until restored.
-pub fn extend_instance_ttl(env: &Env) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-}
+/// Instance TTL (admin, wasm hashes, salt counter). Call once per entrypoint
+/// -- if this expires, the factory (and with it market resolution for the
+/// router) is bricked until restored.
+pub use ybc_common::ttl::extend_instance_ttl;
 
 pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
     env.storage().instance().set(&DataKey::WasmHashes, hashes);

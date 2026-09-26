@@ -1,26 +1,29 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{contracttype, Address, Env};
 
-const ADMIN_KEY: &str = "admin";
-const EXCHANGE_RATE_KEY: &str = "ex_rate";
+#[contracttype]
+pub enum DataKey {
+    Admin,
+    ExchangeRate,
+}
 
 pub fn set_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&ADMIN_KEY, admin);
+    env.storage().instance().set(&DataKey::Admin, admin);
 }
 
 pub fn get_admin(env: &Env) -> Address {
     env.storage()
         .instance()
-        .get(&ADMIN_KEY)
+        .get(&DataKey::Admin)
         .expect("Admin not set")
 }
 
 pub fn set_exchange_rate(env: &Env, rate: i128) {
-    env.storage().instance().set(&EXCHANGE_RATE_KEY, &rate);
+    env.storage().instance().set(&DataKey::ExchangeRate, &rate);
 }
 
 pub fn get_exchange_rate(env: &Env) -> i128 {
     env.storage()
         .instance()
-        .get(&EXCHANGE_RATE_KEY)
+        .get(&DataKey::ExchangeRate)
         .unwrap_or(1_000_0000) // Default to 1.0
 }

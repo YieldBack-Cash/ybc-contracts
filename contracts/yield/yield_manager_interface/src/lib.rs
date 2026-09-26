@@ -73,16 +73,6 @@ pub trait YieldManagerTrait {
     /// fails if below `min_asset_out`. Pre-maturity only, like redeem_combined.
     fn redeem_combined_to_asset(env: Env, from: Address, amount: i128, min_asset_out: i128) -> Result<i128, YieldManagerError>;
 
-    /// Post-maturity PT redemption paid in the underlying. Burns
-    /// `min(max_pt, from's PT balance)` via `burn_from`, so the caller must
-    /// first grant the YM a PT allowance of `max_pt` — an approval whose
-    /// arguments are all caller-chosen, which is the point: the actual burn
-    /// amount may be freshly measured (e.g. PT just withdrawn from an LP
-    /// position) without ever appearing in the user's signature. Same
-    /// face-value / surplus accounting as redeem_principal. Returns the asset
-    /// delivered; fails if below `min_asset_out`.
-    fn redeem_principal_to_asset(env: Env, from: Address, max_pt: i128, min_asset_out: i128) -> Result<i128, YieldManagerError>;
-
     /// Post-maturity exit paid entirely in the underlying, in ONE vault
     /// redemption: burns up to `max_pt` PT at face value AND absorbs up to
     /// `max_shares` of vault shares the caller is already holding (an LP

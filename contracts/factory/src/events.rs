@@ -1,4 +1,4 @@
-use crate::contract::{FeeConfig, Market, WasmHashes};
+use factory_interface::{FeeConfig, Market, WasmHashes};
 use soroban_sdk::{contractevent, Address, BytesN};
 
 #[contractevent(data_format = "single-value")]

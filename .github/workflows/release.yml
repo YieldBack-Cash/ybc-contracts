@@ -1,0 +1,38 @@
+# Reproducible release builds through Stellar Expert's workflow: on a version
+# tag it builds each contract in a pinned container, attaches the WASM and its
+# hash to a GitHub release, and registers the build so the explorer shows the
+# deployed contract as verified against this source. One release per contract
+# (`v1.2.0-factory`, ...), so the hash an auditor compares is unambiguous.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - factory
+          - router
+          - yield_manager
+          - principal_token
+          - yield_token
+          - amm
+          - treasury
+    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@main
+    with:
+      release_name: ${{ github.ref_name }}-${{ matrix.package }}
+      release_description: "YBC ${{ matrix.package }} at ${{ github.ref_name }}; WASM hash attached for on-chain verification"
+      package: ${{ matrix.package }}
+      home_domain: yieldback.cash
+    secrets:
+      release_token: ${{ secrets.GITHUB_TOKEN }}

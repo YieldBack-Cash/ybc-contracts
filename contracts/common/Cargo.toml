@@ -1,0 +1,11 @@
+[package]
+name = "ybc_common"
+version = "0.1.0"
+edition = "2021"
+description = "What every YBC core contract shares: the ledger TTL policy"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }

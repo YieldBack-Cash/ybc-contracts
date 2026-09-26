@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "yield_manager"
 version = "0.1.0"
 edition = "2021"
@@ -17,6 +17,7 @@ soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
 yield_manager_interface = { path = "../yield_manager_interface" }
 yield_token_interface = { path = "../../tokens/yield_token_interface" }
+ybc_common = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

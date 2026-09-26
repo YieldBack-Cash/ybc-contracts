@@ -15,3 +15,7 @@ router = { path = "../../contracts/router" }
 yield_manager = { path = "../../contracts/yield/yield_manager" }
 yield_manager_interface = { path = "../../contracts/yield/yield_manager_interface" }
 yield_token_interface = { path = "../../contracts/tokens/yield_token_interface" }
+# The protocol fixtures the adapters' own suites run on: a real Blend
+# deployment from the binaries vendored in ybc-vaults, and the mock XOXNO
+# controller. Same soroban-sdk as this workspace, so the two link cleanly.
+vault-testkit = { path = "../../../ybc-vaults/crates/vault-testkit" }

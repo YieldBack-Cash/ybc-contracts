@@ -1,0 +1,91 @@
+# Builds every contract with the Stellar CLI and runs the whole workspace,
+# exactly as `make test` does locally. The workspace's market tests
+# (`tests/vaults`) depend on `vault-testkit` from the sibling ybc-vaults
+# checkout, so that repo is checked out beside this one; it is private, so the
+# checkout needs a token with read access to it (secret CROSS_REPO_TOKEN, a
+# fine-grained PAT with Contents: read on YieldBack-Cash/ybc-vaults).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  STELLAR_CLI: "25.2.0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ybc-contracts
+        uses: actions/checkout@v4
+        with:
+          path: ybc-contracts
+
+      - name: Check out ybc-vaults beside it
+        uses: actions/checkout@v4
+        with:
+          repository: YieldBack-Cash/ybc-vaults
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          path: ybc-vaults
+
+      # The toolchain comes from rust-toolchain.toml; this only installs it.
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.1"
+          targets: wasm32v1-none
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ybc-contracts
+            ybc-vaults
+
+      - name: Install Stellar CLI ${{ env.STELLAR_CLI }}
+        run: |
+          mkdir -p "$HOME/.stellar-cli"
+          curl -sSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI}/stellar-cli-${STELLAR_CLI}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.stellar-cli"
+          echo "$HOME/.stellar-cli" >> "$GITHUB_PATH"
+          "$HOME/.stellar-cli/stellar" --version
+
+      # `stellar contract build`, not `cargo build`: soroban-sdk 26's spec
+      # shaking needs the CLI wrapper. The test fixtures import these binaries.
+      - name: Build contracts
+        working-directory: ybc-contracts
+        run: stellar contract build
+
+      - name: Test
+        working-directory: ybc-contracts
+        run: cargo test --workspace
+
+      # The parity fixtures under protocol/fixtures are what the frontend and
+      # indexer pin their TypeScript to; these tests fail when one is stale.
+      - name: Parity fixtures are current
+        working-directory: ybc-contracts
+        run: cargo test -p yield_token -p amm parity
+
+      - name: Upload contract binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasms-${{ github.sha }}
+          path: ybc-contracts/target/wasm32v1-none/release/*.wasm
+          retention-days: 14
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.1"
+      - name: cargo audit
+        run: |
+          cargo install --locked cargo-audit
+          cargo audit

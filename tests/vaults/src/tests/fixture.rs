@@ -2,7 +2,6 @@
 //! factory exactly as production does.
 
 use soroban_sdk::{
-    contractclient,
     testutils::{Address as _, Ledger},
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, IntoVal, String, Symbol,
@@ -14,8 +13,12 @@ use yield_manager::VaultType;
 use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
 
-use super::blend_protocol::{self, pool};
-use super::mock_controller::{HubAssetKey, MockController, MockControllerClient, HUB_ID, SPOKE_ID};
+use vault_testkit::protocols::blend::{self as blend_protocol, pool, BlendFixture};
+use vault_testkit::protocols::xoxno::{HubAssetKey, MockController, MockControllerClient, HUB_ID, SPOKE_ID};
+/// The SEP-56 client, generated from `vault_common::sep56::Sep56Vault`: the
+/// same declaration the adapters are compile-checked against. Nothing in these
+/// tests may call a function YBC would not.
+pub use vault_testkit::VaultClient;
 
 // The YBC contracts the factory deploys, as compiled: `stellar contract build`
 // must run before these tests.
@@ -38,20 +41,6 @@ pub mod blend_vault_wasm {
 }
 pub mod xoxno_vault_wasm {
     soroban_sdk::contractimport!(file = "../../wasms/xoxno_vault.wasm");
-}
-
-/// The SEP-56 subset YBC calls, plus `total_supply` and `total_assets`.
-/// Adapter-agnostic on purpose: nothing in these tests may call a function
-/// YBC would not. Never implemented; it exists to generate the client.
-#[allow(dead_code)]
-#[contractclient(name = "VaultClient")]
-pub trait Sep56Vault {
-    fn query_asset(e: &Env) -> Address;
-    fn convert_to_assets(e: &Env, shares: i128) -> i128;
-    fn deposit(e: &Env, assets: i128, receiver: Address, from: Address, operator: Address) -> i128;
-    fn redeem(e: &Env, shares: i128, receiver: Address, owner: Address, operator: Address) -> i128;
-    fn total_supply(e: &Env) -> i128;
-    fn total_assets(e: &Env) -> i128;
 }
 
 // AMM market params (1e7-scaled APYs), as in the integration suite.
@@ -107,7 +96,7 @@ impl<'a> VaultStack<'a> {
 
         let blnd = env.register_stellar_asset_contract_v2(admin.clone()).address();
         let usdc = env.register_stellar_asset_contract_v2(admin.clone()).address();
-        let protocol = blend_protocol::deploy(env, &admin, &blnd, &usdc);
+        let protocol = BlendFixture::deploy(env, &admin, &blnd, &usdc);
 
         let underlying = env.register_stellar_asset_contract_v2(admin.clone()).address();
         StellarAssetClient::new(env, &underlying).mint(&admin, &20_000_000_0000000i128);
@@ -140,7 +129,6 @@ impl<'a> VaultStack<'a> {
             (
                 &controller,
                 &underlying,
-                &admin,
                 HUB_ID,
                 SPOKE_ID,
                 String::from_str(env, "XOXNO Vault Share"),

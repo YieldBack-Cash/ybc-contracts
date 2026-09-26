@@ -1,24 +1,18 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{contracttype, Address, Env};
 
-const FACTORY_KEY: &str = "factory";
+/// Instance TTL (the factory address this router resolves markets through).
+/// Call once per entrypoint so the router doesn't expire from inactivity.
+pub use ybc_common::ttl::extend_instance_ttl;
 
-pub const DAY_IN_LEDGERS: u32 = 17280;
-pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-/// Extends the instance TTL (the factory address this router resolves markets
-/// through). Call once per entrypoint so the router doesn't expire from
-/// inactivity.
-pub fn extend_instance_ttl(env: &Env) {
-    env.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+#[contracttype]
+pub enum DataKey {
+    Factory,
 }
 
 pub fn set_factory(env: &Env, factory: &Address) {
-    env.storage().instance().set(&FACTORY_KEY, factory);
+    env.storage().instance().set(&DataKey::Factory, factory);
 }
 
 pub fn get_factory(env: &Env) -> Address {
-    env.storage().instance().get(&FACTORY_KEY).unwrap()
+    env.storage().instance().get(&DataKey::Factory).unwrap()
 }

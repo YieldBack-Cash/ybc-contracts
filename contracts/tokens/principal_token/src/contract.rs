@@ -1,182 +1,99 @@
-use soroban_sdk::{contract, contractimpl, token::TokenInterface, Address, Env, MuxedAddress, String};
-use soroban_token_sdk::events::{Approve, Burn, Mint, Transfer};
-use soroban_token_sdk::metadata::TokenMetadata;
 use principal_token_interface::PrincipalTokenTrait;
+use soroban_sdk::{contract, contractimpl, Address, Env, MuxedAddress, String};
+use stellar_tokens::fungible::{burnable::FungibleBurnable, Base, FungibleToken};
 
-use crate::storage::{
-    extend_instance_ttl, read_administrator, read_allowance, read_balance, read_decimal,
-    read_name, read_symbol, receive_balance, spend_allowance, spend_balance,
-    write_administrator, write_allowance, write_metadata, increase_total_supply,
-    decrease_total_supply, read_total_supply,
-};
+use crate::storage;
 
-/// Every mutating entrypoint rejects a negative amount before touching
-/// storage. `spend_balance` / `receive_balance` are plain arithmetic, so a
-/// negative `transfer` would otherwise credit `from` and debit `to` — the
-/// holder's own signature would be enough to pull PT out of any address.
-/// Same guard the yield token carries.
-fn check_nonnegative_amount(amount: i128) {
-    if amount < 0 {
-        panic!("negative amount is not allowed: {}", amount)
-    }
-}
-
+/// The principal token: a plain SEP-41 token whose supply only the yield
+/// manager (its admin) may change.
+///
+/// Balances, allowances, total supply and metadata are OpenZeppelin's
+/// `Base`, which also owns the amount and balance checks (`LessThanZero`,
+/// `InsufficientBalance`, `InsufficientAllowance`, codes 100–105). The
+/// hand-rolled ledger this replaced is where the repo's confirmed critical
+/// bug lived: a negative `transfer` credited `from` and debited `to`.
 #[contract]
 pub struct PrincipalToken;
 
 #[contractimpl]
-impl TokenInterface for PrincipalToken {
-    fn allowance(env: Env, from: Address, spender: Address) -> i128 {
-        extend_instance_ttl(&env);
-        read_allowance(&env, &from, &spender)
+impl FungibleToken for PrincipalToken {
+    type ContractType = Base;
+
+    fn total_supply(e: &Env) -> i128 {
+        storage::extend_instance_ttl(e);
+        Base::total_supply(e)
     }
 
-    fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32) {
-        from.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        write_allowance(&env, &from, &spender, amount, expiration_ledger);
-
-        Approve {
-            from,
-            spender,
-            amount,
-            expiration_ledger,
-        }
-        .publish(&env);
+    fn balance(e: &Env, account: Address) -> i128 {
+        storage::extend_instance_ttl(e);
+        Base::balance(e, &account)
     }
 
-    fn balance(env: Env, id: Address) -> i128 {
-        extend_instance_ttl(&env);
-        read_balance(&env, &id)
+    fn allowance(e: &Env, owner: Address, spender: Address) -> i128 {
+        storage::extend_instance_ttl(e);
+        Base::allowance(e, &owner, &spender)
     }
 
-    fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) {
-        from.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        let to_addr = to.address();
-        spend_balance(&env, &from, amount);
-        receive_balance(&env, &to_addr, amount);
-
-        Transfer {
-            from,
-            to: to_addr,
-            to_muxed_id: to.id(),
-            amount,
-        }
-        .publish(&env);
+    fn transfer(e: &Env, from: Address, to: MuxedAddress, amount: i128) {
+        storage::extend_instance_ttl(e);
+        Base::transfer(e, &from, &to, amount)
     }
 
-    fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
-        spender.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        spend_allowance(&env, &from, &spender, amount);
-        spend_balance(&env, &from, amount);
-        receive_balance(&env, &to, amount);
-
-        Transfer {
-            from,
-            to,
-            to_muxed_id: None,
-            amount,
-        }
-        .publish(&env);
+    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, amount: i128) {
+        storage::extend_instance_ttl(e);
+        Base::transfer_from(e, &spender, &from, &to, amount)
     }
 
-    fn burn(env: Env, from: Address, amount: i128) {
-        from.require_auth();
-        let admin = read_administrator(&env);
-        admin.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        spend_balance(&env, &from, amount);
-        decrease_total_supply(&env, amount);
-
-        Burn { from, amount }.publish(&env);
+    fn approve(e: &Env, owner: Address, spender: Address, amount: i128, live_until_ledger: u32) {
+        storage::extend_instance_ttl(e);
+        Base::approve(e, &owner, &spender, amount, live_until_ledger)
     }
 
-    fn burn_from(env: Env, spender: Address, from: Address, amount: i128) {
-        spender.require_auth();
-        let admin = read_administrator(&env);
-        admin.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        spend_allowance(&env, &from, &spender, amount);
-        spend_balance(&env, &from, amount);
-        decrease_total_supply(&env, amount);
-
-        Burn { from, amount }.publish(&env);
+    fn decimals(e: &Env) -> u32 {
+        Base::decimals(e)
     }
 
-    fn decimals(env: Env) -> u32 {
-        read_decimal(&env)
+    fn name(e: &Env) -> String {
+        Base::name(e)
     }
 
-    fn name(env: Env) -> String {
-        read_name(&env)
+    fn symbol(e: &Env) -> String {
+        Base::symbol(e)
+    }
+}
+
+/// Burns are admin-gated on top of the standard's own auth: PT is only ever
+/// retired by the yield manager, at redemption. `Base::burn` authenticates
+/// the holder and `Base::burn_from` the spender and allowance, as SEP-41
+/// requires; the admin check is what stops a holder burning on their own.
+#[contractimpl]
+impl FungibleBurnable for PrincipalToken {
+    fn burn(e: &Env, from: Address, amount: i128) {
+        storage::get_admin(e).require_auth();
+        storage::extend_instance_ttl(e);
+        Base::burn(e, &from, amount)
     }
 
-    fn symbol(env: Env) -> String {
-        read_symbol(&env)
+    fn burn_from(e: &Env, spender: Address, from: Address, amount: i128) {
+        storage::get_admin(e).require_auth();
+        storage::extend_instance_ttl(e);
+        Base::burn_from(e, &spender, &from, amount)
     }
 }
 
 #[contractimpl]
 impl PrincipalTokenTrait for PrincipalToken {
-    fn __constructor(
-        env: Env,
-        admin: Address,
-        name: String,
-        symbol: String,
-        decimals: u32,
-    ) {
+    fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32) {
         if decimals > 18 {
             panic!("Decimal must not be greater than 18");
         }
-
-        write_administrator(&env, &admin);
-        write_metadata(
-            &env,
-            TokenMetadata {
-                name,
-                symbol,
-                decimal: decimals,
-            },
-        );
+        storage::set_admin(&env, &admin);
+        Base::set_metadata(&env, decimals, name, symbol);
     }
 
     fn mint(env: Env, to: Address, amount: i128) {
-        let admin = read_administrator(&env);
-        admin.require_auth();
-        check_nonnegative_amount(amount);
-
-        extend_instance_ttl(&env);
-
-        receive_balance(&env, &to, amount);
-        increase_total_supply(&env, amount);
-
-        Mint {
-            to,
-            to_muxed_id: None,
-            amount,
-        }
-        .publish(&env);
-    }
-
-    fn total_supply(env: Env) -> i128 {
-        extend_instance_ttl(&env);
-        read_total_supply(&env)
+        storage::get_admin(&env).require_auth();
+        storage::extend_instance_ttl(&env);
+        Base::mint(&env, &to, amount);
     }
 }

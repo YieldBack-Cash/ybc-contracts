@@ -31,20 +31,10 @@ pub enum DataKey {
     ReserveFeeRate,
 }
 
-pub const DAY_IN_LEDGERS: u32 = 17280;
-pub const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-pub const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
-pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
-
-/// Extends the instance TTL (market state, total shares). Call once per
-/// entrypoint so the pool's own config doesn't expire from inactivity.
-pub fn extend_instance_ttl(e: &Env) {
-    e.storage()
-        .instance()
-        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-}
+/// Instance TTL (market state, total shares). Call once per entrypoint so the
+/// pool's own config doesn't expire from inactivity.
+pub use ybc_common::ttl::extend_instance_ttl;
+pub use ybc_common::ttl::{PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
 
 pub fn get_market_state(e: &Env) -> MarketState {
     e.storage().instance().get(&DataKey::MarketState).unwrap()

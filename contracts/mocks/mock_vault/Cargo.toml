@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "mock_vault"
 version = "0.1.0"
 edition = "2021"
@@ -13,7 +13,7 @@ contract = []
 [dependencies]
 soroban-sdk = { workspace = true }
 vault_interface = { path = "../../../vault/vault_interface" }
-stellar-tokens = "0.7.2"
+stellar-tokens = { workspace = true }
 stellar-macros = { workspace = true }
 
 [dev-dependencies]

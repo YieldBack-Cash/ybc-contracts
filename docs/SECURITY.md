@@ -98,7 +98,7 @@ remains.
 | `set_token_contracts` | Admin, **one-shot** (guarded by `is_initialized`) | Wires PT/YT. Second call returns `AlreadyInitialized`. |
 | `set_pool` | Admin, **one-shot** (guarded by `is_pool_set`) | Registers the trusted flash-swap pool. Second call returns `PoolAlreadySet`. |
 | `deposit`, `redeem_combined`, `redeem_principal` | The acting user (`from.require_auth()`) | Share-denominated. Value moves only for the authenticated user. |
-| `deposit_asset`, `redeem_combined_to_asset`, `redeem_principal_to_asset` | The acting user (`from.require_auth()`) | Base-asset counterparts of the three above. The YM deposits into the vault with **itself** as receiver, or redeems from its **own** custody and has the vault pay the user directly, so no vault-share count ever reaches the user's signature (§4.8). |
+| `deposit_asset`, `redeem_combined_to_asset` | The acting user (`from.require_auth()`) | Base-asset counterparts of `deposit` and `redeem_combined` (the post-maturity counterpart is `exit_expired_to_asset`). The YM deposits into the vault with **itself** as receiver, or redeems from its **own** custody and has the vault pay the user directly, so no vault-share count ever reaches the user's signature (§4.8). |
 | `exit_expired_to_asset` | The acting user (`from.require_auth()`), **plus caller-granted allowances** | A different authority shape from the rest of the table: it takes *ceilings*, not exact amounts, and consumes `min(ceiling, balance)` on each leg — `burn_from` against a PT allowance up to `max_pt`, `transfer_from` against a vault-share allowance up to `max_shares`. That is what lets freshly measured amounts (an LP payout, a yield claim) be redeemed without appearing in a signature. Unspent allowance is not consumed; see §6. |
 | `distribute_yield` | The YT contract only (`yt_addr.require_auth()`) | Not user-callable; reached via `YT::claim_yield`. Once the rate is locked, re-denominates the payout to its locked-rate asset value. |
 | `on_flash_receive_pt`, `on_flash_receive_v` | The registered pool only (`get_pool().require_auth()`) | Flash callbacks. |
@@ -121,7 +121,7 @@ like everything else about a live market, it is immutable.
 | Function | Authority | Notes |
 |----------|-----------|-------|
 | `mint` | YM only | Takes a rate hint (§4). |
-| `burn_with_rate` / `transfer_with_rate` | Holder **and** YM | Rate-hinted variants used inside YM flows. |
+| `burn_with_rate` | YM | Rate-hinted burn used inside YM flows; the YM authenticates the holder at its own entry point. |
 | `burn` / `transfer` | Holder | Plain variants; fetch the rate from the YM directly. |
 | `claim_yield` | The claiming user | Pulls accrued yield via YM `distribute_yield`; burns dust YT past maturity. Returns the shares actually paid (post-lock this can be fewer than the frozen accrual — same asset value). |
 | `approve` / `transfer_from` / `burn_from` | **Unsupported** (panic) | YT deliberately omits allowance flows. |

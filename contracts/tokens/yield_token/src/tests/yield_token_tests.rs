@@ -301,7 +301,7 @@ fn test_total_supply_tracking() {
 }
 
 #[test]
-#[should_panic(expected = "Insufficient balance")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_transfer_insufficient_balance() {
     let test = YieldTokenTest::setup();
 
@@ -313,7 +313,7 @@ fn test_transfer_insufficient_balance() {
 }
 
 #[test]
-#[should_panic(expected = "Insufficient balance")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_burn_insufficient_balance() {
     let test = YieldTokenTest::setup();
 
@@ -334,11 +334,12 @@ fn test_zero_balance_user_can_claim() {
 
 /// A YT self-transfer must be a no-op on the balance.
 ///
-/// `transfer` reads `from_balance` before the accrual calls and `to_balance`
-/// after, then writes both. When `from == to` those are the same storage key, so
-/// the second write (`to_balance + amount`) simply overwrites the first
-/// (`from_balance - amount`) — minting `amount` YT out of nothing, and with it a
-/// claim on yield the yield manager never received backing for.
+/// The hand-rolled ledger this token used to carry read `from_balance` before
+/// the accrual calls and `to_balance` after, then wrote both; when `from == to`
+/// the second write overwrote the first and minted `amount` YT out of nothing,
+/// with a claim on yield the yield manager never received backing for. The
+/// ledger is OpenZeppelin's now, which debits before it reads the credit side;
+/// this pins that it stays so.
 #[test]
 fn self_transfer_does_not_inflate_balance() {
     let t = YieldTokenTest::setup();

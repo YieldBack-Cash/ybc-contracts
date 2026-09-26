@@ -1,72 +1,11 @@
 use crate::events::{ContractUpgraded, FeeConfigUpdated, MarketCreated, WasmHashesUpdated};
 use crate::storage;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
-};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String};
 use stellar_access::ownable::{self as ownable, Ownable};
 use stellar_macros::only_owner;
+pub use factory_interface::{FactoryTrait, FeeConfig, Market, WasmHashes};
 use yield_manager_interface::{VaultType, YieldManagerClient};
-
-#[contracttype]
-#[derive(Clone)]
-pub struct Market {
-    pub name: String,
-    pub ym: Address,
-    pub pt: Address,
-    pub yt: Address,
-    pub pool: Address,
-    pub maturity: u64,
-    pub vault: Address,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct WasmHashes {
-    pub pt: BytesN<32>,
-    pub yt: BytesN<32>,
-    pub ym: BytesN<32>,
-    pub amm: BytesN<32>,
-}
-
-/// Protocol fee configuration snapshotted into each market at creation.
-/// Changing it never reaches live markets — their pools bake the values in
-/// at construction and expose no setters.
-#[contracttype]
-#[derive(Clone)]
-pub struct FeeConfig {
-    /// Fee sink every new pool remits its reserve cut to.
-    pub treasury: Address,
-    /// Treasury's share of each trade's fee (1e7-scaled fraction of the fee,
-    /// e.g. `1_000_000` = 10% of the fee; not a share of the trade).
-    pub reserve_fee_rate: i128,
-}
-
-pub trait FactoryTrait {
-    fn __constructor(env: Env, admin: Address, wasm_hashes: WasmHashes, fee_config: FeeConfig);
-
-    fn create_market(
-        env: Env,
-        creator: Address,
-        vault: Address,
-        vault_type: VaultType,
-        maturity: u64,
-        current_apy: i128,
-        apy_min: i128,
-        apy_max: i128,
-        fee_apy: i128,
-    ) -> Market;
-
-    fn get_market(env: Env, vault: Address, maturity: u64) -> Option<Market>;
-    fn get_wasm_hashes(env: Env) -> WasmHashes;
-    fn get_fee_config(env: Env) -> FeeConfig;
-
-    // Ownership (get_owner / two-step transfer_ownership + accept_ownership /
-    // renounce_ownership) comes from the stellar-access Ownable impl below.
-    fn set_wasm_hashes(env: Env, new_hashes: WasmHashes);
-    fn set_fee_config(env: Env, new_config: FeeConfig);
-    fn upgrade(env: Env, new_wasm_hashes: BytesN<32>);
-}
 
 #[contract]
 pub struct Factory;

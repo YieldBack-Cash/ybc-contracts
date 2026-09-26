@@ -273,7 +273,7 @@ advance covers the rest of the mint and is repaid in PT.
 callback (`get_pool().require_auth()`), and every user-value movement is
 independently authenticated against `user`, so a direct caller impersonating the
 pool cannot mint or redeem against other depositors' V. The `rate` is passed as
-a hint into every **YT** call (`mint`, `burn_with_rate`, `transfer_with_rate`) so
+a hint into every **YT** call (`mint`, `burn_with_rate`) so
 the YT contract never calls *back* into the YM mid-callback — the host rejects
 that re-entry. PT takes no such hint; it holds no rate-dependent state.
 

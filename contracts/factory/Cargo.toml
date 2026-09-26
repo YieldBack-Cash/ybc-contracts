@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "factory"
 version = "0.1.0"
 edition = "2021"
@@ -12,6 +12,8 @@ soroban-sdk = { workspace = true }
 stellar-access = { workspace = true }
 stellar-macros = { workspace = true }
 yield_manager_interface = { path = "../yield/yield_manager_interface" }
+factory_interface = { workspace = true }
+ybc_common = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

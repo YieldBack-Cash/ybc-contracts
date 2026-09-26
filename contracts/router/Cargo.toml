@@ -9,6 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { workspace = true }
 amm-interface = { path = "../amm/amm-interface" }
+factory_interface = { workspace = true }
+ybc_common = { workspace = true }
 yield_manager_interface = { path = "../yield/yield_manager_interface" }
 yield_token_interface = { path = "../tokens/yield_token_interface" }
 vault_interface = { path = "../../vault/vault_interface" }

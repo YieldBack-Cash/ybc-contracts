@@ -31,6 +31,7 @@ dependencies = [
  "soroban-fixed-point-math",
  "soroban-sdk 26.1.1",
  "vault_interface",
+ "ybc_common",
  "yield_manager",
  "yield_manager_interface",
 ]
@@ -887,10 +888,20 @@ checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 name = "factory"
 version = "0.1.0"
 dependencies = [
+ "factory_interface",
  "mock_vault",
  "soroban-sdk 26.1.1",
  "stellar-access",
  "stellar-macros",
+ "ybc_common",
+ "yield_manager_interface",
+]
+
+[[package]]
+name = "factory_interface"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 26.1.1",
  "yield_manager_interface",
 ]
 
@@ -1411,7 +1422,8 @@ version = "0.1.0"
 dependencies = [
  "principal_token_interface",
  "soroban-sdk 26.1.1",
- "soroban-token-sdk 26.1.1",
+ "stellar-tokens",
+ "ybc_common",
 ]
 
 [[package]]
@@ -1419,7 +1431,7 @@ name = "principal_token_interface"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk 26.1.1",
- "soroban-token-sdk 25.3.2",
+ "soroban-token-sdk",
 ]
 
 [[package]]
@@ -1586,8 +1598,10 @@ name = "router"
 version = "0.1.0"
 dependencies = [
  "amm-interface",
+ "factory_interface",
  "soroban-sdk 26.1.1",
  "vault_interface",
+ "ybc_common",
  "yield_manager_interface",
  "yield_token_interface",
 ]
@@ -2169,15 +2183,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "soroban-token-sdk"
-version = "26.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88b1b97bcac81368bb3dd6a6fd7321f65ad1d6a5f16394a298ef5c2bd41d670"
-dependencies = [
- "soroban-sdk 26.1.1",
-]
-
-[[package]]
 name = "soroban-wasmi"
 version = "0.31.1-soroban.20.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2464,6 +2469,7 @@ dependencies = [
  "soroban-sdk 26.1.1",
  "stellar-access",
  "stellar-macros",
+ "ybc_common",
 ]
 
 [[package]]
@@ -2485,6 +2491,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "vault-common"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 26.1.1",
+ "stellar-tokens",
+]
+
+[[package]]
+name = "vault-testkit"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 26.1.1",
+ "vault-common",
+]
+
+[[package]]
 name = "vault-tests"
 version = "0.1.0"
 dependencies = [
@@ -2492,6 +2514,7 @@ dependencies = [
  "factory",
  "router",
  "soroban-sdk 26.1.1",
+ "vault-testkit",
  "yield_manager",
  "yield_manager_interface",
  "yield_token_interface",
@@ -2702,6 +2725,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "ybc_common"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 26.1.1",
+]
+
+[[package]]
 name = "yield_manager"
 version = "0.1.0"
 dependencies = [
@@ -2711,6 +2741,7 @@ dependencies = [
  "principal_token_interface",
  "soroban-sdk 26.1.1",
  "vault_interface",
+ "ybc_common",
  "yield_manager_interface",
  "yield_token",
  "yield_token_interface",
@@ -2730,8 +2761,9 @@ dependencies = [
  "mock_vault",
  "principal_token",
  "soroban-sdk 26.1.1",
- "soroban-token-sdk 26.1.1",
+ "stellar-tokens",
  "vault_interface",
+ "ybc_common",
  "yield_manager",
  "yield_manager_interface",
  "yield_token_interface",

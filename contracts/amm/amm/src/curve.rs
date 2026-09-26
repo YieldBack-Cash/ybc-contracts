@@ -37,7 +37,7 @@ pub(crate) fn compute_rate_anchor(
 
     // new_exchange_rate = exp(implied_rate * t)
     let new_exchange_rate =
-        math::implied_rate_to_exchange_rate(last_implied_rate, time_to_expiry_secs);
+        math::implied_rate_to_exchange_rate(last_implied_rate, time_to_expiry_secs)?;
 
     if new_exchange_rate <= 0 {
         return Err(AmmError::InvalidPoolState);
@@ -64,7 +64,7 @@ pub(crate) fn compute_rate_anchor(
         .ok_or(AmmError::MathOverflow)?
         / one_minus_p;
 
-    let ln_proportion = math::ln_fp(ratio, math::FP_SCALE);
+    let ln_proportion = math::ln_fp(ratio, math::FP_SCALE)?;
 
     let adjustment = ln_proportion
         .checked_mul(math::FP_SCALE)
@@ -148,7 +148,7 @@ pub(crate) fn get_exchange_rate_from_trade(
         .ok_or(AmmError::MathOverflow)?
         / one_minus_p;
 
-    let ln_proportion = math::ln_fp(ratio, math::FP_SCALE);
+    let ln_proportion = math::ln_fp(ratio, math::FP_SCALE)?;
 
     let adjustment = ln_proportion
         .checked_mul(math::FP_SCALE)
