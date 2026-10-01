@@ -1,6 +1,6 @@
 [package]
 name = "ybc_common"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "What every YBC core contract shares: TTL policy, fixed-point scale and the reserve-fee cap"
 
