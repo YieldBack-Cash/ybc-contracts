@@ -22,7 +22,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "amm"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "mock_vault",
@@ -35,7 +35,7 @@ dependencies = [
 
 [[package]]
 name = "amm-interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -743,7 +743,7 @@ checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 
 [[package]]
 name = "factory"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "factory_interface",
  "mock_vault",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "factory_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1023,7 +1023,7 @@ checksum = "8e04e2fd2b8188ea827b32ef11de88377086d690286ab35747ef7f9bf3ccb590"
 
 [[package]]
 name = "integration-tests"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm",
  "factory",
@@ -1127,7 +1127,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mock_vault"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
  "stellar-tokens",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "principal_token"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "principal_token_interface",
  "soroban-sdk",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "principal_token_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "factory_interface",
@@ -1878,7 +1878,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "standard_vault"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
  "stellar-tokens",
@@ -2093,7 +2093,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "treasury"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "mock_vault",
  "soroban-sdk",
@@ -2326,14 +2326,14 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "ybc_common"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "yield_manager"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "mock_vault",
@@ -2349,14 +2349,14 @@ dependencies = [
 
 [[package]]
 name = "yield_manager_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "yield_token"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "mock_vault",
  "principal_token",
@@ -2370,7 +2370,7 @@ dependencies = [
 
 [[package]]
 name = "yield_token_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]

@@ -22,7 +22,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "amm"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "mock_vault",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "amm-interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -754,7 +754,7 @@ checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 
 [[package]]
 name = "factory"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "factory_interface",
  "soroban-sdk",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "factory_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1140,7 +1140,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mock_vault"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
  "stellar-tokens",
@@ -1283,7 +1283,7 @@ dependencies = [
 
 [[package]]
 name = "principal_token_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1368,7 +1368,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "factory_interface",
@@ -2008,7 +2008,7 @@ checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "vault-common"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
  "stellar-tokens",
@@ -2016,7 +2016,7 @@ dependencies = [
 
 [[package]]
 name = "vault-testkit"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
  "vault-common",
@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "vault-tests"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm",
  "factory",
@@ -2209,14 +2209,14 @@ dependencies = [
 
 [[package]]
 name = "ybc_common"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "yield_manager"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amm-interface",
  "principal_token_interface",
@@ -2229,14 +2229,14 @@ dependencies = [
 
 [[package]]
 name = "yield_manager_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "yield_token_interface"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "soroban-sdk",
 ]
