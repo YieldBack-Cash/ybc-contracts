@@ -61,12 +61,12 @@ the hash is the contract's identity: `--optimize` and the two stamped
 metadata entries all change the bytes, so a build without them does not match
 the published release. The binaries land in `target/wasm32v1-none/release/`.
 
-The reference build is Linux, which is where the release workflow and the
-Stellar Expert verification run. A Linux build of a tagged commit reproduces
-the published hashes byte for byte. A Windows build reproduces eight of the
-nine; the factory comes out with its functions in a different order, which is
-the same program with a different hash. To check a release from Windows,
-compare against the GitHub Actions build rather than a local one.
+The reference build is the release workflow's, on Linux, which is also what
+the Stellar Expert verification rebuilds. At `v0.1.2` a local build on Linux
+or Windows reproduces all nine published hashes byte for byte. The layout of
+a binary is sensitive to the compiler's symbol hashes, which the crate
+version feeds, so if a local hash ever differs from a release, compare the
+GitHub Actions build of the same commit before suspecting the source.
 
 ### Test
 
