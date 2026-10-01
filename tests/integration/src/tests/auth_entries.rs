@@ -61,11 +61,15 @@ fn test_buy_yt_auth_entry_contains_only_user_chosen_values() {
 
     f.router_swap_v_for_yt(&f.user, yt_out, max_v_in);
 
-    assert_eq!(f.yt_balance(&f.user), yt_before + yt_out, "buy succeeds with only user-chosen signed values");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before + yt_out,
+        "buy succeeds with only user-chosen signed values"
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_buy_yt_auth_entry_wrong_amount_rejected() {
     let env = Env::default();
     let f = seeded(&env);
@@ -125,11 +129,15 @@ fn test_sell_yt_auth_entry_contains_only_user_chosen_values() {
 
     f.router_swap_yt_for_v(&f.user, yt_in, min_v_out);
 
-    assert_eq!(f.yt_balance(&f.user), yt_before - yt_in, "sell succeeds with only user-chosen signed values");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before - yt_in,
+        "sell succeeds with only user-chosen signed values"
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_sell_yt_auth_entry_wrong_amount_rejected() {
     let env = Env::default();
     let f = seeded(&env);

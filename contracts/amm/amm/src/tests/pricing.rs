@@ -1,3 +1,5 @@
+//! Curve pricing against time to expiry and the vault rate.
+
 use soroban_sdk::Env;
 
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
@@ -14,7 +16,9 @@ fn test_pt_converges_to_parity_near_expiry() {
     let f_early = AmmFixture::new(&env);
     f_early.deposit(&f_early.admin, 100_000_000, 100_000_000);
     let v_before = f_early.vault.balance(&f_early.user);
-    f_early.pool.swap_v_for_pt(&f_early.user, &pt_out, &100_000_000);
+    f_early
+        .pool
+        .swap_v_for_pt(&f_early.user, &pt_out, &100_000_000);
     let v_cost_early = v_before - f_early.vault.balance(&f_early.user);
 
     // Late trade — 1 day before expiry
@@ -24,25 +28,29 @@ fn test_pt_converges_to_parity_near_expiry() {
     f_late.deposit(&f_late.admin, 100_000_000, 100_000_000);
     f_late.set_time(env2.ledger().timestamp() + ONE_YEAR_SECS - 86_400);
     let v_before_late = f_late.vault.balance(&f_late.user);
-    f_late.pool.swap_v_for_pt(&f_late.user, &pt_out, &100_000_000);
+    f_late
+        .pool
+        .swap_v_for_pt(&f_late.user, &pt_out, &100_000_000);
     let v_cost_late = v_before_late - f_late.vault.balance(&f_late.user);
 
     assert!(
         v_cost_early < pt_out,
         "early: PT should trade below par, cost={} pt_out={}",
-        v_cost_early, pt_out,
+        v_cost_early,
+        pt_out,
     );
     assert!(
         v_cost_late > v_cost_early,
         "late cost should exceed early cost as PT converges to par: early={} late={}",
-        v_cost_early, v_cost_late,
+        v_cost_early,
+        v_cost_late,
     );
 }
 
-/// When the vault exchange rate doubles, the same number of shares buys fewer PT
-/// (because each share is now worth more underlying, shifting the curve).
+/// When the vault rate doubles, the same PT purchase costs fewer shares: each
+/// share is worth more underlying.
 #[test]
-fn test_higher_vault_rate_affects_pricing() {
+fn test_higher_vault_rate_lowers_share_cost() {
     let env = Env::default();
     env.mock_all_auths();
     let f = AmmFixture::new(&env);

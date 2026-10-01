@@ -6,7 +6,8 @@ use amm_interface::AmmError;
 /// The upper bound mirrors Pendle's `MAX_MARKET_PROPORTION` (96%): near p = 1 the
 /// `ln(p / (1 - p))` term diverges and PT prices above face value. The lower bound
 /// guards the V-heavy side, where integer truncation drives `proportion` (and then
-/// the ratio fed to `ln_fp`) to zero, which would panic and brick the pool.
+/// the ratio fed to `ln_fp`) to zero, which `ln_fp` rejects; the bound turns that
+/// into a clear `ProportionOutOfBounds` instead.
 pub(crate) const MIN_PROPORTION: i128 = math::FP_SCALE / 100; // 0.01
 pub(crate) const MAX_PROPORTION: i128 = 96 * math::FP_SCALE / 100; // 0.96
 
@@ -137,7 +138,7 @@ pub(crate) fn get_exchange_rate_from_trade(
     // construction: a PT-in trade larger than the pool total pushes it past
     // FP_SCALE, which would make one_minus_p negative. The MAX_PROPORTION bound
     // is what excludes that state — do not loosen it.
-    if proportion < MIN_PROPORTION || proportion > MAX_PROPORTION {
+    if !(MIN_PROPORTION..=MAX_PROPORTION).contains(&proportion) {
         return Err(AmmError::ProportionOutOfBounds);
     }
 
@@ -200,16 +201,9 @@ pub(crate) fn calc_trade(
     if rate_scalar <= 0
         || rate_anchor <= 0
         || fee_factor < math::FP_SCALE
-        || reserve_fee_rate < 0
-        || reserve_fee_rate > math::FP_SCALE
+        || !(0..=math::FP_SCALE).contains(&reserve_fee_rate)
     {
         return Err(AmmError::InvalidPoolState);
-    }
-
-    // Pendle-style liquidity check:
-    // if PT is going to the account, pool must still have PT left after the trade
-    if net_pt_to_account > 0 && reserve_pt <= net_pt_to_account {
-        return Err(AmmError::InsufficientPtLiquidity);
     }
 
     // 1) Pre-fee exchange rate from the POST-trade PT position.
@@ -246,7 +240,10 @@ pub(crate) fn calc_trade(
         let fee = actual_v_in
             .checked_sub(raw_v_in)
             .ok_or(AmmError::MathOverflow)?;
-        (actual_v_in.checked_neg().ok_or(AmmError::MathOverflow)?, fee)
+        (
+            actual_v_in.checked_neg().ok_or(AmmError::MathOverflow)?,
+            fee,
+        )
     } else {
         // pre_fee_v_to_account > 0 (user receives V out).
         let raw_v_out = pre_fee_v_to_account;
@@ -279,25 +276,39 @@ mod proportion_bounds_tests {
     #[test]
     fn balanced_trade_within_bounds_succeeds() {
         let rate =
-            get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, 1_000_000).unwrap();
+            get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, 1_000_000)
+                .unwrap();
         assert!(rate > 0);
     }
 
     #[test]
     fn trade_draining_pt_below_min_proportion_fails() {
-        // Post-trade PT = 500_000 vs V = 100_000_000 → proportion ≈ 0.5%, below the 1% floor.
-        // Without the bound this proportion truncates toward zero and panics inside ln_fp instead.
+        // Post-trade PT = 500_000 over the fixed 200_000_000 denominator → 0.25%, below
+        // the 1% floor. Without the bound `ln_fp` would see a zero ratio.
         assert_eq!(
-            get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 500_000),
+            get_exchange_rate_from_trade(
+                RESERVE,
+                RESERVE,
+                RATE_SCALAR,
+                RATE_ANCHOR,
+                RESERVE - 500_000
+            ),
             Err(AmmError::ProportionOutOfBounds)
         );
     }
 
     #[test]
     fn trade_pushing_pt_above_max_proportion_fails() {
-        // User sells PT in: post-trade PT = 2.5e9 vs V = 1e8 → proportion ≈ 96.2%, above the 96% cap.
+        // User sells PT in: post-trade PT = 2.5e9 over the 2e8 denominator → proportion 12.5,
+        // far above the 96% cap (and above 1.0, where `one_minus_p` would go negative).
         assert_eq!(
-            get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, -2_400_000_000),
+            get_exchange_rate_from_trade(
+                RESERVE,
+                RESERVE,
+                RATE_SCALAR,
+                RATE_ANCHOR,
+                -2_400_000_000
+            ),
             Err(AmmError::ProportionOutOfBounds)
         );
     }
@@ -325,7 +336,13 @@ mod proportion_bounds_tests {
         // Unguarded, that would store a negative implied rate and brick the pool;
         // the below-one guard must reject the trade instead.
         assert_eq!(
-            get_exchange_rate_from_trade(RESERVE, RESERVE, RATE_SCALAR, RATE_ANCHOR, RESERVE - 20_000_000),
+            get_exchange_rate_from_trade(
+                RESERVE,
+                RESERVE,
+                RATE_SCALAR,
+                RATE_ANCHOR,
+                RESERVE - 20_000_000
+            ),
             Err(AmmError::ExchangeRateBelowOne)
         );
     }

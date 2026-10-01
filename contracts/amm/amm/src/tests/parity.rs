@@ -1,13 +1,16 @@
-//! Pins `math::implied_rate_to_exchange_rate` to the JSON fixture the apps'
-//! parity test checks `protocol/protocol.ts`'s floating-point PT price against. Run with
-//! `YBC_WRITE_FIXTURES=1` to regenerate after changing the curve.
+//! Pins `math::implied_rate_to_exchange_rate` to
+//! `protocol/fixtures/pt_exchange_rate.json`, which the TypeScript parity test
+//! compares against `protocol/protocol.ts`. Set `YBC_WRITE_FIXTURES=1` to
+//! regenerate after changing the curve.
 
 extern crate std;
 use crate::math::implied_rate_to_exchange_rate;
 use std::{format, fs, path::PathBuf, string::String};
 
 // 1e7-scaled ln-space rates: 0, 0.01%, 1%, 5%, 10%, 20%, 50%, 100% a year.
-const RATES: [i128; 8] = [0, 1_000, 100_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000];
+const RATES: [i128; 8] = [
+    0, 1_000, 100_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000,
+];
 // One second, a day, a month, half a year, a year, two years.
 const SECS: [i128; 6] = [1, 86_400, 2_592_000, 15_768_000, 31_536_000, 63_072_000];
 

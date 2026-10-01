@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 mod fixture;
 mod zap_fixture;
 
@@ -7,9 +5,11 @@ mod auth;
 mod auth_entries;
 mod basic;
 mod exit_expired;
+mod guards;
 mod multi_market;
 mod proptests;
 mod rate_divergence;
+mod router_events;
 mod router_split;
 mod router_swaps;
 mod test_amm;

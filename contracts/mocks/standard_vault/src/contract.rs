@@ -38,10 +38,9 @@ impl StandardVault {
     //   * same address for every role → one signature, no allowance
     //   * operator acting for someone else → allowance required AND consumed
     //
-    // An earlier revision added `owner.require_auth()` on the delegated path.
-    // That was wrong twice over: it is stricter than either real vault, and it
-    // would turn a missing-allowance failure into a missing-signature one,
-    // hiding the error the router would actually hit.
+    // No `owner.require_auth()` on the delegated path: neither real vault
+    // requires it, and adding it would mask a missing-allowance failure as a
+    // missing-signature one.
 
     pub fn query_asset(e: &Env) -> Address {
         Vault::query_asset(e)

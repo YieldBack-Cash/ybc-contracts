@@ -2,6 +2,8 @@
 //
 // Rule: never call env.mock_all_auths() here. Each test proves that a specific
 // protected function rejects callers who have not provided the required auth.
+// The flash entry points are deliberately unauthenticated (the receiver, the
+// yield manager, authorises the user's leg), so they have no test here.
 
 use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal, String, Symbol};
 
@@ -19,11 +21,21 @@ fn register_pool(env: &Env) -> (Address, Address, Address) {
 
     let pt_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "PT"), String::from_str(env, "PT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "PT"),
+            String::from_str(env, "PT"),
+            7u32,
+        ),
     );
     let vault_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "Vault"), String::from_str(env, "VLT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "Vault"),
+            String::from_str(env, "VLT"),
+            7u32,
+        ),
     );
 
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
@@ -31,14 +43,25 @@ fn register_pool(env: &Env) -> (Address, Address, Address) {
     let treasury = Address::generate(env);
     let pool_addr = env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym, &treasury, 0i128),
+        (
+            &pt_addr,
+            &vault_addr,
+            expiry,
+            CURRENT_APY,
+            APY_MIN,
+            APY_MAX,
+            FEE_APY,
+            &ym,
+            &treasury,
+            0i128,
+        ),
     );
     (pt_addr, vault_addr, pool_addr)
 }
 
 /// AMM.deposit requires the liquidity provider to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_deposit_without_to_auth_reverts() {
     let env = Env::default();
     let (_pt, _vault, pool_addr) = register_pool(&env);
@@ -53,7 +76,7 @@ fn test_deposit_without_to_auth_reverts() {
 
 /// AMM.withdraw requires the LP share holder to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_withdraw_without_to_auth_reverts() {
     let env = Env::default();
     let (_pt, _vault, pool_addr) = register_pool(&env);
@@ -68,7 +91,7 @@ fn test_withdraw_without_to_auth_reverts() {
 
 /// AMM.swap_v_for_pt requires the swapper to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_swap_v_for_pt_without_to_auth_reverts() {
     let env = Env::default();
     let (_pt, _vault, pool_addr) = register_pool(&env);
@@ -83,7 +106,7 @@ fn test_swap_v_for_pt_without_to_auth_reverts() {
 
 /// AMM.swap_pt_for_v requires the swapper to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_swap_pt_for_v_without_to_auth_reverts() {
     let env = Env::default();
     let (_pt, _vault, pool_addr) = register_pool(&env);

@@ -26,7 +26,10 @@ fn test_exchange_rate_tracks_vault() {
         ().into_val(&f.env),
     );
 
-    assert!(updated > initial, "rate must increase when vault rate rises");
+    assert!(
+        updated > initial,
+        "rate must increase when vault rate rises"
+    );
 }
 
 /// The stored rate is a high-water mark — it never drops even if the vault rate falls.
@@ -118,7 +121,7 @@ fn test_redeem_principal_math_at_elevated_rate() {
     f.ym_deposit(&f.user, deposit_shares); // 15 PT + 15 YT minted
 
     f.vault.set_exchange_rate(&15_000_000); // rate → 1.5x
-    f.advance_time(ONE_YEAR_SECS + 1);     // lock rate at maturity
+    f.advance_time(ONE_YEAR_SECS + 1); // lock rate at maturity
 
     let pt = f.pt_balance(&f.user);
     let vault_before = f.vault.balance(&f.user);

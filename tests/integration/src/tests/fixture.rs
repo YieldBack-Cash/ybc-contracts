@@ -1,10 +1,12 @@
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, IntoVal, String, Symbol};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, IntoVal, String, Symbol,
+};
 
 use amm::LiquidityPoolClient;
 use factory::{Factory, FactoryClient, FeeConfig, Market, WasmHashes};
 use mock_vault::{MockVault, MockVaultClient};
 use router::RouterContract;
-use yield_manager::VaultType;
 
 // The factory deploys the market's contracts from compiled WASMs, exactly as
 // production does — so `stellar contract build` must run before these tests.
@@ -60,7 +62,12 @@ impl<'a> IntegrationFixture<'a> {
         // ── Vault ────────────────────────────────────────────────────────────
         let vault_addr = env.register(
             MockVault,
-            (&admin, String::from_str(env, "Mock Vault"), String::from_str(env, "MVT"), 7u32),
+            (
+                &admin,
+                String::from_str(env, "Mock Vault"),
+                String::from_str(env, "MVT"),
+                7u32,
+            ),
         );
         let vault = MockVaultClient::new(env, &vault_addr);
         // Default rate of 10_000_000 (1.0 in 1e7 fixed-point) gives convert_to_assets(SCALAR_7) = SCALAR_7,
@@ -89,7 +96,6 @@ impl<'a> IntegrationFixture<'a> {
         let market = factory.create_market(
             &admin,
             &vault_addr,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -127,13 +133,17 @@ impl<'a> IntegrationFixture<'a> {
     pub fn create_market_for_new_vault(&self, symbol: &str) -> (Address, Market) {
         let vault_addr = self.env.register(
             MockVault,
-            (&self.admin, String::from_str(&self.env, "Mock Vault"), String::from_str(&self.env, symbol), 7u32),
+            (
+                &self.admin,
+                String::from_str(&self.env, "Mock Vault"),
+                String::from_str(&self.env, symbol),
+                7u32,
+            ),
         );
         let maturity = self.env.ledger().timestamp() + ONE_YEAR_SECS;
         let market = self.factory.create_market(
             &self.user,
             &vault_addr,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -160,7 +170,6 @@ impl<'a> IntegrationFixture<'a> {
         self.factory.create_market(
             &self.user,
             vault,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -169,7 +178,7 @@ impl<'a> IntegrationFixture<'a> {
         )
     }
 
-    /// Deposit vault shares into yield_manager, returning PT minted.
+    /// Approve and deposit `shares` vault shares into the fixture's yield manager for `user`.
     pub fn ym_deposit(&self, user: &Address, shares: i128) {
         self.ym_deposit_to(&self.vault.address, &self.yield_manager, user, shares);
     }
@@ -207,7 +216,14 @@ impl<'a> IntegrationFixture<'a> {
 
     /// Approve and deposit PT + vault shares into the AMM.
     pub fn amm_deposit(&self, from: &Address, pt_amount: i128, v_amount: i128) {
-        self.amm_deposit_to(&self.vault.address, &self.pt, &self.pool.address, from, pt_amount, v_amount);
+        self.amm_deposit_to(
+            &self.vault.address,
+            &self.pt,
+            &self.pool.address,
+            from,
+            pt_amount,
+            v_amount,
+        );
     }
 
     /// Multi-market variant of `amm_deposit`: seed `pool` with `pt` + `vault` shares.

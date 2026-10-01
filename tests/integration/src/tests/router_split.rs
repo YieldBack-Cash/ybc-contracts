@@ -7,23 +7,26 @@
 //!
 //! The auth-entry tests below carry the weight. `split` is the only routed
 //! operation where the router grants an allowance on the caller's behalf, which
-//! is what keeps the YM's address out of the frontend — and it is the same shape
-//! that failed on testnet when an earlier `zap_asset_for_split` approved with a
-//! measured amount and `env.ledger().sequence()`. Here both arguments are the
-//! caller's own, which is the difference. See the header of `zap_auth_entries.rs`.
+//! is what keeps the YM's address out of the frontend; amount and expiry are
+//! both caller-chosen, so the tree is signable. See `zap_auth_entries.rs`.
 
 use soroban_sdk::testutils::{Ledger as _, MockAuth, MockAuthInvoke};
 use soroban_sdk::{Env, IntoVal};
 
 use super::zap_fixture::ZapFixture;
 
-/// Vault shares the user is holding in every test below, deposited up front.
+/// Base asset each test deposits into the vault on top of the fixture's
+/// leftover shares; `fund_shares` returns the resulting share balance.
 const SEED_ASSETS: i128 = 500_000_000;
 
 /// Gives `f.user` vault shares to split, and returns how many they hold.
 fn fund_shares(f: &ZapFixture) -> i128 {
-    standard_vault::StandardVaultClient::new(&f.env, &f.vault)
-        .deposit(&SEED_ASSETS, &f.user, &f.user, &f.user);
+    standard_vault::StandardVaultClient::new(&f.env, &f.vault).deposit(
+        &SEED_ASSETS,
+        &f.user,
+        &f.user,
+        &f.user,
+    );
     f.balance(&f.vault)
 }
 
@@ -65,8 +68,7 @@ fn split_leaves_no_residual_allowance() {
     f.router
         .split(&f.vault, &f.maturity, &f.user, &(shares / 2), &f.expiry());
 
-    let remaining =
-        soroban_sdk::token::TokenClient::new(&env, &f.vault).allowance(&f.user, &f.ym);
+    let remaining = soroban_sdk::token::TokenClient::new(&env, &f.vault).allowance(&f.user, &f.ym);
     assert_eq!(remaining, 0, "allowance outlived the deposit");
 }
 
@@ -77,7 +79,8 @@ fn split_rejects_a_non_positive_amount() {
     let f = ZapFixture::new(&env);
     fund_shares(&f);
 
-    f.router.split(&f.vault, &f.maturity, &f.user, &0, &f.expiry());
+    f.router
+        .split(&f.vault, &f.maturity, &f.user, &0, &f.expiry());
 }
 
 #[test]
@@ -88,8 +91,13 @@ fn split_rejects_an_unknown_market() {
     fund_shares(&f);
 
     // Same vault, a maturity the factory never recorded.
-    f.router
-        .split(&f.vault, &(f.maturity + 1), &f.user, &1_000_000, &f.expiry());
+    f.router.split(
+        &f.vault,
+        &(f.maturity + 1),
+        &f.user,
+        &1_000_000,
+        &f.expiry(),
+    );
 }
 
 // ── recombine ────────────────────────────────────────────────────────────────
@@ -108,8 +116,7 @@ fn recombine_returns_the_shares_split_in() {
     let minted = f.balance(&f.pt) - pt_before;
 
     let shares_before = f.balance(&f.vault);
-    f.router
-        .recombine(&f.vault, &f.maturity, &f.user, &minted);
+    f.router.recombine(&f.vault, &f.maturity, &f.user, &minted);
 
     let returned = f.balance(&f.vault) - shares_before;
     assert_eq!(f.balance(&f.pt), pt_before, "PT not fully burned");
@@ -136,7 +143,7 @@ fn recombine_rejects_a_non_positive_amount() {
 /// Past maturity the pair must go through `exit_expired` — recombining would
 /// burn YT for no extra shares.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn recombine_reverts_after_maturity() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -203,7 +210,7 @@ fn split_signs_only_caller_chosen_values() {
 /// A tree signed for a different split size must be rejected — otherwise the
 /// test above proves nothing about argument matching.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn split_rejects_a_tree_signed_for_another_amount() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -223,8 +230,13 @@ fn split_rejects_a_tree_signed_for_another_amount() {
         },
     }]);
 
-    f.router
-        .split(&f.vault, &f.maturity, &f.user, &actually_called_with, &expiry);
+    f.router.split(
+        &f.vault,
+        &f.maturity,
+        &f.user,
+        &actually_called_with,
+        &expiry,
+    );
 }
 
 /// `recombine` signs less still: no allowance, and the PT burn is the only

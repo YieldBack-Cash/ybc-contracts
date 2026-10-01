@@ -1,12 +1,10 @@
-#![cfg(test)]
-
 mod fixture;
 
-mod auth;
 mod accrual;
-mod flash;
+mod auth;
 mod deposit;
 mod exchange_rate;
+mod flash;
 mod initialization;
 mod redeem;
 mod surplus;

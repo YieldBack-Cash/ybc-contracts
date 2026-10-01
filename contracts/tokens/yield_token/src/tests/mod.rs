@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 mod fixture;
 pub use fixture::YieldTokenTest;
 

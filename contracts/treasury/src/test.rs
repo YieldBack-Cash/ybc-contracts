@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::{Treasury, TreasuryClient};
 use mock_vault::{MockVault, MockVaultClient};
 use soroban_sdk::{
@@ -99,7 +97,7 @@ fn withdraw_sac() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn withdraw_rejects_zero_amount() {
     let t = TreasuryTest::setup();
     let token = t.fund_with_vault_shares(1_000_0000000);
@@ -107,7 +105,7 @@ fn withdraw_rejects_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn withdraw_rejects_negative_amount() {
     let t = TreasuryTest::setup();
     let token = t.fund_with_vault_shares(1_000_0000000);
@@ -121,8 +119,14 @@ fn withdraw_more_than_balance_fails() {
     let sac_token = t.fund_with_sac(100);
     let recipient = Address::generate(&t.env);
 
-    assert!(t.treasury.try_withdraw(&vault_token, &recipient, &101).is_err());
-    assert!(t.treasury.try_withdraw(&sac_token, &recipient, &101).is_err());
+    assert!(t
+        .treasury
+        .try_withdraw(&vault_token, &recipient, &101)
+        .is_err());
+    assert!(t
+        .treasury
+        .try_withdraw(&sac_token, &recipient, &101)
+        .is_err());
 }
 
 #[test]
@@ -142,7 +146,8 @@ fn ownership_transfer_is_two_step() {
     let t = TreasuryTest::setup();
     let new_owner = Address::generate(&t.env);
 
-    t.treasury.transfer_ownership(&new_owner, &t.transfer_deadline());
+    t.treasury
+        .transfer_ownership(&new_owner, &t.transfer_deadline());
     // Proposal alone moves nothing.
     assert_eq!(t.treasury.get_owner(), Some(t.owner.clone()));
 
@@ -155,7 +160,8 @@ fn pending_transfer_can_be_cancelled() {
     let t = TreasuryTest::setup();
     let new_owner = Address::generate(&t.env);
 
-    t.treasury.transfer_ownership(&new_owner, &t.transfer_deadline());
+    t.treasury
+        .transfer_ownership(&new_owner, &t.transfer_deadline());
     // live_until_ledger = 0 cancels the pending transfer…
     t.treasury.transfer_ownership(&new_owner, &0);
 

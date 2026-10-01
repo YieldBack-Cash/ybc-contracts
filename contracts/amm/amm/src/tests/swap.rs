@@ -1,3 +1,5 @@
+//! The two spot swaps: direction, reserve movement, slippage bound and expiry.
+
 use soroban_sdk::Env;
 
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
@@ -40,7 +42,7 @@ fn test_swap_v_for_pt_updates_reserves() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #16)")]
 fn test_swap_v_for_pt_slippage_guard() {
     let env = Env::default();
     env.mock_all_auths();
@@ -51,7 +53,7 @@ fn test_swap_v_for_pt_slippage_guard() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_swap_v_for_pt_expired_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -103,7 +105,7 @@ fn test_swap_pt_for_v_updates_reserves() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #17)")]
 fn test_swap_pt_for_v_slippage_guard() {
     let env = Env::default();
     env.mock_all_auths();
@@ -114,7 +116,7 @@ fn test_swap_pt_for_v_slippage_guard() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_swap_pt_for_v_expired_panics() {
     let env = Env::default();
     env.mock_all_auths();

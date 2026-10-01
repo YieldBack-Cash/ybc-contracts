@@ -18,7 +18,10 @@ fn ym_deposit_asset_mints_pt_and_yt(f: &VaultStack) {
     assert_eq!(f.pt_balance(&user), minted);
     assert_eq!(f.yt_balance(&user), minted);
     assert_eq!(f.underlying_balance(&user), 0, "the whole amount went in");
-    assert!(f.vault_shares(&f.yield_manager) > 0, "YM custodies the shares");
+    assert!(
+        f.vault_shares(&f.yield_manager) > 0,
+        "YM custodies the shares"
+    );
     assert_eq!(f.vault_shares(&user), 0);
 }
 
@@ -33,11 +36,21 @@ fn ym_redeem_combined_to_asset_pays_the_underlying(f: &VaultStack) {
     let paid = f.ym().redeem_combined_to_asset(&user, &minted, &0);
 
     assert_eq!(f.underlying_balance(&user), paid);
-    assert!(paid <= amount, "no free value: paid {paid} > deposited {amount}");
-    assert!(paid >= amount - 2, "lost more than rounding: paid {paid} of {amount}");
+    assert!(
+        paid <= amount,
+        "no free value: paid {paid} > deposited {amount}"
+    );
+    assert!(
+        paid >= amount - 2,
+        "lost more than rounding: paid {paid} of {amount}"
+    );
     assert_eq!(f.pt_balance(&user), 0);
     assert_eq!(f.yt_balance(&user), 0);
-    assert_eq!(f.vault_shares(&f.yield_manager), 0, "YM holds nothing after a full exit");
+    assert_eq!(
+        f.vault_shares(&f.yield_manager),
+        0,
+        "YM holds nothing after a full exit"
+    );
 }
 
 /// The router's zap: the production entry point for "underlying in, PT + YT
@@ -55,7 +68,10 @@ fn router_zaps_underlying_to_split_and_back(f: &VaultStack) {
 
     let paid = f.router_zap_split_for_asset(&user, minted);
     assert_eq!(f.underlying_balance(&user), paid);
-    assert!(paid <= amount && paid >= amount - 2, "round trip paid {paid} of {amount}");
+    assert!(
+        paid <= amount && paid >= amount - 2,
+        "round trip paid {paid} of {amount}"
+    );
     assert_eq!(f.pt_balance(&user), 0);
     assert_eq!(f.yt_balance(&user), 0);
 }

@@ -1,20 +1,23 @@
 use amm_interface::AmmError;
 
-pub const FP_SCALE: i128 = 10_000_000; // 1e7
+/// The protocol's fixed-point scale (1e7), under the name the curve uses.
+pub const FP_SCALE: i128 = ybc_common::scale::SCALAR_7;
 
-// Every function here returns a typed error for an input outside its domain.
-// They used to assert: the release profile builds with `panic = "abort"` and
-// strips panic messages, so a tripped assertion reached a wallet as an
-// opaque trap, indistinguishable from any other. The callers guard these
+// The fallible functions return a typed error for an input outside their
+// domain, so a client sees `Error(Contract, #n)` rather than an opaque trap
+// (the release profile strips panic messages). The callers guard these
 // domains upstream, so none of the errors is reachable through a well-formed
-// trade; the point is that the guarantee is now in the types, not in a
-// comment asking callers to be careful.
+// trade. `mul_down` and `div_down` are unchecked and only ever fed bounded,
+// non-zero inputs.
+
+/// Seconds in the year the curve's rates are annualised over.
+pub const SECONDS_PER_YEAR: i128 = 365 * 24 * 3600;
 
 /// Fixed-point natural log.
 ///
 /// # Arguments
 /// - `x`: input value scaled by `scale` (i.e., real value × scale)
-/// - `scale`: precision base, e.g. 1_000_000 for 6 decimal places
+/// - `scale`: precision base; always `FP_SCALE` in this crate
 ///
 /// # Returns
 /// `ln(x / scale)` scaled by `scale`, or `InvalidPoolState` for `x <= 0`
@@ -25,7 +28,8 @@ pub fn ln_fp(x: i128, scale: i128) -> Result<i128, AmmError> {
         return Err(AmmError::InvalidPoolState);
     }
 
-    // ln(2) × SCALE, precomputed: 0.693147... × scale
+    // ln(2) × scale, to six places (0.693147). The last digit is below the
+    // curve's tolerance; kept as is so pricing bytes do not change.
     let ln2 = 693_147i128 * scale / 1_000_000i128;
 
     // Normalize: find k such that x / 2^k ∈ [scale, 2*scale)
@@ -61,12 +65,20 @@ pub fn ln_fp(x: i128, scale: i128) -> Result<i128, AmmError> {
     // Add back the normalization shift: k * ln(2)
     Ok(result + k * ln2)
 }
-const IMPLIED_RATE_TIME: i128 = 365 * 86_400;
 
 /// Converts a duration in seconds to years as a fixed-point value scaled by `FP_SCALE`.
 pub fn seconds_to_years(seconds: u64) -> i128 {
-    const SECONDS_PER_YEAR: u64 = 365 * 24 * 3600;
-    (seconds as i128 * FP_SCALE) / SECONDS_PER_YEAR as i128
+    (seconds as i128 * FP_SCALE) / SECONDS_PER_YEAR
+}
+
+/// `a * b / c`, floored, for the share arithmetic of liquidity events.
+/// `MathOverflow` when the product does not fit, `InvalidPoolState` for a
+/// zero divisor; neither is reachable with amounts a token can hold.
+pub fn mul_div(a: i128, b: i128, c: i128) -> Result<i128, AmmError> {
+    if c == 0 {
+        return Err(AmmError::InvalidPoolState);
+    }
+    Ok(a.checked_mul(b).ok_or(AmmError::MathOverflow)? / c)
 }
 
 /// Fixed-point multiply, rounded down: (a * b) / FP_SCALE
@@ -79,19 +91,21 @@ pub fn div_down(a: i128, b: i128) -> i128 {
     (a * FP_SCALE) / b
 }
 
-/// Fixed-point e^x via Taylor series, for non-negative 1e7-scaled x.
-/// Accurate for x up to ~2.0 (20_000_000); sufficient for typical implied rates.
-/// A negative exponent is a negative rate-time product, which no valid pool
-/// state produces: `InvalidPoolState`.
+/// Fixed-point e^x via a 20-term Taylor series, for non-negative 1e7-scaled x.
+/// Relative error below 1e-6 for x ≤ 5 (a 100% APY market about seven years
+/// out) and about 0.1% at x = 10. A negative exponent is a negative rate-time
+/// product, which no valid pool state produces: `InvalidPoolState`.
 pub fn exp_fp(x: i128) -> Result<i128, AmmError> {
     if x < 0 {
         return Err(AmmError::InvalidPoolState);
     }
     let mut result = FP_SCALE; // 1.0
-    let mut term = FP_SCALE;   // current term
+    let mut term = FP_SCALE; // current term
     for n in 1i128..=20 {
         term = term * x / (n * FP_SCALE);
-        if term == 0 { break; }
+        if term == 0 {
+            break;
+        }
         result += term;
     }
     Ok(result)
@@ -113,9 +127,13 @@ pub fn exchange_rate_to_implied_rate(exchange_rate: i128, t_years: i128) -> Resu
 /// Converts a 1e7-scaled ln implied rate and a time to expiry in seconds
 /// to a 1e7-scaled exchange rate: exchange_rate = e^(ln_implied_rate * t / 1_year)
 ///
-/// Errors as `exchange_rate_to_implied_rate` does, plus `MathOverflow` should
-/// the series ever return a rate below 1.0, which e^x for x >= 0 cannot.
-pub fn implied_rate_to_exchange_rate(ln_implied_rate: i128, time_to_expiry_secs: i128) -> Result<i128, AmmError> {
+/// `MarketExpired` for `time_to_expiry_secs <= 0`, `InvalidPoolState` for a
+/// negative rate, and `MathOverflow` should the series ever return a rate
+/// below 1.0, which e^x for x >= 0 cannot.
+pub fn implied_rate_to_exchange_rate(
+    ln_implied_rate: i128,
+    time_to_expiry_secs: i128,
+) -> Result<i128, AmmError> {
     if ln_implied_rate < 0 {
         return Err(AmmError::InvalidPoolState);
     }
@@ -123,7 +141,10 @@ pub fn implied_rate_to_exchange_rate(ln_implied_rate: i128, time_to_expiry_secs:
         return Err(AmmError::MarketExpired);
     }
 
-    let rt = div_down(mul_down(ln_implied_rate, time_to_expiry_secs), IMPLIED_RATE_TIME);
+    let rt = div_down(
+        mul_down(ln_implied_rate, time_to_expiry_secs),
+        SECONDS_PER_YEAR,
+    );
     let exchange_rate = exp_fp(rt)?;
 
     if exchange_rate < FP_SCALE {

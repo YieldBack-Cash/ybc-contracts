@@ -9,4 +9,3 @@ crate-type = ["rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
-yield_manager_interface = { path = "../../yield/yield_manager_interface" }

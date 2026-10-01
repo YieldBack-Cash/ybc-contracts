@@ -1,9 +1,6 @@
-#![cfg(test)]
-
 use crate::{
-    contract::Market,
     events::{ContractUpgraded, MarketCreated, WasmHashesUpdated},
-    Factory, FactoryClient, FeeConfig, WasmHashes,
+    Factory, FactoryClient, FactoryError, FeeConfig, Market, WasmHashes,
 };
 use mock_vault::{MockVault, MockVaultClient};
 use soroban_sdk::{
@@ -11,8 +8,8 @@ use soroban_sdk::{
     token::TokenClient,
     Address, Env, Event, String,
 };
-use yield_manager_interface::VaultType;
 
+// Real market contracts, built first by `stellar contract build` (see Makefile).
 mod ym_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_manager.wasm");
 }
@@ -52,14 +49,13 @@ impl FactoryTest {
         let env = Env::default();
         env.mock_all_auths();
 
-        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
         let user1 = Address::generate(&env);
 
-        // Deploy mock vault (not factory-deployed, use env.register)
         let vault_addr = env.register(
             MockVault,
             (
-                &admin,
+                &owner,
                 String::from_str(&env, "Mock Vault Token"),
                 String::from_str(&env, "MVT"),
                 7u32,
@@ -84,7 +80,7 @@ impl FactoryTest {
             treasury: treasury.clone(),
             reserve_fee_rate: RESERVE_FEE_RATE,
         };
-        let factory_addr = env.register(Factory, (&admin, wasm_hashes, fee_config));
+        let factory_addr = env.register(Factory, (&owner, wasm_hashes, fee_config));
         let factory = FactoryClient::new(&env, &factory_addr);
 
         FactoryTest {
@@ -97,13 +93,12 @@ impl FactoryTest {
         }
     }
 
-    // Creation is permissionless — user1, not the admin, creates every market
+    // Creation is permissionless — user1, not the owner, creates every market
     // in these tests.
     fn create_market(&self, maturity: u64) -> Market {
         self.factory.create_market(
             &self.user1,
             &self.vault_addr,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -125,15 +120,18 @@ impl FactoryTest {
 }
 
 #[test]
-fn test_getters_before_deployment() {
+fn test_get_market_none_before_creation() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    assert!(test.factory.get_market(&test.vault_addr, &maturity).is_none());
+    assert!(test
+        .factory
+        .get_market(&test.vault_addr, &maturity)
+        .is_none());
 }
 
 #[test]
-#[should_panic(expected = "maturity must be in the future")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_create_market_past_maturity_panics() {
     let test = FactoryTest::setup();
     test.advance_time(1000);
@@ -143,7 +141,7 @@ fn test_create_market_past_maturity_panics() {
 }
 
 #[test]
-#[should_panic(expected = "maturity must be in the future")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_create_market_maturity_now_panics() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp();
@@ -152,7 +150,7 @@ fn test_create_market_maturity_now_panics() {
 }
 
 #[test]
-#[should_panic(expected = "maturity too far in the future")]
+#[should_panic(expected = "Error(Contract, #3)")]
 fn test_create_market_maturity_beyond_horizon_panics() {
     let test = FactoryTest::setup();
     // e.g. a milliseconds-instead-of-seconds mistake lands far past 10 years
@@ -162,7 +160,7 @@ fn test_create_market_maturity_beyond_horizon_panics() {
 }
 
 #[test]
-fn test_deploy_yield_manager() {
+fn test_create_market_stores_and_wires_ym() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
@@ -197,12 +195,10 @@ fn test_ym_knows_its_tokens() {
     assert_eq!(ym_client.get_yield_token(), market.yt);
 }
 
-/// 2026-12-23T00:00:00Z: the maturity of the first markets on the ybc-vaults
-/// adapters, so the expected strings below are the ones live on testnet.
+/// 2026-12-23T00:00:00Z, a real maturity used on testnet; fixes the expected
+/// strings below.
 const DEC_23_2026: u64 = 1_797_984_000;
 
-/// Token names carry the maturity as a calendar date, in both name and
-/// symbol, so a wallet can tell two maturities on one vault apart.
 /// Moves the ledger to a month before `DEC_23_2026`, inside the factory's
 /// maturity horizon.
 fn set_clock_before_dec_2026(test: &FactoryTest) {
@@ -211,6 +207,8 @@ fn set_clock_before_dec_2026(test: &FactoryTest) {
         .with_mut(|li| li.timestamp = DEC_23_2026 - 30 * 24 * 60 * 60);
 }
 
+/// Token names carry the maturity as a calendar date, in both name and
+/// symbol, so a wallet can tell two maturities on one vault apart.
 #[test]
 fn test_deployed_pt_metadata() {
     let test = FactoryTest::setup();
@@ -218,8 +216,14 @@ fn test_deployed_pt_metadata() {
     let market = test.create_market(DEC_23_2026);
 
     let pt_token = TokenClient::new(&test.env, &market.pt);
-    assert_eq!(pt_token.name(), String::from_str(&test.env, "PT-MVT-23DEC2026"));
-    assert_eq!(pt_token.symbol(), String::from_str(&test.env, "PT-MVT-23DEC2026"));
+    assert_eq!(
+        pt_token.name(),
+        String::from_str(&test.env, "PT-MVT-23DEC2026")
+    );
+    assert_eq!(
+        pt_token.symbol(),
+        String::from_str(&test.env, "PT-MVT-23DEC2026")
+    );
     assert_eq!(pt_token.decimals(), 7);
     assert_eq!(market.name, String::from_str(&test.env, "MVT-23DEC2026"));
 }
@@ -231,8 +235,14 @@ fn test_deployed_yt_metadata() {
     let market = test.create_market(DEC_23_2026);
 
     let yt_token = TokenClient::new(&test.env, &market.yt);
-    assert_eq!(yt_token.name(), String::from_str(&test.env, "YT-MVT-23DEC2026"));
-    assert_eq!(yt_token.symbol(), String::from_str(&test.env, "YT-MVT-23DEC2026"));
+    assert_eq!(
+        yt_token.name(),
+        String::from_str(&test.env, "YT-MVT-23DEC2026")
+    );
+    assert_eq!(
+        yt_token.symbol(),
+        String::from_str(&test.env, "YT-MVT-23DEC2026")
+    );
     assert_eq!(yt_token.decimals(), 7);
 }
 
@@ -258,20 +268,16 @@ fn test_build_token_string_formats() {
     let env = Env::default();
     let symbol = String::from_str(&env, "bvXLM");
     assert_eq!(
-        build_token_string(&env, "PT-", &symbol, Some(DEC_23_2026)),
+        build_token_string(&env, "PT-", &symbol, DEC_23_2026),
         String::from_str(&env, "PT-bvXLM-23DEC2026")
     );
     assert_eq!(
-        build_token_string(&env, "", &symbol, Some(1_835_395_200)),
+        build_token_string(&env, "", &symbol, 1_835_395_200),
         String::from_str(&env, "bvXLM-29FEB2028")
     );
     assert_eq!(
-        build_token_string(&env, "YT-", &symbol, Some(0)),
+        build_token_string(&env, "YT-", &symbol, 0),
         String::from_str(&env, "YT-bvXLM-01JAN1970")
-    );
-    assert_eq!(
-        build_token_string(&env, "PT-", &symbol, None),
-        String::from_str(&env, "PT-bvXLM")
     );
 }
 
@@ -310,20 +316,11 @@ fn test_deposit_through_factory_deployed_contracts() {
 }
 
 #[test]
-fn test_create_market_deploys_working_pool() {
+fn test_new_pool_starts_empty() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
 
-    let market = test.factory.create_market(
-        &test.user1,
-        &test.vault_addr,
-        &VaultType::Vault4626,
-        &maturity,
-        &CURRENT_APY,
-        &APY_MIN,
-        &APY_MAX,
-        &FEE_APY,
-    );
+    let market = test.create_market(maturity);
 
     let pool_client = amm_wasm::Client::new(&test.env, &market.pool);
     assert_eq!(pool_client.get_reserves(), (0, 0));
@@ -345,12 +342,18 @@ fn test_second_market_same_vault_different_maturity_coexists() {
 
     // Both remain independently retrievable by their maturities — creating the
     // second did not overwrite the first.
-    assert_eq!(test.factory.get_market(&test.vault_addr, &m1).unwrap().pool, market1.pool);
-    assert_eq!(test.factory.get_market(&test.vault_addr, &m2).unwrap().pool, market2.pool);
+    assert_eq!(
+        test.factory.get_market(&test.vault_addr, &m1).unwrap().pool,
+        market1.pool
+    );
+    assert_eq!(
+        test.factory.get_market(&test.vault_addr, &m2).unwrap().pool,
+        market2.pool
+    );
 }
 
 #[test]
-#[should_panic(expected = "market already exists for this vault and maturity")]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn test_duplicate_market_same_maturity_panics() {
     let test = FactoryTest::setup();
     let maturity = test.env.ledger().timestamp() + 1000;
@@ -407,13 +410,13 @@ fn test_create_market_without_creator_auth_fails() {
     // rejected. Permissionless means anyone may create — not that creation
     // is unauthenticated.
     let env = Env::default();
-    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
     let creator = Address::generate(&env);
 
     let vault_addr = env.register(
         MockVault,
         (
-            &admin,
+            &owner,
             String::from_str(&env, "Mock Vault Token"),
             String::from_str(&env, "MVT"),
             7u32,
@@ -430,14 +433,13 @@ fn test_create_market_without_creator_auth_fails() {
         treasury: Address::generate(&env),
         reserve_fee_rate: RESERVE_FEE_RATE,
     };
-    let factory_addr = env.register(Factory, (&admin, wasm_hashes, fee_config));
+    let factory_addr = env.register(Factory, (&owner, wasm_hashes, fee_config));
     let factory = FactoryClient::new(&env, &factory_addr);
 
     let maturity = env.ledger().timestamp() + 1000;
     let result = factory.try_create_market(
         &creator,
         &vault_addr,
-        &VaultType::Vault4626,
         &maturity,
         &CURRENT_APY,
         &APY_MIN,
@@ -518,11 +520,17 @@ fn test_set_fee_config_rejects_out_of_range_rate() {
         treasury: test.treasury.clone(),
         reserve_fee_rate: 5_000_001, // above the 50%-of-fee cap
     });
-    assert!(result.is_err(), "rate above cap must be rejected");
+    // `set_fee_config` panics with the typed code rather than returning it.
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            FactoryError::ReserveFeeRateOutOfRange as u32
+        )))
+    );
 }
 
 #[test]
-fn test_set_fee_config_requires_admin_auth() {
+fn test_set_fee_config_requires_owner_auth() {
     let test = FactoryTest::setup();
     // Drop the blanket auth mock from setup: unauthenticated must fail.
     test.env.set_auths(&[]);

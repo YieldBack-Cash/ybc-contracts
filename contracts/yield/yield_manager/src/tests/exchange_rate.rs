@@ -1,3 +1,5 @@
+// The stored rate only ratchets up before maturity and freezes at maturity.
+
 use soroban_sdk::{IntoVal, Symbol};
 
 use super::fixture::YieldManagerTest;
@@ -51,7 +53,7 @@ fn test_exchange_rate_high_water_mark() {
         ().into_val(&test.env),
     );
 
-    // Should be locked at high water mark (1.5), not the decreased rate (1.2)
+    // Holds at the high-water mark (1.5); the drop to 1.2 is ignored.
     assert_eq!(rate_after_decrease, higher_rate);
     assert!(rate_after_decrease > 1_200_0000);
 }

@@ -1,19 +1,20 @@
+//! Balances, allowances, total supply and metadata are OpenZeppelin's
+//! (`stellar_tokens::fungible::Base`) and never appear here. What is here is
+//! the accrual layer: per holder, the rate they last settled at and the yield
+//! accrued since, in vault shares.
+
 use soroban_sdk::{contracttype, Address, Env};
 use ybc_common::ttl::extend_persistent_ttl;
-
-// Balances, allowances, total supply and metadata are OpenZeppelin's
-// (`stellar_tokens::fungible::Base`) and never appear here. What is here is
-// the accrual layer: per holder, the rate they last settled at and the yield
-// accrued since, in vault shares.
 
 pub use ybc_common::ttl::extend_instance_ttl;
 
 #[contracttype]
 pub enum DataKey {
-    /// The yield manager: the only address that may mint, and the source of
-    /// the exchange rate.
+    /// The yield manager: sole caller of `mint` and `burn_with_rate`, and the
+    /// source of the exchange rate.
     Admin,
-    /// The vault exchange rate the holder last settled at.
+    /// The vault exchange rate (`SCALAR_7`-scaled assets per share) the holder
+    /// last settled at; 0 means never settled.
     UserIndex(Address),
     /// Yield accrued since, in vault shares, awaiting `claim_yield`.
     AccruedYield(Address),

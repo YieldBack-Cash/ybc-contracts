@@ -15,11 +15,21 @@ fn register_pool(env: &Env, current_apy: i128, apy_min: i128, apy_max: i128, fee
 
     let pt_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "PT"), String::from_str(env, "PT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "PT"),
+            String::from_str(env, "PT"),
+            7u32,
+        ),
     );
     let vault_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "Vault"), String::from_str(env, "VLT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "Vault"),
+            String::from_str(env, "VLT"),
+            7u32,
+        ),
     );
 
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
@@ -27,7 +37,18 @@ fn register_pool(env: &Env, current_apy: i128, apy_min: i128, apy_max: i128, fee
     let treasury = Address::generate(env);
     env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, current_apy, apy_min, apy_max, fee_apy, &ym, &treasury, 0i128),
+        (
+            &pt_addr,
+            &vault_addr,
+            expiry,
+            current_apy,
+            apy_min,
+            apy_max,
+            fee_apy,
+            &ym,
+            &treasury,
+            0i128,
+        ),
     );
 }
 
@@ -39,18 +60,39 @@ fn test_valid_params_derive_expected_implied_rate() {
 
     let pt_addr = env.register(
         MockVault,
-        (&admin, String::from_str(&env, "PT"), String::from_str(&env, "PT"), 7u32),
+        (
+            &admin,
+            String::from_str(&env, "PT"),
+            String::from_str(&env, "PT"),
+            7u32,
+        ),
     );
     let vault_addr = env.register(
         MockVault,
-        (&admin, String::from_str(&env, "Vault"), String::from_str(&env, "VLT"), 7u32),
+        (
+            &admin,
+            String::from_str(&env, "Vault"),
+            String::from_str(&env, "VLT"),
+            7u32,
+        ),
     );
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
     let ym = Address::generate(&env);
     let treasury = Address::generate(&env);
     let pool_addr = env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym, &treasury, 0i128),
+        (
+            &pt_addr,
+            &vault_addr,
+            expiry,
+            CURRENT_APY,
+            APY_MIN,
+            APY_MAX,
+            FEE_APY,
+            &ym,
+            &treasury,
+            0i128,
+        ),
     );
     let pool = crate::contract::LiquidityPoolClient::new(&env, &pool_addr);
 

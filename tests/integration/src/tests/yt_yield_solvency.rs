@@ -1,17 +1,8 @@
-//! Proof-of-concept tests for the YT yield-accrual solvency bug.
-//!
-//! `YieldToken::accrue_yield` computes pending yield as
-//! `balance * (current_rate - old_index) / old_index`
-//! (contracts/tokens/yield_token/src/contract.rs), which is an amount in
-//! *asset* units. `claim_yield` then hands that number to the yield manager's
-//! `distribute_yield`, which pays it out in vault *shares*. Because one share
-//! is worth `rate / SCALAR_7` assets, the payout is inflated by the exchange
-//! rate whenever the vault rate exceeds 1.0 — the YM pays out principal backing
-//! as if it were yield.
-//!
-//! Both tests below assert the CORRECT (solvent) behaviour, so they fail on the
-//! current code and will pass once the accrual formula is fixed to
-//! `balance * (current_rate - old_index) * SCALAR_7 / (old_index * current_rate)`.
+//! YT yield-accrual solvency. `claim_yield` pays yield in vault shares at the
+//! current rate (`yield_token::math::pending_yield`), so a claim can never
+//! exceed the yield actually earned or draw on the principal backing other
+//! holders' PT. Both tests assert that bound; a formula that computed yield in
+//! asset units and paid it in shares would fail them at any rate above 1.0.
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
 

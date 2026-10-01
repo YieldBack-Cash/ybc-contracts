@@ -40,7 +40,11 @@ fn test_swap_v_for_pt_increases_pt_balance() {
 
     f.pool.swap_v_for_pt(&f.user, &pt_out, &(10 * SCALAR_7));
 
-    assert_eq!(f.pt_balance(&f.user), pt_before + pt_out, "user receives exact PT");
+    assert_eq!(
+        f.pt_balance(&f.user),
+        pt_before + pt_out,
+        "user receives exact PT"
+    );
 
     let (pt_res, v_res) = f.pool.get_reserves();
     assert_eq!(pt_res, POOL_SEED - pt_out, "pool PT reserve decreases");
@@ -48,7 +52,7 @@ fn test_swap_v_for_pt_increases_pt_balance() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #16)")]
 fn test_swap_v_for_pt_slippage_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -76,7 +80,7 @@ fn test_swap_pt_for_v_returns_vault_shares() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #17)")]
 fn test_swap_pt_for_v_slippage_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -99,6 +103,9 @@ fn test_withdraw_returns_both_tokens() {
     f.pool.withdraw(&f.user, &lp_shares, &0i128, &0i128);
 
     assert!(f.pt_balance(&f.user) > pt_before, "PT returned to LP");
-    assert!(f.vault.balance(&f.user) > v_before, "vault shares returned to LP");
+    assert!(
+        f.vault.balance(&f.user) > v_before,
+        "vault shares returned to LP"
+    );
     assert_eq!(f.pool.balance_shares(&f.user), 0, "all LP shares burned");
 }

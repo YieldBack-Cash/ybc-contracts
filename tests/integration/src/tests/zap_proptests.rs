@@ -41,23 +41,64 @@ const MAX_TOTAL_YIELD: i128 = 20_000_000_000;
 enum Step {
     // Buy side: the actor pays in the base asset, of which they always have
     // plenty, so absolute amounts work.
-    ZapAssetForPt { actor: u8, pt_out: i128, max_asset_in: i128 },
-    ZapAssetForYt { actor: u8, yt_out: i128, max_asset_in: i128 },
-    ZapAssetForSplit { actor: u8, asset_in: i128, min_tokens_out: i128 },
-    ZapAssetForLp { actor: u8, asset_in: i128, pt_pct: u8, min_lp_out: i128 },
+    ZapAssetForPt {
+        actor: u8,
+        pt_out: i128,
+        max_asset_in: i128,
+    },
+    ZapAssetForYt {
+        actor: u8,
+        yt_out: i128,
+        max_asset_in: i128,
+    },
+    ZapAssetForSplit {
+        actor: u8,
+        asset_in: i128,
+        min_tokens_out: i128,
+    },
+    ZapAssetForLp {
+        actor: u8,
+        asset_in: i128,
+        pt_pct: u8,
+        min_lp_out: i128,
+    },
 
     // Sell side: sized as a percentage of what the actor actually holds. See
     // `sell_pct()` for why.
-    ZapPtForAsset { actor: u8, pct: u8, min_asset_out: i128 },
-    ZapYtForAsset { actor: u8, pct: u8, min_asset_out: i128 },
-    ZapSplitForAsset { actor: u8, pct: u8, min_asset_out: i128 },
-    ZapLpForAsset { actor: u8, pct: u8, min_asset_out: i128 },
+    ZapPtForAsset {
+        actor: u8,
+        pct: u8,
+        min_asset_out: i128,
+    },
+    ZapYtForAsset {
+        actor: u8,
+        pct: u8,
+        min_asset_out: i128,
+    },
+    ZapSplitForAsset {
+        actor: u8,
+        pct: u8,
+        min_asset_out: i128,
+    },
+    ZapLpForAsset {
+        actor: u8,
+        pct: u8,
+        min_asset_out: i128,
+    },
     /// Post-maturity only; unwinds LP + PT + YT straight to the base asset.
-    ExitExpiredToAsset { actor: u8, pct: u8, min_asset_out: i128 },
+    ExitExpiredToAsset {
+        actor: u8,
+        pct: u8,
+        min_asset_out: i128,
+    },
 
-    AdvanceTime { secs: u64 },
+    AdvanceTime {
+        secs: u64,
+    },
     /// The only way this vault's rate can move: more underlying arrives.
-    AccrueYield { amount: i128 },
+    AccrueYield {
+        amount: i128,
+    },
 }
 
 impl Step {
@@ -141,7 +182,11 @@ impl<'a> ZapHarness<'a> {
         let f = &self.f;
 
         match step {
-            Step::ZapAssetForPt { actor, pt_out, max_asset_in } => {
+            Step::ZapAssetForPt {
+                actor,
+                pt_out,
+                max_asset_in,
+            } => {
                 let who = self.actor(actor);
                 // max_v_in is the pool-side bound, pulled in full and refunded.
                 // Half the deposit's nominal share value keeps it fundable while
@@ -149,27 +194,58 @@ impl<'a> ZapHarness<'a> {
                 let max_v_in = (max_asset_in / 2).max(1);
                 self.try_router(
                     "zap_asset_for_pt",
-                    (&vault, maturity, &who, pt_out, max_asset_in, max_v_in, SWEEP, expiry)
+                    (
+                        &vault,
+                        maturity,
+                        &who,
+                        pt_out,
+                        max_asset_in,
+                        max_v_in,
+                        SWEEP,
+                        expiry,
+                    )
                         .into_val(e),
                 );
             }
-            Step::ZapAssetForYt { actor, yt_out, max_asset_in } => {
+            Step::ZapAssetForYt {
+                actor,
+                yt_out,
+                max_asset_in,
+            } => {
                 let who = self.actor(actor);
                 let max_v_in = (max_asset_in / 2).max(1);
                 self.try_router(
                     "zap_asset_for_yt",
-                    (&vault, maturity, &who, yt_out, max_asset_in, max_v_in, SWEEP, expiry)
+                    (
+                        &vault,
+                        maturity,
+                        &who,
+                        yt_out,
+                        max_asset_in,
+                        max_v_in,
+                        SWEEP,
+                        expiry,
+                    )
                         .into_val(e),
                 );
             }
-            Step::ZapAssetForSplit { actor, asset_in, min_tokens_out } => {
+            Step::ZapAssetForSplit {
+                actor,
+                asset_in,
+                min_tokens_out,
+            } => {
                 let who = self.actor(actor);
                 self.try_router(
                     "zap_asset_for_split",
                     (&vault, maturity, &who, asset_in, min_tokens_out).into_val(e),
                 );
             }
-            Step::ZapAssetForLp { actor, asset_in, pt_pct, min_lp_out } => {
+            Step::ZapAssetForLp {
+                actor,
+                asset_in,
+                pt_pct,
+                min_lp_out,
+            } => {
                 let who = self.actor(actor);
                 // Spending roughly half the deposit on PT is what lands near the
                 // pool's ratio; an absolute amount almost never does, so the
@@ -186,7 +262,11 @@ impl<'a> ZapHarness<'a> {
                         .into_val(e),
                 );
             }
-            Step::ZapPtForAsset { actor, pct, min_asset_out } => {
+            Step::ZapPtForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            } => {
                 let who = self.actor(actor);
                 let pt_in = portion(f.balance_of(&f.pt, &who), pct);
                 self.try_router(
@@ -194,7 +274,11 @@ impl<'a> ZapHarness<'a> {
                     (&vault, maturity, &who, pt_in, min_asset_out, SWEEP, expiry).into_val(e),
                 );
             }
-            Step::ZapYtForAsset { actor, pct, min_asset_out } => {
+            Step::ZapYtForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            } => {
                 let who = self.actor(actor);
                 let yt_in = portion(f.balance_of(&f.yt, &who), pct);
                 self.try_router(
@@ -202,30 +286,49 @@ impl<'a> ZapHarness<'a> {
                     (&vault, maturity, &who, yt_in, min_asset_out, SWEEP, expiry).into_val(e),
                 );
             }
-            Step::ZapSplitForAsset { actor, pct, min_asset_out } => {
+            Step::ZapSplitForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            } => {
                 let who = self.actor(actor);
                 // Recombining burns PT and YT together, so the position is
                 // whichever leg is smaller.
-                let pair = f
-                    .balance_of(&f.pt, &who)
-                    .min(f.balance_of(&f.yt, &who));
+                let pair = f.balance_of(&f.pt, &who).min(f.balance_of(&f.yt, &who));
                 let amount = portion(pair, pct);
                 self.try_router(
                     "zap_split_for_asset",
                     (&vault, maturity, &who, amount, min_asset_out).into_val(e),
                 );
             }
-            Step::ZapLpForAsset { actor, pct, min_asset_out } => {
+            Step::ZapLpForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            } => {
                 let who = self.actor(actor);
                 let lp_shares = portion(f.pool.balance_shares(&who), pct);
                 let pt_to_sell = portion(f.balance_of(&f.pt, &who), pct);
                 self.try_router(
                     "zap_lp_for_asset",
-                    (&vault, maturity, &who, lp_shares, pt_to_sell, min_asset_out, SWEEP, expiry)
+                    (
+                        &vault,
+                        maturity,
+                        &who,
+                        lp_shares,
+                        pt_to_sell,
+                        min_asset_out,
+                        SWEEP,
+                        expiry,
+                    )
                         .into_val(e),
                 );
             }
-            Step::ExitExpiredToAsset { actor, pct, min_asset_out } => {
+            Step::ExitExpiredToAsset {
+                actor,
+                pct,
+                min_asset_out,
+            } => {
                 let who = self.actor(actor);
                 let lp_shares = portion(f.pool.balance_shares(&who), pct);
                 // The exit redeems PT without a paired YT burn and claims yield
@@ -236,7 +339,14 @@ impl<'a> ZapHarness<'a> {
                 let ok = self.try_router(
                     "exit_expired_to_asset",
                     (
-                        &vault, maturity, &who, lp_shares, SWEEP, expiry, min_asset_out, SWEEP,
+                        &vault,
+                        maturity,
+                        &who,
+                        lp_shares,
+                        SWEEP,
+                        expiry,
+                        min_asset_out,
+                        SWEEP,
                         expiry,
                     )
                         .into_val(e),
@@ -268,11 +378,31 @@ impl<'a> ZapHarness<'a> {
         //    end every operation holding none of the five things that pass
         //    through it — the base asset most of all, since that is the one the
         //    zaps introduce.
-        assert_eq!(f.balance_of(&f.asset, &f.router.address), 0, "router retained asset");
-        assert_eq!(f.balance_of(&f.vault, &f.router.address), 0, "router retained V");
-        assert_eq!(f.balance_of(&f.pt, &f.router.address), 0, "router retained PT");
-        assert_eq!(f.balance_of(&f.yt, &f.router.address), 0, "router retained YT");
-        assert_eq!(f.pool.balance_shares(&f.router.address), 0, "router retained LP shares");
+        assert_eq!(
+            f.balance_of(&f.asset, &f.router.address),
+            0,
+            "router retained asset"
+        );
+        assert_eq!(
+            f.balance_of(&f.vault, &f.router.address),
+            0,
+            "router retained V"
+        );
+        assert_eq!(
+            f.balance_of(&f.pt, &f.router.address),
+            0,
+            "router retained PT"
+        );
+        assert_eq!(
+            f.balance_of(&f.yt, &f.router.address),
+            0,
+            "router retained YT"
+        );
+        assert_eq!(
+            f.pool.balance_shares(&f.router.address),
+            0,
+            "router retained LP shares"
+        );
 
         // 2. Base-asset conservation. Only the harness mints, so the total
         //    across every holder — including the vault, which custodies the
@@ -290,8 +420,16 @@ impl<'a> ZapHarness<'a> {
 
         // 3. Reserves match balances, including across flash swaps.
         let (reserve_pt, reserve_v) = f.pool.get_reserves();
-        assert_eq!(reserve_pt, f.balance_of(&f.pt, &f.pool.address), "PT reserve diverged");
-        assert_eq!(reserve_v, f.balance_of(&f.vault, &f.pool.address), "V reserve diverged");
+        assert_eq!(
+            reserve_pt,
+            f.balance_of(&f.pt, &f.pool.address),
+            "PT reserve diverged"
+        );
+        assert_eq!(
+            reserve_v,
+            f.balance_of(&f.vault, &f.pool.address),
+            "V reserve diverged"
+        );
         assert!(reserve_pt > 0 && reserve_v > 0, "pool drained");
 
         // 4. PT and YT mint and burn in pairs until a post-maturity path burns
@@ -420,16 +558,28 @@ fn time_step() -> impl Strategy<Value = u64> {
 fn step() -> impl Strategy<Value = Step> {
     let actor = any::<u8>();
     prop_oneof![
-        (actor.clone(), amount(), max_bound()).prop_map(|(actor, pt_out, max_asset_in)| {
-            Step::ZapAssetForPt { actor, pt_out, max_asset_in }
+        (actor, amount(), max_bound()).prop_map(|(actor, pt_out, max_asset_in)| {
+            Step::ZapAssetForPt {
+                actor,
+                pt_out,
+                max_asset_in,
+            }
         }),
-        (actor.clone(), amount(), max_bound()).prop_map(|(actor, yt_out, max_asset_in)| {
-            Step::ZapAssetForYt { actor, yt_out, max_asset_in }
+        (actor, amount(), max_bound()).prop_map(|(actor, yt_out, max_asset_in)| {
+            Step::ZapAssetForYt {
+                actor,
+                yt_out,
+                max_asset_in,
+            }
         }),
-        (actor.clone(), amount(), min_bound()).prop_map(|(actor, asset_in, min_tokens_out)| {
-            Step::ZapAssetForSplit { actor, asset_in, min_tokens_out }
+        (actor, amount(), min_bound()).prop_map(|(actor, asset_in, min_tokens_out)| {
+            Step::ZapAssetForSplit {
+                actor,
+                asset_in,
+                min_tokens_out,
+            }
         }),
-        (actor.clone(), amount(), sell_pct(), min_bound()).prop_map(
+        (actor, amount(), sell_pct(), min_bound()).prop_map(
             |(actor, asset_in, pt_pct, min_lp_out)| Step::ZapAssetForLp {
                 actor,
                 asset_in,
@@ -437,20 +587,40 @@ fn step() -> impl Strategy<Value = Step> {
                 min_lp_out
             }
         ),
-        (actor.clone(), sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
-            Step::ZapPtForAsset { actor, pct, min_asset_out }
+        (actor, sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
+            Step::ZapPtForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            }
         }),
-        (actor.clone(), sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
-            Step::ZapYtForAsset { actor, pct, min_asset_out }
+        (actor, sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
+            Step::ZapYtForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            }
         }),
-        (actor.clone(), sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
-            Step::ZapSplitForAsset { actor, pct, min_asset_out }
+        (actor, sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
+            Step::ZapSplitForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            }
         }),
-        (actor.clone(), sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
-            Step::ZapLpForAsset { actor, pct, min_asset_out }
+        (actor, sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
+            Step::ZapLpForAsset {
+                actor,
+                pct,
+                min_asset_out,
+            }
         }),
-        (actor.clone(), sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
-            Step::ExitExpiredToAsset { actor, pct, min_asset_out }
+        (actor, sell_pct(), min_bound()).prop_map(|(actor, pct, min_asset_out)| {
+            Step::ExitExpiredToAsset {
+                actor,
+                pct,
+                min_asset_out,
+            }
         }),
         time_step().prop_map(|secs| Step::AdvanceTime { secs }),
         (0i128..=2_000_000_000i128).prop_map(|amount| Step::AccrueYield { amount }),

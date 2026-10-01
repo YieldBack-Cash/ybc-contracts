@@ -6,15 +6,10 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["contract"]
-contract = []
-
 [dependencies]
 soroban-sdk = { workspace = true }
-vault_interface = { path = "../../../vault/vault_interface" }
 stellar-tokens = { workspace = true }
-stellar-macros = { workspace = true }
+ybc_common = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

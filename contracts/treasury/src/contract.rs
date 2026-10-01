@@ -1,8 +1,21 @@
 use crate::events::{ContractUpgraded, Withdrawal};
 use crate::storage;
-use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, BytesN, Env};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, token::TokenClient, Address, BytesN,
+    Env,
+};
 use stellar_access::ownable::{self as ownable, Ownable};
 use stellar_macros::only_owner;
+
+/// Every way a treasury call can fail on its own checks. Ownership failures
+/// carry OpenZeppelin's codes (2100 and up).
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TreasuryError {
+    /// A withdrawal of zero or less.
+    InvalidAmount = 1,
+}
 
 /// Passive sink for protocol fees.
 ///
@@ -44,7 +57,9 @@ impl TreasuryTrait for Treasury {
     fn withdraw(env: Env, token: Address, to: Address, amount: i128) {
         storage::extend_instance_ttl(&env);
 
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            panic_with_error!(&env, TreasuryError::InvalidAmount);
+        }
 
         TokenClient::new(&env, &token).transfer(&env.current_contract_address(), &to, &amount);
 

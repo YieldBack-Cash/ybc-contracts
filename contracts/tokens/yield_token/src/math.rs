@@ -2,13 +2,13 @@
 //! (`protocol/protocol.ts`) reproduces it to show pending yield before a claim, and
 //! `fixtures/yt_pending_yield.json` is what keeps the two in step.
 
-pub const SCALAR_7: i128 = 1_0000000;
+use ybc_common::scale::SCALAR_7;
 
 /// Vault shares owed to a holder of `balance` YT (asset-denominated) since
 /// they last settled at `old_index`, now that the rate is `current_rate`.
 ///
 /// `balance * (current_rate - old_index) / old_index` is the accrued yield in
-/// ASSET units; it is paid out in shares at the current price, hence the
+/// asset units; it is paid out in shares at the current price, hence the
 /// division by `current_rate` (rescaled by `SCALAR_7`). Floors, so the payout
 /// rounds down and the yield manager keeps a dust surplus. Zero when nothing
 /// has accrued or the inputs are degenerate.
@@ -52,13 +52,19 @@ mod parity {
                 }
             }
         }
-        format!("[
+        format!(
+            "[
 {}
 ]
-", rows.join(",
-"))
+",
+            rows.join(
+                ",
+"
+            )
+        )
     }
 
+    /// Skips (passes) when the `protocol/` tree is not checked out.
     #[test]
     fn typescript_fixture_matches() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

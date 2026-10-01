@@ -19,7 +19,6 @@ use amm::LiquidityPoolClient;
 use factory::{Factory, FactoryClient, FeeConfig, WasmHashes};
 use router::{RouterClient, RouterContract};
 use standard_vault::{StandardVault, StandardVaultClient};
-use yield_manager::VaultType;
 
 mod ym_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/yield_manager.wasm");
@@ -103,12 +102,13 @@ impl<'a> ZapFixture<'a> {
             treasury: Address::generate(env),
             reserve_fee_rate: 0,
         };
-        let factory =
-            FactoryClient::new(env, &env.register(Factory, (&admin, wasm_hashes, fee_config)));
+        let factory = FactoryClient::new(
+            env,
+            &env.register(Factory, (&admin, wasm_hashes, fee_config)),
+        );
         let market = factory.create_market(
             &admin,
             &vault,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -161,7 +161,13 @@ impl<'a> ZapFixture<'a> {
         self.approve_for(&self.user, token_addr, spender, amount);
     }
 
-    pub fn approve_for(&self, who: &Address, token_addr: &Address, spender: &Address, amount: i128) {
+    pub fn approve_for(
+        &self,
+        who: &Address,
+        token_addr: &Address,
+        spender: &Address,
+        amount: i128,
+    ) {
         token::TokenClient::new(&self.env, token_addr).approve(
             who,
             spender,

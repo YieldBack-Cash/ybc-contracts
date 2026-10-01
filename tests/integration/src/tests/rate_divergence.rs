@@ -9,19 +9,10 @@
 //! a direct vault read follows it down. That divergence is by design and these
 //! tests still assert it — what changed is which number the AMM follows.
 //!
-//! Before the fix the pool read `convert_to_assets` off the vault, so a
-//! drawdown left it valuing PT face at the depressed rate while the YM would
-//! only ever redeem at the high-water mark. The pool overpaid for PT, and
-//! anyone could mint PT at the YM's rate and sell it at the pool's:
-//!
-//! ```text
-//!   7.3% vault loss:  +760bp on stake, plus the whole YT leg free
-//!   1%   vault loss:  +78bp,           plus the whole YT leg free
-//! ```
-//!
-//! Now the pool reads the YM, and a vault loss changes nothing about what a
-//! round trip pays — `a_vault_loss_no_longer_changes_the_round_trip` pins that
-//! as an exact equality against the healthy-market case.
+//! If the pool priced against the vault's rate instead, a drawdown would let
+//! anyone mint PT at the YM's rate and sell it to the pool at a premium of
+//! roughly the drawdown. `a_vault_loss_does_not_change_the_round_trip` pins the
+//! round trip as an exact equality against the healthy market.
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
@@ -58,7 +49,11 @@ fn diverged_market(f: &IntegrationFixture, hwm: i128, live: i128) -> Address {
 
     f.vault.set_exchange_rate(&hwm);
     // Touch the YM so the high-water mark actually records `hwm`.
-    assert_eq!(f.ym_exchange_rate(), hwm, "YM should have taken the new high");
+    assert_eq!(
+        f.ym_exchange_rate(),
+        hwm,
+        "YM should have taken the new high"
+    );
 
     // The vault takes a loss.
     f.vault.set_exchange_rate(&live);
@@ -98,7 +93,7 @@ fn mint_and_dump_profit(hwm: i128, live: i128) -> i128 {
 /// The YM and the vault still diverge after a loss — that part is deliberate and
 /// unchanged. The high-water mark is what makes PT a fixed claim.
 #[test]
-fn the_ym_still_high_water_marks_against_the_vault() {
+fn the_ym_high_water_marks_against_the_vault() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
     diverged_market(&f, HWM, LIVE_AFTER_LOSS);
@@ -114,14 +109,10 @@ fn the_ym_still_high_water_marks_against_the_vault() {
 /// pool ever reads the vault's rate again, these numbers separate immediately
 /// and by roughly the size of the drawdown.
 #[test]
-fn a_vault_loss_no_longer_changes_the_round_trip() {
+fn a_vault_loss_does_not_change_the_round_trip() {
     let healthy = mint_and_dump_profit(HWM, HWM);
     let after_loss = mint_and_dump_profit(HWM, LIVE_AFTER_LOSS);
     let after_small_loss = mint_and_dump_profit(HWM, LIVE_SMALL_LOSS);
-
-    std::println!(
-        "round trip — healthy {healthy}, 7.3% loss {after_loss}, 1% loss {after_small_loss}"
-    );
 
     assert!(
         healthy < 0,
@@ -149,7 +140,6 @@ fn mint_and_dump_never_pays() {
         ("30% loss", HWM * 70 / 100),
     ] {
         let profit = mint_and_dump_profit(HWM, live);
-        std::println!("mint-and-dump under {label}: {profit}");
         assert!(
             profit < 0,
             "mint-and-dump paid {profit} under {label} — the pool is mispricing PT"
@@ -157,10 +147,9 @@ fn mint_and_dump_never_pays() {
     }
 }
 
-/// Buying YT used to revert through a drawdown: the pool advanced V priced at
-/// the vault's rate while the YM sized the mint at the high-water mark, so
-/// `user_cost` went negative and `assert!(user_cost > 0)` fired. With one rate
-/// there is nothing to diverge and the zap works.
+/// Buying YT through a drawdown must succeed: the pool prices its V advance and
+/// the YM sizes the mint off the same rate, so `user_cost` stays positive
+/// (`NonPositiveYtCost` cannot fire).
 #[test]
 fn buying_yt_works_through_a_vault_loss() {
     let env = Env::default();
@@ -171,8 +160,8 @@ fn buying_yt_works_through_a_vault_loss() {
     assert!(f.yt_balance(&actor) >= 50_000_000, "bought YT");
 }
 
-/// The mirror image: selling YT used to fail `assert!(shares_returned >= v_owed)`
-/// on the same condition that made mint-and-dump profitable.
+/// The mirror image: the redeemed shares cover what the pool is owed
+/// (`RedeemBelowOwed` cannot fire).
 #[test]
 fn selling_yt_works_through_a_vault_loss() {
     let env = Env::default();

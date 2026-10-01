@@ -1,4 +1,4 @@
-use soroban_sdk::Env;
+use soroban_sdk::{testutils::Address as _, token::TokenClient, Address, Env};
 
 use super::fixture::{IntegrationFixture, ONE_YEAR_SECS};
 
@@ -31,10 +31,17 @@ fn test_router_swap_yt_for_v() {
     f.router_swap_yt_for_v(&f.user, yt_in, 1);
 
     // User burned YT and received some V.
-    assert_eq!(f.yt_balance(&f.user), yt_before - yt_in, "user's YT decreases by yt_in");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before - yt_in,
+        "user's YT decreases by yt_in"
+    );
     let v_received = f.vault.balance(&f.user) - v_before;
     assert!(v_received > 0, "user receives V");
-    assert!(v_received < yt_in, "received V is below face value (PT leg priced at a discount)");
+    assert!(
+        v_received < yt_in,
+        "received V is below face value (PT leg priced at a discount)"
+    );
 
     // Pool: PT reserve fell by exactly the borrowed-then-burned amount; V reserve grew.
     let (pt_res, v_res) = f.pool.get_reserves();
@@ -42,11 +49,15 @@ fn test_router_swap_yt_for_v() {
     assert!(v_res > POOL_V, "pool V reserve grew by the repayment");
 
     // Conservation: the redeemed V (yt_in at the 1:1 YM rate) splits between the user and the pool.
-    assert_eq!(v_received + (v_res - POOL_V), yt_in, "redeemed V split between user and pool");
+    assert_eq!(
+        v_received + (v_res - POOL_V),
+        yt_in,
+        "redeemed V split between user and pool"
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_router_swap_yt_for_v_slippage_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -55,20 +66,17 @@ fn test_router_swap_yt_for_v_slippage_reverts() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_router_swap_yt_for_v_zero_reverts() {
     let env = Env::default();
     let f = seeded(&env);
     f.router_swap_yt_for_v(&f.user, 0, 1);
 }
 
-/// When the vault rate rises, the pool needs fewer (but more valuable) shares
-/// to cover the same PT price, so the user keeps a larger slice of the redeemed
-/// position.
-///
-///   shares returned by YM  = yt_in  (fixed — YM redeems 1:1 at its stored rate)
-///   shares owed to pool     = curve_price_in_assets / vault_rate  (halves as rate doubles)
-///   shares kept by user     = returned − owed  (grows)
+/// At a higher vault rate both legs shrink in share terms: the YM redeems
+/// `yt_in` face for `yt_in * SCALAR_7 / rate` shares and the pool's PT price
+/// costs `price / rate` shares, so the user keeps fewer, more valuable, shares
+/// than at rate 1.0.
 #[test]
 fn test_router_swap_yt_for_v_higher_vault_rate() {
     let yt_in = 10_000_000i128;
@@ -112,24 +120,79 @@ fn test_router_swap_v_for_yt() {
     f.router_swap_v_for_yt(&f.user, yt_out, 1_000_000);
 
     // User received exactly yt_out YT and paid only the YT price — far below face value.
-    assert_eq!(f.yt_balance(&f.user), yt_before + yt_out, "user's YT increases by yt_out");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before + yt_out,
+        "user's YT increases by yt_out"
+    );
     let v_spent = v_before - f.vault.balance(&f.user);
     assert!(v_spent > 0, "user spent some V");
-    assert!(v_spent < yt_out, "user paid the YT price, well below face value");
+    assert!(
+        v_spent < yt_out,
+        "user paid the YT price, well below face value"
+    );
 
     // Pool bought the PT and paid V for it (mirror of the sell path).
     let (pt_res, v_res) = f.pool.get_reserves();
-    assert_eq!(pt_res, POOL_PT + yt_out, "pool PT reserve grew by the bought PT");
+    assert_eq!(
+        pt_res,
+        POOL_PT + yt_out,
+        "pool PT reserve grew by the bought PT"
+    );
     assert!(v_res < POOL_V, "pool paid V for the PT");
 
     // Conservation: mint cost (yt_out at the 1:1 YM rate) = user's payment + pool's payment.
-    assert_eq!(v_spent + (POOL_V - v_res), yt_out, "mint cost split between user and pool");
+    assert_eq!(
+        v_spent + (POOL_V - v_res),
+        yt_out,
+        "mint cost split between user and pool"
+    );
+}
+
+/// PT sent to the yield manager's address by a third party must not stop YT
+/// purchases. Before the fix a single unit of it failed every one, for good:
+/// nothing can move PT out of the YM and the market cannot be changed.
+#[test]
+fn test_router_swap_v_for_yt_survives_pt_sent_to_the_ym() {
+    let env = Env::default();
+    let f = seeded(&env);
+
+    let stranger = Address::generate(&env);
+    f.vault.mint(&stranger, &1_000);
+    f.ym_deposit(&stranger, 1_000);
+    TokenClient::new(&env, &f.pt).transfer(&stranger, &f.yield_manager, &1);
+    assert_eq!(f.pt_balance(&f.yield_manager), 1);
+
+    let yt_before = f.yt_balance(&f.user);
+    let yt_out = 1_000_000i128;
+    f.router_swap_v_for_yt(&f.user, yt_out, 1_000_000);
+
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before + yt_out,
+        "user's YT increases by yt_out"
+    );
+    let (pt_res, _) = f.pool.get_reserves();
+    assert_eq!(
+        pt_res,
+        POOL_PT + yt_out,
+        "pool PT reserve grew by exactly the bought PT"
+    );
+    assert_eq!(
+        f.pt_balance(&f.yield_manager),
+        1,
+        "the sent PT is left where it was"
+    );
+
+    // The sell path burns from the YM's own balance; it must not take the sent PT either.
+    f.router_swap_yt_for_v(&f.user, yt_out, 1);
+    assert_eq!(f.pt_balance(&f.yield_manager), 1);
 }
 
 // ── swap_v_for_yt edge cases ──────────────────────────────────────────────────
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_router_swap_v_for_yt_slippage_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -138,7 +201,7 @@ fn test_router_swap_v_for_yt_slippage_reverts() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_router_swap_v_for_yt_zero_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -146,7 +209,7 @@ fn test_router_swap_v_for_yt_zero_reverts() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_router_swap_v_for_yt_expired_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -169,14 +232,18 @@ fn test_router_swap_v_for_yt_higher_vault_rate() {
     let yt_out = 10_000_000i128;
     f.router_swap_v_for_yt(&f.user, yt_out, 10_000_000);
 
-    assert_eq!(f.yt_balance(&f.user), yt_before + yt_out, "user receives exactly yt_out YT");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before + yt_out,
+        "user receives exactly yt_out YT"
+    );
     let v_spent = v_before - f.vault.balance(&f.user);
     assert!(v_spent > 0, "user pays a positive YT price");
     assert!(v_spent < yt_out, "cost stays below face value");
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_router_swap_yt_for_v_expired_reverts() {
     let env = Env::default();
     let f = seeded(&env);
@@ -198,16 +265,26 @@ fn test_router_buy_then_sell_yt_round_trip() {
     f.router_swap_v_for_yt(&f.user, 1_000_000, 1_000_000);
     assert_eq!(f.yt_balance(&f.user), yt_before + 1_000_000);
     let v_spent = v_before - f.vault.balance(&f.user);
-    assert!(v_spent < 1_000_000, "buying YT costs the YT price, well below face");
+    assert!(
+        v_spent < 1_000_000,
+        "buying YT costs the YT price, well below face"
+    );
 
     // Sell the YT back.
     f.router_swap_yt_for_v(&f.user, 1_000_000, 1);
-    assert_eq!(f.yt_balance(&f.user), yt_before, "YT returns to its pre-trade balance");
+    assert_eq!(
+        f.yt_balance(&f.user),
+        yt_before,
+        "YT returns to its pre-trade balance"
+    );
 
     // A buy-then-sell round trip costs only the spread/fees — not a large loss, and never a profit.
     let net_v_loss = v_before - f.vault.balance(&f.user);
     assert!(net_v_loss >= 0, "round trip must not profit the user");
-    assert!(net_v_loss < v_spent, "user recovers most of the YT price selling back");
+    assert!(
+        net_v_loss < v_spent,
+        "user recovers most of the YT price selling back"
+    );
 }
 
 // ── resource usage ────────────────────────────────────────────────────────────
@@ -232,8 +309,14 @@ fn test_buy_yt_fits_network_tx_budget() {
 
     let budget = env.cost_estimate().budget();
     let (cpu, mem) = (budget.cpu_instruction_cost(), budget.memory_bytes_cost());
-    assert!(cpu < NETWORK_TX_CPU_LIMIT, "buy-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit");
-    assert!(mem < NETWORK_TX_MEM_LIMIT, "buy-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit");
+    assert!(
+        cpu < NETWORK_TX_CPU_LIMIT,
+        "buy-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit"
+    );
+    assert!(
+        mem < NETWORK_TX_MEM_LIMIT,
+        "buy-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit"
+    );
 }
 
 #[test]
@@ -246,6 +329,12 @@ fn test_sell_yt_fits_network_tx_budget() {
 
     let budget = env.cost_estimate().budget();
     let (cpu, mem) = (budget.cpu_instruction_cost(), budget.memory_bytes_cost());
-    assert!(cpu < NETWORK_TX_CPU_LIMIT, "sell-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit");
-    assert!(mem < NETWORK_TX_MEM_LIMIT, "sell-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit");
+    assert!(
+        cpu < NETWORK_TX_CPU_LIMIT,
+        "sell-YT used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit"
+    );
+    assert!(
+        mem < NETWORK_TX_MEM_LIMIT,
+        "sell-YT used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit"
+    );
 }

@@ -16,7 +16,9 @@ use crate::math::FP_SCALE;
 
 /// Test env that skips writing a snapshot JSON per proptest case.
 fn quiet_env() -> Env {
-    Env::new_with_config(EnvTestConfig { capture_snapshot_at_drop: false })
+    Env::new_with_config(EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    })
 }
 
 /// Token amounts: mostly plausible trade sizes, sometimes zero/negative/huge so
@@ -32,13 +34,20 @@ fn amount() -> impl Strategy<Value = i128> {
 fn step() -> impl Strategy<Value = Step> {
     let actor = any::<u8>();
     prop_oneof![
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, pt, v)| Step::Deposit { actor, pt, v }),
-        (actor.clone(), amount()).prop_map(|(actor, shares)| Step::Withdraw { actor, shares }),
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, pt_out, v_in_max)| Step::SwapVForPt { actor, pt_out, v_in_max }),
-        (actor, amount(), amount())
-            .prop_map(|(actor, pt_in, min_v_out)| Step::SwapPtForV { actor, pt_in, min_v_out }),
+        (actor, amount(), amount()).prop_map(|(actor, pt, v)| Step::Deposit { actor, pt, v }),
+        (actor, amount()).prop_map(|(actor, shares)| Step::Withdraw { actor, shares }),
+        (actor, amount(), amount()).prop_map(|(actor, pt_out, v_in_max)| {
+            Step::SwapVForPt {
+                actor,
+                pt_out,
+                v_in_max,
+            }
+        }),
+        (actor, amount(), amount()).prop_map(|(actor, pt_in, min_v_out)| Step::SwapPtForV {
+            actor,
+            pt_in,
+            min_v_out
+        }),
         (0u64..=200 * 24 * 3600).prop_map(|secs| Step::AdvanceTime { secs }),
         (500_000i128..=200_000_000i128).prop_map(|rate| Step::SetVaultRate { rate }),
     ]
@@ -57,8 +66,8 @@ fn curve_domain() -> impl Strategy<Value = (i128, i128, i128, i128, i128, i128)>
         // Floor of 1.1 keeps the pre/post-trade exchange rate above 1.0 for the
         // whole proportion range (|ln(p/(1-p))|/scalar peaks at ~0.074 here),
         // clearing the below-one guard in get_exchange_rate_from_trade.
-        11_000_000i128..=15_000_000i128,             // rate_anchor: 1.1 – 1.5
-        FP_SCALE..=12_000_000i128,                   // fee_factor: 1.0 – 1.2
+        11_000_000i128..=15_000_000i128, // rate_anchor: 1.1 – 1.5
+        FP_SCALE..=12_000_000i128,       // fee_factor: 1.0 – 1.2
     )
         .prop_flat_map(|(total, pt_pct, scalar_units, anchor, fee)| {
             let reserve_pt = total * pt_pct / 100;
@@ -219,14 +228,10 @@ proptest! {
     }
 }
 
-/// Regression for the round-trip profit `round_trip_never_profits` first found.
-///
-/// Near expiry the fee factor shrinks toward 1.0, so the fee no longer masks
-/// pricing errors. With the proportion denominator tracking the post-trade PT
-/// reserve, buy and sell legs priced against different totals and this exact
-/// input let a buy→sell round trip profit by 6 V units. Kept as an explicit
-/// case in addition to the proptest, which only replays it via its regression
-/// file.
+/// Regression: near expiry the fee no longer masks pricing error; with a
+/// post-trade proportion denominator this input let a buy→sell round trip
+/// profit by 6 V. Kept explicit so it does not depend on the proptest's
+/// regression file.
 #[test]
 fn round_trip_does_not_profit_near_expiry() {
     let reserve_pt = 7_801_411_003i128;
@@ -237,14 +242,29 @@ fn round_trip_does_not_profit_near_expiry() {
     let x = 344_975_319i128;
 
     // Buy x PT out; user pays v_in.
-    let (net_v, _, _) =
-        calc_trade(reserve_pt, reserve_v, rate_scalar, rate_anchor, fee_factor, 0, x).unwrap();
+    let (net_v, _, _) = calc_trade(
+        reserve_pt,
+        reserve_v,
+        rate_scalar,
+        rate_anchor,
+        fee_factor,
+        0,
+        x,
+    )
+    .unwrap();
     let v_in = -net_v;
 
     // Sell the same x back at the post-trade reserves.
     let (net_v_back, _, _) = calc_trade(
-        reserve_pt - x, reserve_v + v_in, rate_scalar, rate_anchor, fee_factor, 0, -x,
-    ).unwrap();
+        reserve_pt - x,
+        reserve_v + v_in,
+        rate_scalar,
+        rate_anchor,
+        fee_factor,
+        0,
+        -x,
+    )
+    .unwrap();
 
     assert!(
         net_v_back <= v_in,
@@ -276,7 +296,8 @@ fn ln_fp_is_monotone_across_power_of_two_boundaries() {
     while boundary <= 1_000 * FP_SCALE {
         for x in (boundary - 4)..=(boundary + 4) {
             assert!(
-                crate::math::ln_fp(x, FP_SCALE).unwrap() <= crate::math::ln_fp(x + 1, FP_SCALE).unwrap(),
+                crate::math::ln_fp(x, FP_SCALE).unwrap()
+                    <= crate::math::ln_fp(x + 1, FP_SCALE).unwrap(),
                 "ln_fp stepped backwards between {} and {}",
                 x,
                 x + 1
@@ -304,9 +325,8 @@ proptest! {
         );
     }
 
-    /// exp(ln(x)) round-trips within 0.1% over the range where both are
-    /// accurate (x in [1.0, 7.0]; exp_fp is rated to inputs of ~2.0 ≈ ln 7.4).
-    /// The artanh-series ln_fp is good to ~1e-5, so truncation noise dominates.
+    /// exp(ln(x)) round-trips within 0.1% for x in [1.0, 7.0]. The
+    /// artanh-series ln_fp is good to ~1e-5, so truncation noise dominates.
     #[test]
     fn exp_ln_round_trip(x in FP_SCALE..=7 * FP_SCALE) {
         let ln_x = crate::math::ln_fp(x, FP_SCALE).unwrap();

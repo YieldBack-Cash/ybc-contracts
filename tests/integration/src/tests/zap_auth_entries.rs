@@ -13,10 +13,6 @@
 //! `env.ledger().sequence()` — is a mismatch waiting to happen. Against a vault
 //! whose rate accrues every ledger, it is a guaranteed one.
 //!
-//! What broke on testnet, concretely: `zap_asset_for_split` had the router call
-//! `approve(user, ym, <measured shares>, <current ledger>)`. Both arguments were
-//! execution-time values. It now forwards to the YM's asset entrypoint instead,
-//! which deposits with itself as receiver — no allowance, nothing measured.
 
 use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
 use soroban_sdk::{Env, IntoVal};
@@ -65,9 +61,9 @@ fn split_zap_signs_only_caller_chosen_values() {
         },
     }]);
 
-    let minted = f
-        .router
-        .zap_asset_for_split(&f.vault, &f.maturity, &f.user, &asset_in, &min_tokens_out);
+    let minted =
+        f.router
+            .zap_asset_for_split(&f.vault, &f.maturity, &f.user, &asset_in, &min_tokens_out);
 
     assert!(minted > 0);
     assert_eq!(f.balance(&f.pt) - pt_before, minted);
@@ -76,7 +72,7 @@ fn split_zap_signs_only_caller_chosen_values() {
 /// A tree signed for a different amount must be rejected — otherwise the test
 /// above would prove nothing about argument matching.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn split_zap_rejects_a_tree_signed_for_another_amount() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
@@ -168,7 +164,14 @@ fn sweep_allowance_is_signed_with_caller_chosen_arguments() {
             contract: &f.router.address,
             fn_name: "zap_asset_for_pt",
             args: (
-                &f.vault, f.maturity, &f.user, pt_out, max_asset_in, max_v_in, sweep, expiry,
+                &f.vault,
+                f.maturity,
+                &f.user,
+                pt_out,
+                max_asset_in,
+                max_v_in,
+                sweep,
+                expiry,
             )
                 .into_val(&env),
             sub_invokes: &[

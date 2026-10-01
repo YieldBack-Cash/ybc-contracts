@@ -10,9 +10,8 @@ crate-type = ["cdylib", "rlib"]
 soroban-sdk = { workspace = true }
 stellar-tokens = { workspace = true }
 ybc_common = { workspace = true }
-vault_interface = { path = "../../../vault/vault_interface" }
 yield_manager_interface = { path = "../../yield/yield_manager_interface" }
-yield_token_interface = { path = "../../tokens/yield_token_interface" }
+yield_token_interface = { path = "../yield_token_interface" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

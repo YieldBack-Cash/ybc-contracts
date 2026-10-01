@@ -17,7 +17,9 @@ use super::fixture::IntegrationFixture;
 
 /// Test env that skips writing a snapshot JSON per proptest case.
 fn quiet_env() -> Env {
-    Env::new_with_config(EnvTestConfig { capture_snapshot_at_drop: false })
+    Env::new_with_config(EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    })
 }
 
 // Seeds mirror router_swaps.rs.
@@ -38,30 +40,80 @@ const NUM_ACTORS: usize = 3;
 
 #[derive(Clone, Copy, Debug)]
 enum Step {
-    BuyYt { actor: u8, yt_out: i128, max_v_in: i128 },
-    SellYt { actor: u8, yt_in: i128, min_v_out: i128 },
-    SwapVForPt { actor: u8, pt_out: i128, v_in_max: i128 },
-    SwapPtForV { actor: u8, pt_in: i128, min_v_out: i128 },
-    YmDeposit { actor: u8, shares: i128 },
+    BuyYt {
+        actor: u8,
+        yt_out: i128,
+        max_v_in: i128,
+    },
+    SellYt {
+        actor: u8,
+        yt_in: i128,
+        min_v_out: i128,
+    },
+    SwapVForPt {
+        actor: u8,
+        pt_out: i128,
+        v_in_max: i128,
+    },
+    SwapPtForV {
+        actor: u8,
+        pt_in: i128,
+        min_v_out: i128,
+    },
+    YmDeposit {
+        actor: u8,
+        shares: i128,
+    },
     /// Burns PT+YT in pairs for V; pre-maturity only.
-    RedeemCombined { actor: u8, amount: i128 },
+    RedeemCombined {
+        actor: u8,
+        amount: i128,
+    },
     /// Burns PT alone for V; post-maturity only.
-    RedeemPrincipal { actor: u8, pt_amount: i128 },
-    AmmDeposit { actor: u8, pt: i128, v: i128 },
-    AmmWithdraw { actor: u8, shares: i128 },
+    RedeemPrincipal {
+        actor: u8,
+        pt_amount: i128,
+    },
+    AmmDeposit {
+        actor: u8,
+        pt: i128,
+        v: i128,
+    },
+    AmmWithdraw {
+        actor: u8,
+        shares: i128,
+    },
     /// One-call exit through the router; post-maturity only. Burns LP, redeems
     /// the actor's whole PT balance, claims YT yield.
-    ExitExpired { actor: u8, lp_shares: i128, min_shares_out: i128 },
+    ExitExpired {
+        actor: u8,
+        lp_shares: i128,
+        min_shares_out: i128,
+    },
     /// Claim accrued YT yield directly. Works at any time; post-maturity it also
     /// burns the claimer's remaining YT.
-    ClaimYield { actor: u8 },
+    ClaimYield {
+        actor: u8,
+    },
     /// Transfer YT between two actors. Accrues yield for both sides at their
     /// own indices, so it stresses the yield-accounting merge path.
-    TransferYt { from: u8, to: u8, amount: i128 },
+    TransferYt {
+        from: u8,
+        to: u8,
+        amount: i128,
+    },
     /// Transfer PT between two actors — moves redemption rights around.
-    TransferPt { from: u8, to: u8, amount: i128 },
-    AdvanceTime { secs: u64 },
-    RaiseVaultRate { pct: i128 },
+    TransferPt {
+        from: u8,
+        to: u8,
+        amount: i128,
+    },
+    AdvanceTime {
+        secs: u64,
+    },
+    RaiseVaultRate {
+        pct: i128,
+    },
 }
 
 struct RouterHarness<'a> {
@@ -95,7 +147,12 @@ impl<'a> RouterHarness<'a> {
             actors.push(actor);
         }
 
-        RouterHarness { f, actors, vault_rate: 10_000_000, supplies_decoupled: false }
+        RouterHarness {
+            f,
+            actors,
+            vault_rate: 10_000_000,
+            supplies_decoupled: false,
+        }
     }
 
     fn actor(&self, idx: u8) -> soroban_sdk::Address {
@@ -114,25 +171,69 @@ impl<'a> RouterHarness<'a> {
     fn apply(&mut self, step: Step) {
         let e = &self.f.env;
         match step {
-            Step::BuyYt { actor, yt_out, max_v_in } => {
+            Step::BuyYt {
+                actor,
+                yt_out,
+                max_v_in,
+            } => {
                 let who = self.actor(actor);
-                self.try_router("swap_v_for_yt", (&self.f.vault.address, self.f.maturity, &who, yt_out, max_v_in).into_val(e));
+                self.try_router(
+                    "swap_v_for_yt",
+                    (
+                        &self.f.vault.address,
+                        self.f.maturity,
+                        &who,
+                        yt_out,
+                        max_v_in,
+                    )
+                        .into_val(e),
+                );
             }
-            Step::SellYt { actor, yt_in, min_v_out } => {
+            Step::SellYt {
+                actor,
+                yt_in,
+                min_v_out,
+            } => {
                 let who = self.actor(actor);
-                self.try_router("swap_yt_for_v", (&self.f.vault.address, self.f.maturity, &who, yt_in, min_v_out).into_val(e));
+                self.try_router(
+                    "swap_yt_for_v",
+                    (
+                        &self.f.vault.address,
+                        self.f.maturity,
+                        &who,
+                        yt_in,
+                        min_v_out,
+                    )
+                        .into_val(e),
+                );
             }
-            Step::SwapVForPt { actor, pt_out, v_in_max } => {
-                let _ = self.f.pool.try_swap_v_for_pt(&self.actor(actor), &pt_out, &v_in_max);
+            Step::SwapVForPt {
+                actor,
+                pt_out,
+                v_in_max,
+            } => {
+                let _ = self
+                    .f
+                    .pool
+                    .try_swap_v_for_pt(&self.actor(actor), &pt_out, &v_in_max);
             }
-            Step::SwapPtForV { actor, pt_in, min_v_out } => {
-                let _ = self.f.pool.try_swap_pt_for_v(&self.actor(actor), &pt_in, &min_v_out);
+            Step::SwapPtForV {
+                actor,
+                pt_in,
+                min_v_out,
+            } => {
+                let _ = self
+                    .f
+                    .pool
+                    .try_swap_pt_for_v(&self.actor(actor), &pt_in, &min_v_out);
             }
             Step::YmDeposit { actor, shares } => {
                 let who = self.actor(actor);
                 let expiry_ledger = e.ledger().sequence() + 1000;
                 if shares > 0 {
-                    self.f.vault.approve(&who, &self.f.yield_manager, &shares, &expiry_ledger);
+                    self.f
+                        .vault
+                        .approve(&who, &self.f.yield_manager, &shares, &expiry_ledger);
                 }
                 let _ = e.try_invoke_contract::<(), soroban_sdk::Error>(
                     &self.f.yield_manager,
@@ -170,7 +271,9 @@ impl<'a> RouterHarness<'a> {
                     );
                 }
                 if v > 0 {
-                    self.f.vault.approve(&who, &self.f.pool.address, &v, &expiry_ledger);
+                    self.f
+                        .vault
+                        .approve(&who, &self.f.pool.address, &v, &expiry_ledger);
                 }
                 let (pre_pt, pre_v) = self.f.pool.get_reserves();
                 let pre_total = self.f.pool.get_total_shares();
@@ -182,16 +285,30 @@ impl<'a> RouterHarness<'a> {
                 let (pre_pt, pre_v) = self.f.pool.get_reserves();
                 let pre_total = self.f.pool.get_total_shares();
                 if let Ok(Ok((out_pt, out_v))) =
-                    self.f.pool.try_withdraw(&self.actor(actor), &shares, &0, &0)
+                    self.f
+                        .pool
+                        .try_withdraw(&self.actor(actor), &shares, &0, &0)
                 {
                     // Pro-rata exactly, floor-rounded: never short an LP a full
                     // unit, never pay beyond the shares' proportional claim.
-                    assert_eq!(out_pt, pre_pt * shares / pre_total, "withdraw paid non-pro-rata PT");
-                    assert_eq!(out_v, pre_v * shares / pre_total, "withdraw paid non-pro-rata V");
+                    assert_eq!(
+                        out_pt,
+                        pre_pt * shares / pre_total,
+                        "withdraw paid non-pro-rata PT"
+                    );
+                    assert_eq!(
+                        out_v,
+                        pre_v * shares / pre_total,
+                        "withdraw paid non-pro-rata V"
+                    );
                     self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
                 }
             }
-            Step::ExitExpired { actor, lp_shares, min_shares_out } => {
+            Step::ExitExpired {
+                actor,
+                lp_shares,
+                min_shares_out,
+            } => {
                 let who = self.actor(actor);
                 // An exit redeems the actor's PT (wallet or LP-withdrawn)
                 // without a paired YT burn, and claim_yield burns their YT
@@ -202,7 +319,13 @@ impl<'a> RouterHarness<'a> {
                 let exited = e.try_invoke_contract::<i128, soroban_sdk::Error>(
                     &self.f.router,
                     &Symbol::new(e, "exit_expired"),
-                    (&self.f.vault.address, self.f.maturity, &who, lp_shares, min_shares_out)
+                    (
+                        &self.f.vault.address,
+                        self.f.maturity,
+                        &who,
+                        lp_shares,
+                        min_shares_out,
+                    )
                         .into_val(e),
                 );
                 if exited.is_ok() && touches_supply {
@@ -269,8 +392,11 @@ impl<'a> RouterHarness<'a> {
         let post_total = self.f.pool.get_total_shares();
         for (pre, post, label) in [(pre_pt, post_pt, "PT"), (pre_v, post_v, "V")] {
             assert!(
-                post.checked_mul(pre_total).expect("share-price check overflow")
-                    >= pre.checked_mul(post_total).expect("share-price check overflow"),
+                post.checked_mul(pre_total)
+                    .expect("share-price check overflow")
+                    >= pre
+                        .checked_mul(post_total)
+                        .expect("share-price check overflow"),
                 "{} per-share reserve diluted by liquidity op",
                 label
             );
@@ -294,8 +420,16 @@ impl<'a> RouterHarness<'a> {
         // 1. AMM stored reserves match its actual token balances — including
         //    across flash swaps, where reserves re-sync from balances mid-call.
         let (reserve_pt, reserve_v) = f.pool.get_reserves();
-        assert_eq!(reserve_pt, f.pt_balance(&f.pool.address), "PT reserve diverged from balance");
-        assert_eq!(reserve_v, f.vault.balance(&f.pool.address), "V reserve diverged from balance");
+        assert_eq!(
+            reserve_pt,
+            f.pt_balance(&f.pool.address),
+            "PT reserve diverged from balance"
+        );
+        assert_eq!(
+            reserve_v,
+            f.vault.balance(&f.pool.address),
+            "V reserve diverged from balance"
+        );
         assert!(reserve_pt > 0 && reserve_v > 0, "pool drained");
         assert!(f.pool.get_implied_rate() >= 0, "implied rate went negative");
 
@@ -357,7 +491,11 @@ impl<'a> RouterHarness<'a> {
     /// A holder's accrual index — the rate their current balance earns from.
     fn yt_index(&self, who: &soroban_sdk::Address) -> i128 {
         let e = &self.f.env;
-        e.invoke_contract::<i128>(&self.f.yt, &Symbol::new(e, "user_index"), (who,).into_val(e))
+        e.invoke_contract::<i128>(
+            &self.f.yt,
+            &Symbol::new(e, "user_index"),
+            (who,).into_val(e),
+        )
     }
 }
 
@@ -384,31 +522,53 @@ fn time_step() -> impl Strategy<Value = u64> {
 fn step() -> impl Strategy<Value = Step> {
     let actor = any::<u8>();
     prop_oneof![
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, yt_out, max_v_in)| Step::BuyYt { actor, yt_out, max_v_in }),
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, yt_in, min_v_out)| Step::SellYt { actor, yt_in, min_v_out }),
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, pt_out, v_in_max)| Step::SwapVForPt { actor, pt_out, v_in_max }),
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, pt_in, min_v_out)| Step::SwapPtForV { actor, pt_in, min_v_out }),
-        (actor.clone(), amount()).prop_map(|(actor, shares)| Step::YmDeposit { actor, shares }),
-        (actor.clone(), amount())
-            .prop_map(|(actor, amount)| Step::RedeemCombined { actor, amount }),
-        (actor.clone(), amount())
-            .prop_map(|(actor, pt_amount)| Step::RedeemPrincipal { actor, pt_amount }),
-        (actor.clone(), amount(), amount())
-            .prop_map(|(actor, pt, v)| Step::AmmDeposit { actor, pt, v }),
-        (actor.clone(), amount())
-            .prop_map(|(actor, shares)| Step::AmmWithdraw { actor, shares }),
-        (actor.clone(), amount(), amount()).prop_map(|(actor, lp_shares, min_shares_out)| {
-            Step::ExitExpired { actor, lp_shares, min_shares_out }
+        (actor, amount(), amount()).prop_map(|(actor, yt_out, max_v_in)| Step::BuyYt {
+            actor,
+            yt_out,
+            max_v_in
         }),
-        actor.clone().prop_map(|actor| Step::ClaimYield { actor }),
-        (actor.clone(), actor.clone(), amount())
-            .prop_map(|(from, to, amount)| Step::TransferYt { from, to, amount }),
-        (actor.clone(), actor.clone(), amount())
-            .prop_map(|(from, to, amount)| Step::TransferPt { from, to, amount }),
+        (actor, amount(), amount()).prop_map(|(actor, yt_in, min_v_out)| Step::SellYt {
+            actor,
+            yt_in,
+            min_v_out
+        }),
+        (actor, amount(), amount()).prop_map(|(actor, pt_out, v_in_max)| {
+            Step::SwapVForPt {
+                actor,
+                pt_out,
+                v_in_max,
+            }
+        }),
+        (actor, amount(), amount()).prop_map(|(actor, pt_in, min_v_out)| {
+            Step::SwapPtForV {
+                actor,
+                pt_in,
+                min_v_out,
+            }
+        }),
+        (actor, amount()).prop_map(|(actor, shares)| Step::YmDeposit { actor, shares }),
+        (actor, amount()).prop_map(|(actor, amount)| Step::RedeemCombined { actor, amount }),
+        (actor, amount()).prop_map(|(actor, pt_amount)| Step::RedeemPrincipal { actor, pt_amount }),
+        (actor, amount(), amount()).prop_map(|(actor, pt, v)| Step::AmmDeposit { actor, pt, v }),
+        (actor, amount()).prop_map(|(actor, shares)| Step::AmmWithdraw { actor, shares }),
+        (actor, amount(), amount()).prop_map(|(actor, lp_shares, min_shares_out)| {
+            Step::ExitExpired {
+                actor,
+                lp_shares,
+                min_shares_out,
+            }
+        }),
+        actor.prop_map(|actor| Step::ClaimYield { actor }),
+        (actor, actor, amount()).prop_map(|(from, to, amount)| Step::TransferYt {
+            from,
+            to,
+            amount
+        }),
+        (actor, actor, amount()).prop_map(|(from, to, amount)| Step::TransferPt {
+            from,
+            to,
+            amount
+        }),
         time_step().prop_map(|secs| Step::AdvanceTime { secs }),
         (0i128..=100i128).prop_map(|pct| Step::RaiseVaultRate { pct }),
     ]
@@ -436,9 +596,15 @@ fn stale_index_cannot_claim_yield_predating_ownership() {
     h.apply(Step::ClaimYield { actor: 0 });
 
     // actor 1 acquires YT. Their index must be stamped to the CURRENT rate.
-    h.apply(Step::YmDeposit { actor: 1, shares: 1100 });
+    h.apply(Step::YmDeposit {
+        actor: 1,
+        shares: 1100,
+    });
     let actor1 = h.actor(1);
-    assert!(h.f.yt_balance(&actor1) > 0, "actor 1 should hold YT after depositing");
+    assert!(
+        h.f.yt_balance(&actor1) > 0,
+        "actor 1 should hold YT after depositing"
+    );
     assert_eq!(
         h.yt_index(&actor1),
         h.ym_rate(),

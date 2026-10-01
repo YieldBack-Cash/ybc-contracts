@@ -1,6 +1,10 @@
+//! Liquidity provision: first-deposit share minting and the dead burn, later
+//! deposits at the reserve ratio, and the two rounding guards.
+
 use soroban_sdk::Env;
 
 use super::fixture::{AmmFixture, ONE_YEAR_SECS};
+use crate::contract::MINIMUM_LIQUIDITY;
 
 #[test]
 fn test_first_deposit_mints_shares_and_burns_minimum_liquidity() {
@@ -17,12 +21,12 @@ fn test_first_deposit_mints_shares_and_burns_minimum_liquidity() {
     assert_eq!(res_v, v_in);
 
     // User shares = sqrt(pt * v) - MINIMUM_LIQUIDITY
-    let expected_shares = (pt_in * v_in).isqrt() - 100;
+    let expected_shares = (pt_in * v_in).isqrt() - MINIMUM_LIQUIDITY;
     assert_eq!(f.pool.balance_shares(&f.admin), expected_shares);
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_deposit_expired_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -36,6 +40,8 @@ fn test_deposit_expired_panics() {
     f.deposit(&f.user, 1_000_000, 1_000_000);
 }
 
+/// A later deposit mints shares in proportion to the pool it joins: half the
+/// reserves buys half the outstanding supply.
 #[test]
 fn test_second_deposit_proportional() {
     let env = Env::default();
@@ -43,15 +49,19 @@ fn test_second_deposit_proportional() {
     let f = AmmFixture::new(&env);
 
     f.deposit(&f.admin, 10_000_000, 10_000_000);
-    let shares_before = f.pool.balance_shares(&f.user);
+    let supply_before = f.pool.get_total_shares();
     f.deposit(&f.user, 5_000_000, 5_000_000);
-    let shares_after = f.pool.balance_shares(&f.user);
+    let minted = f.pool.balance_shares(&f.user);
 
-    assert!(shares_after > shares_before);
+    // floor rounding can cost at most one share
+    assert!(
+        (supply_before / 2 - 1..=supply_before / 2).contains(&minted),
+        "minted {minted} for half of {supply_before}"
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #21)")]
 fn test_deposit_zero_amount_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -59,14 +69,14 @@ fn test_deposit_zero_amount_panics() {
     f.deposit(&f.admin, 0, 10_000_000);
 }
 
-/// Guard #1 — first-deposit underflow.
+/// First-deposit underflow guard: first-deposit underflow.
 ///
 /// The initial deposit mints `sqrt(a*b)` shares and burns `MINIMUM_LIQUIDITY`
 /// (100) of them to the dead address. If `sqrt(a*b) <= 100` the depositor would
 /// receive zero (or, via underflow, negative) shares for real tokens. Deposit
 /// must revert instead.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #21)")]
 fn test_initial_deposit_below_minimum_liquidity_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -89,9 +99,9 @@ fn test_initial_deposit_just_above_minimum_liquidity_ok() {
     assert_eq!(f.pool.balance_shares(&f.admin), 1);
 }
 
-/// Skews the pool into the low-shares / high-reserve state described by the
-/// share-rounding bug: round-trip swaps leave `reserve_a` pinned at the share
-/// count while fees inflate `reserve_b` well above it. Returns the fixture.
+/// Skews the pool into a low-shares / high-reserve state: round-trip swaps
+/// leave `reserve_a` pinned at the share count while fees inflate `reserve_b`
+/// well above it. Returns the fixture.
 fn skewed_pool(env: &Env) -> AmmFixture<'_> {
     let f = AmmFixture::new(env);
 
@@ -109,29 +119,33 @@ fn skewed_pool(env: &Env) -> AmmFixture<'_> {
     }
 
     let (ra, rb) = f.pool.get_reserves();
-    let s = f.total_shares_admin_only();
+    let s = f.pool.get_total_shares();
     // Precondition for the bug: reserve_b has grown past the share count while
     // reserve_a is unchanged. A tiny deposit can now round its shares to zero.
-    assert!(rb > s && ra == s, "unexpected skew: ra={} rb={} s={}", ra, rb, s);
+    assert!(
+        rb > s && ra == s,
+        "unexpected skew: ra={} rb={} s={}",
+        ra,
+        rb,
+        s
+    );
     f
 }
 
-/// Guard #2 — subsequent-deposit rounds to zero shares.
+/// Zero-share rounding guard: subsequent-deposit rounds to zero shares.
 ///
 /// In the skewed state, depositing `desired_a = 1` yields `amount_b = 2`, and
 /// `floor((reserve_b + 2) * total_shares / reserve_b) == total_shares` — i.e.
 /// zero shares minted. The depositor would hand over real tokens for nothing;
 /// deposit must revert instead.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #21)")]
 fn test_deposit_rounding_to_zero_shares_panics() {
     let env = Env::default();
     env.mock_all_auths();
     let f = skewed_pool(&env);
 
     // desired_b is generous; get_deposit_amounts binds on desired_a = 1.
-    f.pt.approve(&f.user, &f.pool.address, &1, &(env.ledger().sequence() + 1000));
-    f.vault.approve(&f.user, &f.pool.address, &1_000, &(env.ledger().sequence() + 1000));
     f.pool.deposit(&f.user, &1, &0, &1_000, &0);
 }
 

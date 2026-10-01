@@ -14,7 +14,11 @@ use crate::{math, storage};
 /// OpenZeppelin's `Base`, which owns the amount and balance checks. On top of
 /// it this contract keeps, per holder, the exchange rate they last settled at
 /// and the yield accrued since, and settles both parties before every balance
-/// movement. That hook is the whole of what is YBC's here.
+/// movement. The hook is the only YBC-specific logic in this contract.
+///
+/// Units: balances are asset-denominated (7 decimals, like PT); `UserIndex`
+/// and the exchange rate are `SCALAR_7`-scaled assets per share; `AccruedYield`
+/// is vault shares.
 #[contract]
 pub struct YieldToken;
 
@@ -25,8 +29,11 @@ impl YieldToken {
     }
 
     /// Settles `user`'s pending yield at the current rate and moves their
-    /// index up to it. Must run before any change to their balance.
-    fn accrue_yield(env: &Env, user: &Address, rate_hint: Option<i128>) -> i128 {
+    /// index up to it. `math::pending_yield` prices the growth from the old
+    /// index to the current rate on the balance held over that interval, so
+    /// this must run before the balance changes; `mint`, `transfer*`, `burn*`
+    /// and `claim_yield` all do.
+    fn accrue_yield(env: &Env, user: &Address, rate_hint: Option<i128>) {
         let balance = Base::balance(env, user);
         let old_index = storage::get_user_index(env, user);
 
@@ -38,46 +45,44 @@ impl YieldToken {
             Self::get_exchange_rate(env)
         };
 
-        // Initialize index for new users (even if they have no balance yet)
+        // First touch: index 0 means never settled (see `DataKey::UserIndex`).
         if old_index == 0 {
             storage::set_user_index(env, user, current_rate);
-            return current_rate;
+            return;
         }
 
-        // No balance: nothing to accrue, but the index must still track the live
-        // rate. Leaving it parked lets a holder who was empty across a rate rise
-        // carry a stale index into their next acquisition — `mint` and `transfer`
-        // both accrue BEFORE raising the balance, so this branch is what runs at
-        // acquisition time — and then claim yield for growth that predates their
-        // ownership, which is paid out of other holders' principal backing.
-        // Guarded so an unchanged rate still costs no storage write, and so a
-        // (never-expected) lower rate can never move the index backwards.
+        // Empty holders still track the rate: `mint` and `transfer` accrue
+        // before crediting, so this branch is what runs at acquisition. A parked
+        // index would let a returning holder claim growth from before they owned
+        // anything, paid from other holders' backing. Strict comparison so an
+        // unchanged (or lower) rate costs no write.
         if balance == 0 {
             if current_rate > old_index {
                 storage::set_user_index(env, user, current_rate);
             }
-            return current_rate;
+            return;
         }
 
-        // The yield manager guarantees the exchange rate never decreases
-        // So current_rate >= old_index is always true
-        // This contract only update if rate increased to avoid unnecessary storage writes
+        // The rate is expected non-decreasing (the YM locks it at maturity); a
+        // lower rate accrues nothing and leaves the index alone.
         if current_rate > old_index {
-            // Pending yield in vault SHARES; see `math::pending_yield`.
+            // Pending yield is in vault shares; see `math::pending_yield`.
             let pending_yield = math::pending_yield(balance, old_index, current_rate);
             let current_accrued = storage::get_accrued_yield(env, user);
-            storage::set_accrued_yield(env, user, current_accrued + pending_yield);
+            storage::set_accrued_yield(
+                env,
+                user,
+                current_accrued
+                    .checked_add(pending_yield)
+                    .expect("accrued yield overflow"),
+            );
             storage::set_user_index(env, user, current_rate);
         }
-
-        current_rate
     }
 
-    /// Settles both parties of a transfer with one rate lookup. Left to
-    /// itself each `accrue_yield` walks YT → YM → vault → the underlying
-    /// lending pool for the current rate, so an unhinted pair costs two full
-    /// round trips into Blend for a value that cannot change within a single
-    /// transaction.
+    /// Settles both parties with one rate lookup; each unhinted `accrue_yield`
+    /// would otherwise make its own YT → YM → vault call for a value that
+    /// cannot change inside one transaction.
     fn accrue_pair(env: &Env, from: &Address, to: &Address) {
         let rate = Self::get_exchange_rate(env);
         Self::accrue_yield(env, from, Some(rate));
@@ -121,6 +126,8 @@ impl FungibleToken for YieldToken {
         Base::transfer(e, &from, &to, amount)
     }
 
+    /// As `transfer`, through an allowance; `Base::transfer_from`
+    /// authenticates `spender`.
     fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, amount: i128) {
         storage::extend_instance_ttl(e);
         Self::accrue_pair(e, &from, &to);
@@ -163,10 +170,9 @@ impl FungibleBurnable for YieldToken {
 
 #[contractimpl]
 impl YieldTokenTrait for YieldToken {
+    // `decimals` is unchecked for the same reason as in `PrincipalToken`: the
+    // factory passes 7.
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32) {
-        if decimals > 18 {
-            panic!("Decimal must not be greater than 18");
-        }
         storage::set_admin(&env, &admin);
         Base::set_metadata(&env, decimals, name, symbol);
     }
@@ -179,19 +185,11 @@ impl YieldTokenTrait for YieldToken {
         Base::mint(&env, &to, amount);
     }
 
-    /// Burns `from`'s YT at a rate the yield manager supplies.
-    ///
-    /// Admin-gated only — deliberately NOT `from.require_auth()`. The YM is the
-    /// sole caller (that is what the admin check enforces) and every path it
-    /// calls this from has already authenticated `from` at its own entrypoint,
-    /// so a second check adds no authority.
-    ///
-    /// It actively broke things: `exchange_rate` is read live and moves with the
-    /// vault every ledger, so requiring the holder's signature over an argument
-    /// list containing it meant the wallet signed one rate during simulation and
-    /// the chain executed with another. Observed on testnet as Auth/InvalidAction
-    /// on every `redeem_combined` — a pre-existing bug, not one the asset-
-    /// denominated entrypoints introduced.
+    /// Burns `from`'s YT at the rate the YM supplies. Admin-gated and
+    /// deliberately not `from.require_auth()`: the YM has already authenticated
+    /// `from` at its own entry point, and a holder signature over the live rate
+    /// argument would drift between simulation and execution (see
+    /// `YieldTokenTrait::burn_with_rate`).
     fn burn_with_rate(env: Env, from: Address, amount: i128, exchange_rate: i128) {
         storage::get_admin(&env).require_auth();
         storage::extend_instance_ttl(&env);
@@ -225,6 +223,7 @@ impl YieldTokenTrait for YieldToken {
         // report what the user really received.
         let mut paid = 0;
         if claimable > 0 {
+            // Zero the claim before paying it: the YM call is external.
             storage::set_accrued_yield(&env, &user, 0);
 
             paid = yield_manager_client.distribute_yield(&user, &claimable);

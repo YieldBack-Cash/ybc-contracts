@@ -1,24 +1,12 @@
 // ── Amount validation for PrincipalToken ─────────────────────────────────────
 //
-// Every mutating entrypoint must reject a negative amount. The hand-rolled
-// ledger this token used to carry did plain arithmetic, so a negative
-// `transfer` credited `from` and debited `to` — a holder's own signature would
-// move PT out of any address. The ledger is OpenZeppelin's now, which raises
-// `LessThanZero` (#103) before any write; these pin that it stays so.
+// Every mutating entrypoint must reject a negative amount. The ledger is
+// OpenZeppelin's `Base`, which raises `LessThanZero` (#103) before any write;
+// these pin that each entrypoint reaches that check.
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
-use crate::contract::PrincipalTokenClient;
-use crate::PrincipalToken;
-
-fn register_pt(env: &Env) -> PrincipalTokenClient<'_> {
-    let admin = Address::generate(env);
-    let pt_addr = env.register(
-        PrincipalToken,
-        (&admin, String::from_str(env, "PT"), String::from_str(env, "PT"), 7u32),
-    );
-    PrincipalTokenClient::new(env, &pt_addr)
-}
+use super::register_pt;
 
 #[test]
 #[should_panic(expected = "Error(Contract, #103)")]

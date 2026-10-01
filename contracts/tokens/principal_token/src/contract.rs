@@ -8,10 +8,13 @@ use crate::storage;
 /// manager (its admin) may change.
 ///
 /// Balances, allowances, total supply and metadata are OpenZeppelin's
-/// `Base`, which also owns the amount and balance checks (`LessThanZero`,
-/// `InsufficientBalance`, `InsufficientAllowance`, codes 100–105). The
-/// hand-rolled ledger this replaced is where the repo's confirmed critical
-/// bug lived: a negative `transfer` credited `from` and debited `to`.
+/// `Base`, which also owns the amount and balance checks (`LessThanZero`
+/// #103, `InsufficientBalance` #100, `InsufficientAllowance` #101; see OZ
+/// `FungibleTokenError`).
+///
+/// PT carries no accrual hook: it is the fixed principal, redeemable for its
+/// face amount at maturity, so a holder's claim never depends on when they
+/// acquired it. Compare `YieldToken`.
 #[contract]
 pub struct PrincipalToken;
 
@@ -83,10 +86,9 @@ impl FungibleBurnable for PrincipalToken {
 
 #[contractimpl]
 impl PrincipalTokenTrait for PrincipalToken {
+    // `decimals` is unchecked: the factory is the only deployer and passes 7,
+    // the protocol-wide scale, and neither SEP-41 nor OZ metadata constrains it.
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32) {
-        if decimals > 18 {
-            panic!("Decimal must not be greater than 18");
-        }
         storage::set_admin(&env, &admin);
         Base::set_metadata(&env, decimals, name, symbol);
     }

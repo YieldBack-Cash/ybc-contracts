@@ -4,10 +4,11 @@ use soroban_sdk::{
     Address, Env, IntoVal, String, Symbol,
 };
 
-use crate::{YieldManager, VaultType};
-use principal_token::PrincipalToken;
-use yield_token::YieldToken;
+use crate::YieldManager;
 use mock_vault::{MockVault, MockVaultClient};
+use principal_token::PrincipalToken;
+use ybc_common::scale::SCALAR_7;
+use yield_token::YieldToken;
 
 pub struct YieldManagerTest {
     pub env: Env,
@@ -45,10 +46,8 @@ impl YieldManagerTest {
         let maturity = current_time + 1000;
 
         let treasury = Address::generate(&env);
-        let yield_manager_id = env.register(
-            YieldManager,
-            (&admin, &vault_addr, VaultType::Vault4626, maturity, &treasury),
-        );
+        let yield_manager_id =
+            env.register(YieldManager, (&admin, &vault_addr, maturity, &treasury));
 
         let pt_id = env.register(
             PrincipalToken,
@@ -107,13 +106,11 @@ impl YieldManagerTest {
         vault_client.set_exchange_rate(&rate);
     }
 
-    /// The vault's rate as the AMM would observe it, probed at the same 1e7 scale
-    /// the protocol uses everywhere. The flash callbacks now take this as an
-    /// argument, so tests driving them directly must pass what a real pool would
-    /// have read — reading it live keeps that honest across
-    /// `set_vault_exchange_rate`.
+    /// Rate to pass into a flash callback. Production pools pass the YM's own
+    /// `get_exchange_rate`; the raw mock-vault reading is identical here
+    /// because no flash test dips the vault below the high-water mark.
     pub fn vault_exchange_rate(&self) -> i128 {
-        MockVaultClient::new(&self.env, &self.vault_addr).convert_to_assets(&10_000_000)
+        MockVaultClient::new(&self.env, &self.vault_addr).convert_to_assets(&SCALAR_7)
     }
 
     pub fn vault_balance(&self, user: &Address) -> i128 {

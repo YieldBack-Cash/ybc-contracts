@@ -1,3 +1,5 @@
+// `redeem_combined` (PT+YT, pre-maturity) and `redeem_principal` (PT, post-maturity).
+
 use soroban_sdk::{IntoVal, Symbol};
 use yield_manager_interface::YieldManagerError;
 

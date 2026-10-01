@@ -7,26 +7,28 @@ use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal, String, Symbol
 
 use crate::YieldManager;
 use mock_vault::MockVault;
-use yield_manager_interface::VaultType;
 
 fn register_ym(env: &Env) -> (Address, Address, Address) {
     let admin = Address::generate(env);
     let vault_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "Mock Vault"), String::from_str(env, "MVT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "Mock Vault"),
+            String::from_str(env, "MVT"),
+            7u32,
+        ),
     );
     let maturity = env.ledger().timestamp() + 1000;
-    let ym_addr = env.register(
-        YieldManager,
-        (&admin, &vault_addr, VaultType::Vault4626, maturity),
-    );
+    let treasury = Address::generate(env);
+    let ym_addr = env.register(YieldManager, (&admin, &vault_addr, maturity, &treasury));
     (admin, vault_addr, ym_addr)
 }
 
 /// Only the admin can register the PT and YT contract addresses.
 /// A stranger's call must panic.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_set_token_contracts_non_admin_reverts() {
     let env = Env::default();
     let (_admin, _vault, ym_addr) = register_ym(&env);
@@ -43,7 +45,7 @@ fn test_set_token_contracts_non_admin_reverts() {
 /// YM.deposit requires the depositor to authorize the call.
 /// A transaction that does not carry the depositor's signature must panic.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_deposit_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, _vault, ym_addr) = register_ym(&env);
@@ -58,7 +60,7 @@ fn test_deposit_without_from_auth_reverts() {
 
 /// YM.redeem_combined requires the redeemer to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_redeem_combined_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, _vault, ym_addr) = register_ym(&env);
@@ -73,7 +75,7 @@ fn test_redeem_combined_without_from_auth_reverts() {
 
 /// YM.redeem_principal requires the redeemer to authorize the call.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_redeem_principal_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, _vault, ym_addr) = register_ym(&env);

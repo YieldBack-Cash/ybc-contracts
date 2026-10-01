@@ -1,3 +1,6 @@
+// The flash callbacks driven directly, as the pool would: pricing, the user's bound,
+// the pool's repayment, and the balance-delta PT check.
+
 use soroban_sdk::{testutils::Address as _, token::TokenClient, Address, IntoVal, Symbol};
 
 use super::fixture::YieldManagerTest;
@@ -83,15 +86,23 @@ fn test_on_flash_receive_v_happy_path() {
 
     assert_eq!(yt.balance(&user2), 0, "user2 YT consumed");
     assert_eq!(vault.balance(&amm), v_owed, "amm received v_owed");
-    assert_eq!(vault.balance(&user2), expected_v_to_user, "user2 received remainder");
+    assert_eq!(
+        vault.balance(&user2),
+        expected_v_to_user,
+        "user2 received remainder"
+    );
     assert_eq!(pt.balance(&test.yield_manager), 0, "YM PT burned");
     assert_eq!(yt.balance(&test.yield_manager), 0, "YM YT burned");
     // Conservation: total V out = shares_returned = pt_borrowed (at 1:1 rate).
-    assert_eq!(vault.balance(&amm) + vault.balance(&user2), pt_borrowed, "V conserved");
+    assert_eq!(
+        vault.balance(&amm) + vault.balance(&user2),
+        pt_borrowed,
+        "V conserved"
+    );
 }
 
 #[test]
-#[should_panic(expected = "v out below minimum")]
+#[should_panic(expected = "Error(Contract, #8)")] // SlippageExceeded
 fn test_on_flash_receive_v_min_v_out_reverts() {
     let test = YieldManagerTest::setup();
 
@@ -106,8 +117,8 @@ fn test_on_flash_receive_v_min_v_out_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "redeem yielded less V than owed to pool")]
-fn test_on_flash_receive_v_owed_exceeds_redeemed_panics() {
+#[should_panic(expected = "Error(Contract, #11)")] // RedeemBelowOwed
+fn test_on_flash_receive_v_owed_exceeds_redeemed_reverts() {
     let test = YieldManagerTest::setup();
 
     let deposit = 2_000_000i128;
@@ -140,9 +151,17 @@ fn test_on_flash_receive_pt_happy_path() {
         user_v - expected_user_cost,
         "user pays exactly v_to_mint - v_from_pool"
     );
-    assert_eq!(test.get_yt_balance(&test.user2), yt_out, "user receives yt_out YT");
+    assert_eq!(
+        test.get_yt_balance(&test.user2),
+        yt_out,
+        "user receives yt_out YT"
+    );
     assert_eq!(test.get_pt_balance(&amm), yt_out, "amm received yt_out PT");
-    assert_eq!(test.get_pt_balance(&test.yield_manager), 0, "YM leaked PT");
+    assert_eq!(
+        test.get_pt_balance(&test.yield_manager),
+        0,
+        "YM kept none of the PT"
+    );
     // Backing: pool advance + user top-up = v_to_mint, all held by the YM.
     assert_eq!(
         test.vault_balance(&test.yield_manager),
@@ -151,8 +170,52 @@ fn test_on_flash_receive_pt_happy_path() {
     );
 }
 
+/// PT anyone sent to the YM's address must not stop a YT purchase: the
+/// callback checks that it kept none of the PT it minted, not that it holds
+/// none at all.
 #[test]
-#[should_panic(expected = "cost exceeds max_v_in")]
+fn test_on_flash_receive_pt_ignores_pt_sent_to_the_ym() {
+    let test = YieldManagerTest::setup();
+    let amm = test.pool.clone();
+
+    // user1 splits and sends a single unit of PT to the YM.
+    let dust = 1i128;
+    test.mint_vault_shares(&test.user1, 1_000);
+    test.deposit(&test.user1, 1_000);
+    TokenClient::new(&test.env, &test.pt).transfer(&test.user1, &test.yield_manager, &dust);
+    let backing_before = test.vault_balance(&test.yield_manager);
+
+    let yt_out = 1_000_000i128;
+    let v_from_pool = 900_000i128;
+    let user_v = 500_000i128;
+    setup_flash_buy(&test, v_from_pool, user_v);
+
+    invoke_flash_receive_pt(&test, yt_out, v_from_pool, &test.user2, 200_000, &amm);
+
+    assert_eq!(
+        test.get_yt_balance(&test.user2),
+        yt_out,
+        "user receives yt_out YT"
+    );
+    assert_eq!(
+        test.get_pt_balance(&amm),
+        yt_out,
+        "amm received exactly yt_out PT"
+    );
+    assert_eq!(
+        test.get_pt_balance(&test.yield_manager),
+        dust,
+        "the sent PT is left where it was"
+    );
+    assert_eq!(
+        test.vault_balance(&test.yield_manager),
+        backing_before + yt_out,
+        "YM holds the full mint cost in V backing the new PT+YT"
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")] // SlippageExceeded
 fn test_on_flash_receive_pt_cost_exceeds_max_reverts() {
     let test = YieldManagerTest::setup();
     let amm = test.pool.clone();
@@ -164,7 +227,7 @@ fn test_on_flash_receive_pt_cost_exceeds_max_reverts() {
 }
 
 #[test]
-#[should_panic(expected = "non-positive YT cost")]
+#[should_panic(expected = "Error(Contract, #10)")] // NonPositiveYtCost
 fn test_on_flash_receive_pt_pool_overpay_reverts() {
     let test = YieldManagerTest::setup();
     let amm = test.pool.clone();
@@ -176,7 +239,7 @@ fn test_on_flash_receive_pt_pool_overpay_reverts() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #100)")] // OZ FungibleTokenError::InsufficientBalance
 fn test_on_flash_receive_pt_insufficient_user_v_reverts() {
     let test = YieldManagerTest::setup();
     let amm = test.pool.clone();
@@ -210,7 +273,11 @@ fn test_on_flash_receive_pt_higher_rate() {
         user_v - expected_user_cost,
         "user cost reflects the halved share requirement at rate 2.0"
     );
-    assert_eq!(test.get_yt_balance(&test.user2), yt_out, "user receives yt_out YT");
+    assert_eq!(
+        test.get_yt_balance(&test.user2),
+        yt_out,
+        "user receives yt_out YT"
+    );
     assert_eq!(test.get_pt_balance(&amm), yt_out, "amm received yt_out PT");
     assert_eq!(
         test.vault_balance(&test.yield_manager),
@@ -220,7 +287,7 @@ fn test_on_flash_receive_pt_higher_rate() {
 }
 
 #[test]
-#[should_panic(expected = "non-positive YT cost")]
+#[should_panic(expected = "Error(Contract, #10)")] // NonPositiveYtCost
 fn test_on_flash_receive_pt_dust_reverts() {
     let test = YieldManagerTest::setup();
     let amm = test.pool.clone();

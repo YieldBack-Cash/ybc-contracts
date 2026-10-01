@@ -2,32 +2,34 @@ use amm_interface::AmmError;
 use soroban_sdk::{token, Address, Env};
 
 /// Transfers tokens from the contract to a recipient.
-///
-/// # Arguments
-/// * `token` - Token contract address
-/// * `to` - Recipient address
-/// * `amount` - Amount to transfer
 fn transfer(e: &Env, token: &Address, to: &Address, amount: i128) {
     token::TokenClient::new(e, token).transfer(&e.current_contract_address(), to, &amount);
 }
 
 /// Transfers tokens from a user into the contract.
 fn transfer_in(e: &Env, token: &Address, from: &Address, amount: i128) {
-    token::TokenClient::new(e, token).transfer(from, &e.current_contract_address(), &amount);
+    token::TokenClient::new(e, token).transfer(from, e.current_contract_address(), &amount);
 }
-
-// Token addresses are passed in by callers (who already hold MarketState in scope)
-// to avoid re-reading market state from storage on every transfer.
 
 pub(crate) fn transfer_v_from_user_to_pool(e: &Env, token_v: &Address, from: &Address, v_in: i128) {
     transfer_in(e, token_v, from, v_in);
 }
 
-pub(crate) fn transfer_pt_from_pool_to_user(e: &Env, token_pt: &Address, to: &Address, pt_out: i128) {
+pub(crate) fn transfer_pt_from_pool_to_user(
+    e: &Env,
+    token_pt: &Address,
+    to: &Address,
+    pt_out: i128,
+) {
     transfer(e, token_pt, to, pt_out);
 }
 
-pub(crate) fn transfer_pt_from_user_to_pool(e: &Env, token_pt: &Address, from: &Address, pt_in: i128) {
+pub(crate) fn transfer_pt_from_user_to_pool(
+    e: &Env,
+    token_pt: &Address,
+    from: &Address,
+    pt_in: i128,
+) {
     transfer_in(e, token_pt, from, pt_in);
 }
 
@@ -35,7 +37,7 @@ pub(crate) fn transfer_v_from_pool_to_user(e: &Env, token_v: &Address, to: &Addr
     transfer(e, token_v, to, v_out);
 }
 
-/// Calculates optimal deposit amounts that maintain the constant product ratio.
+/// Scales a deposit down to the current reserve ratio (any ratio on an empty pool).
 ///
 /// # Arguments
 /// * `desired_a` - Desired amount of token A

@@ -1,11 +1,9 @@
 use soroban_sdk::{contracttype, Address, Env};
-use yield_manager_interface::VaultType;
 
 #[contracttype]
 pub enum DataKey {
     Admin,
     Vault,
-    VaultType,
     PrincipalToken,
     YieldToken,
     Maturity,
@@ -16,9 +14,8 @@ pub enum DataKey {
     SurplusShares,
 }
 
-/// Instance TTL (admin, vault/token addresses, exchange rate, maturity). Call
-/// once per entrypoint -- if this expires the whole protocol is bricked, not
-/// just one user's data.
+/// All YM state is instance storage. Call once per entry point: if the
+/// instance expires the market is bricked.
 pub use ybc_common::ttl::extend_instance_ttl;
 
 pub fn set_admin(env: &Env, admin: &Address) {
@@ -44,15 +41,6 @@ pub fn get_vault(env: &Env) -> Address {
         .expect("Vault not set")
 }
 
-// Vault type (immutable after initialization)
-pub fn set_vault_type(env: &Env, vault_type: VaultType) {
-    env.storage().instance().set(&DataKey::VaultType, &vault_type);
-}
-
-pub fn get_vault_type(env: &Env) -> VaultType {
-    env.storage().instance().get(&DataKey::VaultType).expect("Vault type not set")
-}
-
 // Maturity timestamp (immutable after initialization)
 pub fn set_maturity(env: &Env, maturity: u64) {
     env.storage().instance().set(&DataKey::Maturity, &maturity);
@@ -67,7 +55,9 @@ pub fn get_maturity(env: &Env) -> u64 {
 
 // Principal Token address (immutable after initialization)
 pub fn set_principal_token(env: &Env, token: &Address) {
-    env.storage().instance().set(&DataKey::PrincipalToken, token);
+    env.storage()
+        .instance()
+        .set(&DataKey::PrincipalToken, token);
 }
 
 pub fn get_principal_token(env: &Env) -> Address {
@@ -89,7 +79,8 @@ pub fn get_yield_token(env: &Env) -> Address {
         .expect("Yield token not set")
 }
 
-// Current exchange rate (updated on every operation until maturity)
+/// High-water mark of the vault rate, assets per SCALAR_7 shares. Frozen once
+/// `RateLocked` is set.
 pub fn set_exchange_rate(env: &Env, rate: i128) {
     env.storage().instance().set(&DataKey::ExchangeRate, &rate);
 }
@@ -159,5 +150,7 @@ pub fn get_surplus_shares(env: &Env) -> i128 {
 }
 
 pub fn set_surplus_shares(env: &Env, amount: i128) {
-    env.storage().instance().set(&DataKey::SurplusShares, &amount);
+    env.storage()
+        .instance()
+        .set(&DataKey::SurplusShares, &amount);
 }

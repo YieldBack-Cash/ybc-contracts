@@ -1,3 +1,34 @@
+//! The router: one signature per user action, with the market resolved through
+//! the factory so a caller cannot aim an operation at contracts the factory
+//! never deployed. Four rules hold throughout:
+//!
+//!   * **The router custodies nothing.** Every leg names the user as the
+//!     token-holding party, so a revert anywhere strands no funds.
+//!   * **Nothing the chain computes may enter a user's signature.** Soroban
+//!     matches a signed authorization argument for argument at execution, and
+//!     a wallet builds that signature by simulating beforehand, so a vault
+//!     share count, a pool-priced amount or a current ledger number is a
+//!     guaranteed mismatch. Every parameter here is caller-chosen. Measured
+//!     values move under contract authority instead: the pool pulls the
+//!     caller's bound and refunds, the yield manager redeems its own custody,
+//!     and leftover shares are swept by the router as vault operator against a
+//!     caller-signed allowance (`sweep_allowance` shares, expiring at ledger
+//!     `sweep_expiry`, which the caller must choose as an absolute ledger and
+//!     never derive from the current one).
+//!   * **Slippage is bounded in the unit the user settles in**, at the
+//!     endpoint, from measured balance deltas: one number covering pool price
+//!     and vault rate. A minimum must be positive; a zero minimum is no
+//!     protection.
+//!   * **Nothing trusts a vault's self-reported amount.** Every quantity that
+//!     crosses the vault boundary is measured, because SEP-56 leaves fees and
+//!     rounding to the implementation.
+//!
+//! Bounds double as funding: a `max_*` bound is pulled in full and the excess
+//! refunded, so the account must hold it at that leg. An `Err` returned after a
+//! leg has moved tokens reverts the whole invocation exactly as a panic would.
+//! `tests/integration/src/tests/zap_auth_entries.rs` pins the signature rule
+//! under real auth matching.
+
 use amm_interface::AmmClient;
 use factory_interface::{FactoryClient, Market};
 use soroban_sdk::{contract, contractclient, contractimpl, panic_with_error, token, Address, Env};
@@ -6,20 +37,38 @@ use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
 
 use crate::errors::RouterError;
-use crate::events::{ExitedExpired, ExitedExpiredToAsset, RoutedYtBuy, RoutedYtSell, ZappedIn, ZappedOut};
+use crate::events::{
+    ExitedExpired, ExitedExpiredToAsset, SwapVForYt, SwapYtForV, ZapAssetForLp, ZapAssetForPt,
+    ZapAssetForSplit, ZapAssetForYt, ZapLpForAsset, ZapPtForAsset, ZapSplitForAsset, ZapYtForAsset,
+};
 use crate::storage::{extend_instance_ttl, get_factory, set_factory};
 
+/// The widest legal share bound on a pool leg whose real bound is applied in
+/// asset terms afterwards: the pool refuses a non-positive minimum, and 1 is
+/// the smallest positive value.
+const NO_SHARE_BOUND: i128 = 1;
+
+/// Every entrypoint takes `(vault, maturity)` and resolves the market through
+/// the factory; `to` is the acting user and signs. The thin wrappers over the
+/// pool and the yield manager fail only on a bad market or amount and signal
+/// that with `panic_with_error!`; the zaps and exits return `Result`, because
+/// their failures (slippage bounds, unfunded legs, allowances) are ones a
+/// client is expected to handle, and listing `RouterError` in their spec is
+/// what lets it. Both carry the same codes. See the module doc for the rules.
 #[contractclient(name = "RouterClient")]
 pub trait RouterInterface {
+    /// The market's pool address.
     fn get_amm(env: Env, vault: Address, maturity: u64) -> Address;
+    /// Buy exactly `pt_out` PT for at most `max_v_in` vault shares.
     fn swap_v_for_pt(
         env: Env,
         vault: Address,
         maturity: u64,
         to: Address,
         pt_out: i128,
-        v_in_max: i128,
+        max_v_in: i128,
     );
+    /// Sell exactly `pt_in` PT for at least `min_v_out` vault shares.
     fn swap_pt_for_v(
         env: Env,
         vault: Address,
@@ -28,6 +77,8 @@ pub trait RouterInterface {
         pt_in: i128,
         min_v_out: i128,
     );
+    /// Buy exactly `yt_out` YT for at most `max_v_in` vault shares (a flash
+    /// swap through the yield manager).
     fn swap_v_for_yt(
         env: Env,
         vault: Address,
@@ -36,6 +87,7 @@ pub trait RouterInterface {
         yt_out: i128,
         max_v_in: i128,
     );
+    /// Sell exactly `yt_in` YT for at least `min_v_out` vault shares.
     fn swap_yt_for_v(
         env: Env,
         vault: Address,
@@ -44,6 +96,8 @@ pub trait RouterInterface {
         yt_in: i128,
         min_v_out: i128,
     );
+    /// Add liquidity. Leg `a` is PT, leg `b` is vault shares; the pool takes
+    /// the two in its reserve ratio and refunds the rest.
     fn deposit(
         env: Env,
         vault: Address,
@@ -54,15 +108,18 @@ pub trait RouterInterface {
         desired_b: i128,
         min_b: i128,
     );
+    /// Remove liquidity: burn `shares_amount` LP shares for `(PT, vault shares)`.
     fn withdraw(
         env: Env,
         vault: Address,
         maturity: u64,
         to: Address,
-        share_amount: i128,
+        shares_amount: i128,
         min_a: i128,
         min_b: i128,
     ) -> (i128, i128);
+    /// One-call exit from an expired market, paid in vault shares: burns the
+    /// LP position, redeems the whole PT balance and claims YT yield.
     fn exit_expired(
         env: Env,
         vault: Address,
@@ -92,28 +149,16 @@ pub trait RouterInterface {
         allow_expiry: u32,
     );
     fn recombine(env: Env, vault: Address, maturity: u64, to: Address, amount: i128);
+    /// `(PT reserve, vault-share reserve)` of the market's pool.
     fn get_reserves(env: Env, vault: Address, maturity: u64) -> (i128, i128);
+    /// `user`'s LP shares in the market's pool.
     fn balance_shares(env: Env, vault: Address, maturity: u64, user: Address) -> i128;
 
     // ── Zaps: enter and leave a market holding only the base asset ───────────
     //
-    // Every parameter below is CALLER-CHOSEN, and that is the design: a user's
-    // signed authorization on Soroban must match argument-for-argument at
-    // execution, so nothing the chain computes (vault share counts, ledger
-    // numbers, pool-priced amounts) may ever appear in one. Measured quantities
-    // move instead under contract authority — the YM redeems its own custody,
-    // the AMM pulls the caller's bound and refunds, and leftover shares are
-    // swept by the router acting as vault OPERATOR against a caller-signed
-    // allowance (`sweep_allowance` shares, expiring at ledger `sweep_expiry`).
-    //
-    // Bounds double as funding: a `max_*` bound is pulled in full and the
-    // excess refunded, so the account must actually hold it at that leg.
-    //
-    // Zaps and exits return `Result` because their failures — slippage bounds,
-    // unfunded legs, allowances — are ones a client is expected to handle, and
-    // listing `RouterError` in their spec is what lets it. The thin wrappers
-    // above only fail on a bad market or amount, and signal that with
-    // `panic_with_error!`, which carries the same codes.
+    // Each wraps an operation above in a vault deposit or redeem. `max_asset_in`
+    // is deposited in full and the leftover swept back; `min_asset_out` is the
+    // floor on what the user ends up holding. See the module doc.
     fn zap_asset_for_pt(
         env: Env,
         vault: Address,
@@ -214,19 +259,19 @@ pub trait RouterInterface {
 pub struct RouterContract;
 
 /// Resolves a market by (vault, maturity) through the factory, so callers can't
-/// point the router at a pool the factory didn't deploy. The factory keys each
-/// market directly by (vault, maturity) and forbids overwriting it, so this is a
-/// single O(1) lookup rather than a scan of the vault's whole market history.
+/// point the router at a pool the factory didn't deploy. Panics rather than
+/// returning `Err` so the wrappers, which return nothing, can share it; the
+/// client sees `Error(Contract, #1)` either way.
 fn resolve_market(e: &Env, vault: &Address, maturity: u64) -> Market {
     FactoryClient::new(e, &get_factory(e))
         .get_market(vault, &maturity)
         .unwrap_or_else(|| panic_with_error!(e, RouterError::MarketNotFound))
 }
 
-/// The vault's underlying asset, per SEP-56. Resolve this ONCE per invocation
-/// and thread the result through every leg: a vault that named one asset on the
-/// way in and another on the way out could otherwise be paid in the valuable
-/// token and settle in a worthless one.
+/// The vault's underlying asset, per SEP-56. Resolved once per invocation and
+/// threaded through every leg: a vault that named one asset on the way in and
+/// another on the way out could otherwise be paid in the valuable token and
+/// settle in a worthless one.
 fn vault_asset(e: &Env, vault: &Address) -> Address {
     VaultContractClient::new(e, vault).query_asset()
 }
@@ -235,15 +280,14 @@ fn vault_asset(e: &Env, vault: &Address) -> Address {
 /// shares to `to`. Returns the shares actually received.
 ///
 /// `to` is the vault's `from`, `receiver` and `operator` alike, so the router
-/// takes no custody and — because `assets` is caller-chosen — every entry in
-/// the user's signed tree (this deposit and its nested asset transfer) is
-/// drift-free by construction. The share count, which nobody can predict at
-/// signing time, is only ever *measured* here, never signed.
+/// takes no custody, and `assets` is caller-chosen so the signed tree matches.
+/// The share count is measured here, never signed.
+///
+/// Publishes nothing: the zap that called it reports the whole action in its
+/// own event.
 fn deposit_assets(
     e: &Env,
     vault: &Address,
-    maturity: u64,
-    asset: &Address,
     to: &Address,
     assets: i128,
 ) -> Result<i128, RouterError> {
@@ -254,17 +298,6 @@ fn deposit_assets(
     if shares_out <= 0 {
         return Err(RouterError::VaultMintedNoShares);
     }
-
-    ZappedIn {
-        vault: vault.clone(),
-        to: to.clone(),
-        maturity,
-        asset: asset.clone(),
-        asset_in: assets,
-        shares_out,
-    }
-    .publish(e);
-
     Ok(shares_out)
 }
 
@@ -273,17 +306,18 @@ fn deposit_assets(
 /// never ends up holding shares. Returns the asset delivered; a zap that gained
 /// nothing sweeps nothing.
 ///
-/// The gained amount is freshly measured, so it cannot appear in the user's
-/// signature. Instead the user signs a vault-share allowance whose arguments
-/// they chose (`sweep_allowance` shares, dead at ledger `sweep_expiry`), and
-/// the router — as SEP-56 OPERATOR — drives `redeem` with the measured figure,
-/// consuming the allowance. Both vaults this runs against implement exactly
-/// that operator semantics. The proceeds go straight to `to`; the router's
-/// authority here is only to trigger the conversion, never to redirect it.
+/// The gained amount is measured, so it cannot be signed. The user signs a
+/// vault-share allowance with arguments they chose (`sweep_allowance` shares,
+/// dead at ledger `sweep_expiry`), and the router, as SEP-56 operator, drives
+/// `redeem` with the measured figure against it. The ybc-vaults adapters and
+/// OpenZeppelin's vault (`standard_vault`) both implement that operator
+/// semantics. The proceeds go straight to `to`; the router's authority here is
+/// only to trigger the conversion, never to redirect it.
+///
+/// Publishes nothing, for the same reason as `deposit_assets`.
 fn sweep_gained_shares(
     e: &Env,
     vault: &Address,
-    maturity: u64,
     asset: &Address,
     to: &Address,
     shares_before: i128,
@@ -299,33 +333,23 @@ fn sweep_gained_shares(
         return Err(RouterError::SweepAllowanceTooLow);
     }
 
-    // User-signed, fixed-argument. The one thing a caller must NOT do is derive
-    // `sweep_expiry` from the current ledger — that is exactly the
-    // simulation/execution drift this design exists to eliminate.
-    vault_token.approve(to, &e.current_contract_address(), &sweep_allowance, &sweep_expiry);
+    // User-signed, fixed-argument (module doc).
+    vault_token.approve(
+        to,
+        &e.current_contract_address(),
+        &sweep_allowance,
+        &sweep_expiry,
+    );
 
     let asset_token = token::TokenClient::new(e, asset);
     let assets_before = asset_token.balance(to);
     VaultContractClient::new(e, vault).redeem(&gained, to, to, &e.current_contract_address());
-    let asset_out = asset_token.balance(to) - assets_before;
-
-    ZappedOut {
-        vault: vault.clone(),
-        to: to.clone(),
-        maturity,
-        asset: asset.clone(),
-        shares_in: gained,
-        asset_out,
-    }
-    .publish(e);
-
-    Ok(asset_out)
+    Ok(asset_token.balance(to) - assets_before)
 }
 
-/// Shared body of the share-denominated expired-market exit: burns the LP
-/// position, redeems the user's whole PT balance and sweeps YT yield. Returns
-/// `(vault shares gained, PT redeemed)`. Applies no slippage bound — the caller
-/// denominates that in the unit it settles in.
+/// Body of `exit_expired`: burns the LP position, redeems the user's whole PT
+/// balance and claims YT yield. Returns `(vault shares gained, PT redeemed)`;
+/// the caller applies the slippage bound.
 fn unwind_expired(
     e: &Env,
     market: &Market,
@@ -378,12 +402,12 @@ impl RouterInterface for RouterContract {
         maturity: u64,
         to: Address,
         pt_out: i128,
-        v_in_max: i128,
+        max_v_in: i128,
     ) {
         to.require_auth();
         extend_instance_ttl(&e);
         let market = resolve_market(&e, &vault, maturity);
-        AmmClient::new(&e, &market.pool).swap_v_for_pt(&to, &pt_out, &v_in_max);
+        AmmClient::new(&e, &market.pool).swap_v_for_pt(&to, &pt_out, &max_v_in);
     }
 
     fn swap_pt_for_v(
@@ -415,17 +439,19 @@ impl RouterInterface for RouterContract {
         }
 
         let market = resolve_market(&e, &vault, maturity);
+        let vault_token = token::TokenClient::new(&e, &vault);
+        let shares_before = vault_token.balance(&to);
 
         // Flash swap: the YM mints yt_out PT+YT, keeps the PT for the pool, and gives
         // the user the YT. The user pays only the YT price, bounded by max_v_in.
         AmmClient::new(&e, &market.pool).flash_swap_pt(&market.ym, &yt_out, &to, &max_v_in);
 
-        RoutedYtBuy {
+        SwapVForYt {
+            v_in: shares_before - vault_token.balance(&to),
             vault,
             to,
             maturity,
             yt_out,
-            max_v_in,
         }
         .publish(&e);
     }
@@ -445,6 +471,8 @@ impl RouterInterface for RouterContract {
         }
 
         let market = resolve_market(&e, &vault, maturity);
+        let vault_token = token::TokenClient::new(&e, &vault);
+        let shares_before = vault_token.balance(&to);
 
         // Transfer the YT before the flash swap so the user's signed auth entry is a
         // plain transfer with fixed args — nothing that drifts with pool state.
@@ -454,12 +482,12 @@ impl RouterInterface for RouterContract {
         // The YM is the callback receiver — it burns PT+YT and repays the AMM.
         AmmClient::new(&e, &market.pool).flash_swap_v(&market.ym, &yt_in, &to, &min_v_out);
 
-        RoutedYtSell {
+        SwapYtForV {
+            v_out: vault_token.balance(&to) - shares_before,
             vault,
             to,
             maturity,
             yt_in,
-            min_v_out,
         }
         .publish(&e);
     }
@@ -485,14 +513,14 @@ impl RouterInterface for RouterContract {
         vault: Address,
         maturity: u64,
         to: Address,
-        share_amount: i128,
+        shares_amount: i128,
         min_a: i128,
         min_b: i128,
     ) -> (i128, i128) {
         to.require_auth();
         extend_instance_ttl(&e);
         let market = resolve_market(&e, &vault, maturity);
-        AmmClient::new(&e, &market.pool).withdraw(&to, &share_amount, &min_a, &min_b)
+        AmmClient::new(&e, &market.pool).withdraw(&to, &shares_amount, &min_a, &min_b)
     }
 
     /// One-call exit from an expired market: burns the user's LP position,
@@ -539,16 +567,10 @@ impl RouterInterface for RouterContract {
     /// YM's address out of the frontend: the wallet obtains this entry by
     /// simulating, and signs it without ever having resolved the market itself.
     ///
-    /// Both arguments of that approve are the caller's own — the split size they
-    /// asked for, and an absolute `allow_expiry` ledger — so the entry matches at
-    /// execution. `allow_expiry` is a parameter for exactly that reason and must
-    /// NOT be derived from the current ledger: an earlier revision of
-    /// `zap_asset_for_split` approved with a measured amount and
-    /// `env.ledger().sequence()`, and failed on testnet with Auth/InvalidAction
-    /// every single time. See `tests/integration/src/tests/zap_auth_entries.rs`.
-    ///
-    /// The allowance is sized to exactly `shares_amount` and consumed in full by
-    /// the deposit, so nothing lingers afterwards.
+    /// Both arguments of that approve are the caller's own: the split size and
+    /// an absolute `allow_expiry` ledger, never `env.ledger().sequence()`
+    /// (module doc). The allowance is sized to exactly `shares_amount` and
+    /// consumed in full by the deposit, so nothing lingers afterwards.
     fn split(
         e: Env,
         vault: Address,
@@ -565,12 +587,7 @@ impl RouterInterface for RouterContract {
 
         let market = resolve_market(&e, &vault, maturity);
 
-        token::TokenClient::new(&e, &vault).approve(
-            &to,
-            &market.ym,
-            &shares_amount,
-            &allow_expiry,
-        );
+        token::TokenClient::new(&e, &vault).approve(&to, &market.ym, &shares_amount, &allow_expiry);
         YieldManagerClient::new(&e, &market.ym).deposit(&to, &shares_amount);
     }
 
@@ -607,29 +624,6 @@ impl RouterInterface for RouterContract {
     }
 
     // ── Zaps ────────────────────────────────────────────────────────────────
-    //
-    // Each zap wraps an existing operation in a vault deposit or redeem so the
-    // user only ever touches the base asset. Four rules hold throughout:
-    //
-    //   * The router custodies nothing. Every leg names the user as the
-    //     token-holding party, so a revert anywhere strands no funds and the
-    //     "router holds no funds" property in ARCHITECTURE.md survives intact.
-    //   * NOTHING THE CHAIN COMPUTES MAY ENTER A USER'S SIGNATURE. Soroban
-    //     matches a signed authorization argument-for-argument at execution, and
-    //     a wallet builds that signature by simulating beforehand — so a vault
-    //     share count, a pool-priced amount or a current ledger number is a
-    //     guaranteed mismatch. Measured values move under contract authority
-    //     instead: the AMM pulls the caller's bound and refunds, the YM redeems
-    //     its own custody, and leftovers are swept by the router as vault
-    //     operator against a caller-signed allowance.
-    //   * Slippage is bounded in base-asset terms at the endpoint, from measured
-    //     balance deltas — one number covering pool price AND vault rate.
-    //   * Nothing trusts a vault's self-reported amount. Every quantity crossing
-    //     the vault boundary is measured, because SEP-56 leaves fees and
-    //     rounding to the implementation.
-    //
-    // An `Err` returned after a leg has already moved tokens reverts the whole
-    // invocation exactly as a panic would, so it strands nothing.
 
     /// Buy exactly `pt_out` PT using the base asset. `max_asset_in` is deposited
     /// in full and `max_v_in` handed to the pool, which keeps only what the
@@ -660,21 +654,38 @@ impl RouterInterface for RouterContract {
         let asset_before = asset_token.balance(&to);
         let shares_before = vault_token.balance(&to);
 
-        // Both bounds are the caller's own numbers, so both are signable. The
-        // deposit's share yield is measured only to check the pool's bound can
-        // actually be funded — it never reaches an auth entry.
-        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, max_asset_in)?;
+        // Both bounds are caller-chosen (module doc); the share yield is
+        // measured only to check the pool leg is funded.
+        let shares_in = deposit_assets(&e, &vault, &to, max_asset_in)?;
         if shares_in < max_v_in {
             return Err(RouterError::DepositDidNotFundMaxVIn);
         }
         AmmClient::new(&e, &market.pool).swap_v_for_pt(&to, &pt_out, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
+        )?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
         if asset_spent > max_asset_in {
             return Err(RouterError::AssetSpentOverMax);
         }
+
+        ZapAssetForPt {
+            vault,
+            to,
+            maturity,
+            asset,
+            asset_in: asset_spent,
+            pt_out,
+        }
+        .publish(&e);
         Ok(asset_spent)
     }
 
@@ -701,17 +712,30 @@ impl RouterInterface for RouterContract {
         let vault_token = token::TokenClient::new(&e, &vault);
 
         let shares_before = vault_token.balance(&to);
-        // `pt_in` is caller-chosen so the PT leg is signable as-is; the AMM
-        // demands a positive share bound and 1 is the widest legal value, with
-        // the real bound applied in asset terms below.
-        AmmClient::new(&e, &market.pool).swap_pt_for_v(&to, &pt_in, &1);
+        AmmClient::new(&e, &market.pool).swap_pt_for_v(&to, &pt_in, &NO_SHARE_BOUND);
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);
         }
+
+        ZapPtForAsset {
+            vault,
+            to,
+            maturity,
+            asset,
+            pt_in,
+            asset_out,
+        }
+        .publish(&e);
         Ok(asset_out)
     }
 
@@ -741,22 +765,37 @@ impl RouterInterface for RouterContract {
         let asset_before = asset_token.balance(&to);
         let shares_before = vault_token.balance(&to);
 
-        // The YM's flash callback already pulls exactly `max_v_in` and refunds
-        // the rest — the pull-the-bound pattern this whole design generalises.
-        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, max_asset_in)?;
+        // The YM's flash callback pulls exactly `max_v_in` and refunds the rest.
+        let shares_in = deposit_assets(&e, &vault, &to, max_asset_in)?;
         if shares_in < max_v_in {
             return Err(RouterError::DepositDidNotFundMaxVIn);
         }
         AmmClient::new(&e, &market.pool).flash_swap_pt(&market.ym, &yt_out, &to, &max_v_in);
 
-        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
+        )?;
 
         let asset_spent = asset_before - asset_token.balance(&to);
         if asset_spent > max_asset_in {
             return Err(RouterError::AssetSpentOverMax);
         }
 
-        RoutedYtBuy { vault, to, maturity, yt_out, max_v_in }.publish(&e);
+        ZapAssetForYt {
+            vault,
+            to,
+            maturity,
+            asset,
+            asset_in: asset_spent,
+            yt_out,
+        }
+        .publish(&e);
         Ok(asset_spent)
     }
 
@@ -787,16 +826,30 @@ impl RouterInterface for RouterContract {
         // Same ordering as swap_yt_for_v: move the YT first so the user's signed
         // entry is a fixed-arg transfer, then let the YM drive the redeem.
         token::TokenClient::new(&e, &market.yt).transfer(&to, &market.ym, &yt_in);
-        AmmClient::new(&e, &market.pool).flash_swap_v(&market.ym, &yt_in, &to, &1);
+        AmmClient::new(&e, &market.pool).flash_swap_v(&market.ym, &yt_in, &to, &NO_SHARE_BOUND);
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);
         }
 
-        RoutedYtSell { vault, to, maturity, yt_in, min_v_out: min_asset_out }.publish(&e);
+        ZapYtForAsset {
+            vault,
+            to,
+            maturity,
+            asset,
+            yt_in,
+            asset_out,
+        }
+        .publish(&e);
         Ok(asset_out)
     }
 
@@ -818,15 +871,24 @@ impl RouterInterface for RouterContract {
         }
 
         let market = resolve_market(&e, &vault, maturity);
+        let asset = vault_asset(&e, &vault);
 
-        // Straight to the YM, which deposits into the vault with ITSELF as
-        // receiver — the shares never touch the user's account, so there is no
-        // allowance to grant and nothing measured to sign. An earlier revision
-        // did the vault deposit here and then approved the YM for the resulting
-        // share count, with an expiry read from the current ledger; both of
-        // those are execution-time values, and it failed on testnet with
-        // Auth/InvalidAction every single time.
-        Ok(YieldManagerClient::new(&e, &market.ym).deposit_asset(&to, &asset_in, &min_tokens_out))
+        // Straight to the YM, which deposits into the vault with itself as
+        // receiver: the shares never touch the user's account, so there is no
+        // allowance to grant and nothing measured to sign.
+        let tokens_out =
+            YieldManagerClient::new(&e, &market.ym).deposit_asset(&to, &asset_in, &min_tokens_out);
+
+        ZapAssetForSplit {
+            vault,
+            to,
+            maturity,
+            asset,
+            asset_in,
+            tokens_out,
+        }
+        .publish(&e);
+        Ok(tokens_out)
     }
 
     /// Recombine `amount` of PT + YT back into the base asset before maturity.
@@ -846,12 +908,27 @@ impl RouterInterface for RouterContract {
         }
 
         let market = resolve_market(&e, &vault, maturity);
+        let asset = vault_asset(&e, &vault);
 
-        // The YM burns the pair (both amounts caller-chosen, so signable) and
-        // redeems the owed shares from its OWN custody, with the vault paying
-        // the user directly. No share count reaches the user's signature.
-        Ok(YieldManagerClient::new(&e, &market.ym)
-            .redeem_combined_to_asset(&to, &amount, &min_asset_out))
+        // The YM burns the pair (both amounts caller-chosen) and redeems the
+        // owed shares from its own custody, with the vault paying the user
+        // directly. No share count reaches the user's signature.
+        let asset_out = YieldManagerClient::new(&e, &market.ym).redeem_combined_to_asset(
+            &to,
+            &amount,
+            &min_asset_out,
+        );
+
+        ZapSplitForAsset {
+            vault,
+            to,
+            maturity,
+            asset,
+            tokens_in: amount,
+            asset_out,
+        }
+        .publish(&e);
+        Ok(asset_out)
     }
 
     /// Provide liquidity starting from the base asset alone: deposit `asset_in`
@@ -895,15 +972,17 @@ impl RouterInterface for RouterContract {
 
         let market = resolve_market(&e, &vault, maturity);
         let asset = vault_asset(&e, &vault);
+        let asset_token = token::TokenClient::new(&e, &asset);
         let vault_token = token::TokenClient::new(&e, &vault);
         let pt_token = token::TokenClient::new(&e, &market.pt);
         let pool = AmmClient::new(&e, &market.pool);
 
+        let asset_before = asset_token.balance(&to);
         let shares_before = vault_token.balance(&to);
         let pt_before = pt_token.balance(&to);
         let lp_before = pool.balance_shares(&to);
 
-        let shares_in = deposit_assets(&e, &vault, maturity, &asset, &to, asset_in)?;
+        let shares_in = deposit_assets(&e, &vault, &to, asset_in)?;
         if pt_to_buy > 0 {
             if shares_in < max_v_in {
                 return Err(RouterError::DepositDidNotFundMaxVIn);
@@ -913,8 +992,8 @@ impl RouterInterface for RouterContract {
 
         // Offer the caller's own figures on both legs. The pool takes them in
         // its ratio and refunds the rest, so per-leg mins stay 0 and `min_lp_out`
-        // is the real bound. PT bought is exactly `pt_to_buy`, so that side is
-        // known without measuring.
+        // is the real bound. The swap delivers exactly `pt_to_buy` or reverts;
+        // the check below guards against a pool that doesn't.
         if pt_token.balance(&to) - pt_before < pt_to_buy {
             return Err(RouterError::PtLegShort);
         }
@@ -925,7 +1004,28 @@ impl RouterInterface for RouterContract {
             return Err(RouterError::MinLpOutNotMet);
         }
 
-        sweep_gained_shares(&e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry)?;
+        sweep_gained_shares(
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
+        )?;
+
+        // `asset_in` was deposited in full; what the pool declined came back
+        // through the sweep, so the user's balance change is the true cost.
+        ZapAssetForLp {
+            asset_in: asset_before - asset_token.balance(&to),
+            vault,
+            to,
+            maturity,
+            asset,
+            pt_bought: pt_to_buy,
+            lp_out,
+        }
+        .publish(&e);
         Ok(lp_out)
     }
 
@@ -939,6 +1039,7 @@ impl RouterInterface for RouterContract {
     /// exit realises noticeably less than the position's quoted value. For an
     /// expired market use `exit_expired_to_asset` instead, where PT redeems at
     /// par through the YM and no swap is needed.
+    ///
     /// `pt_to_sell` is the caller's figure for how much PT to sell back into the
     /// pool — typically what the frontend simulated the withdrawal will yield.
     /// It cannot be measured on-chain and then sold, because the sale amount
@@ -979,15 +1080,32 @@ impl RouterInterface for RouterContract {
             if pt_token.balance(&to) < pt_to_sell {
                 return Err(RouterError::PtBalanceShort);
             }
-            pool.swap_pt_for_v(&to, &pt_to_sell, &1);
+            pool.swap_pt_for_v(&to, &pt_to_sell, &NO_SHARE_BOUND);
         }
 
         let asset_out = sweep_gained_shares(
-            &e, &vault, maturity, &asset, &to, shares_before, sweep_allowance, sweep_expiry,
+            &e,
+            &vault,
+            &asset,
+            &to,
+            shares_before,
+            sweep_allowance,
+            sweep_expiry,
         )?;
         if asset_out < min_asset_out {
             return Err(RouterError::MinAssetOutNotMet);
         }
+
+        ZapLpForAsset {
+            vault,
+            to,
+            maturity,
+            asset,
+            lp_in: lp_shares,
+            pt_sold: pt_to_sell,
+            asset_out,
+        }
+        .publish(&e);
         Ok(asset_out)
     }
 
@@ -1002,6 +1120,14 @@ impl RouterInterface for RouterContract {
     /// withdrawal just produced" works without the measured figure ever entering
     /// the user's signature. Set `max_pt` generously; unused allowance is never
     /// taken and dies at the expiry.
+    ///
+    /// `sweep_allowance` means something different here from every other zap:
+    /// it is granted to the yield manager, not the router, and it is a ceiling
+    /// on the user's *whole* vault-share balance, not on what this call
+    /// produced. The YM authenticates `from`, so the figure it takes must be
+    /// one the user signed in advance, which rules out a measured "gained since
+    /// we started". Size it to the expected proceeds rather than passing
+    /// something arbitrarily large.
     fn exit_expired_to_asset(
         e: Env,
         vault: Address,
@@ -1021,28 +1147,20 @@ impl RouterInterface for RouterContract {
         }
 
         let market = resolve_market(&e, &vault, maturity);
+        let asset = vault_asset(&e, &vault);
         if e.ledger().timestamp() < market.maturity {
             return Err(RouterError::MarketNotExpired);
         }
 
         // Order matters. Both of these pay the user in vault shares, and they
-        // must land BEFORE the yield manager gathers them up, so the whole exit
+        // must land before the yield manager gathers them up, so the whole exit
         // settles in a single vault redemption.
         if lp_shares > 0 {
             AmmClient::new(&e, &market.pool).withdraw(&to, &lp_shares, &0, &0);
         }
         YieldTokenClient::new(&e, &market.yt).claim_yield(&to);
 
-        // Two ceilings, both caller-chosen and therefore signable; the YM takes
-        // only what is actually there. This is what lets freshly measured
-        // amounts — the LP payout, the yield claim — be converted without ever
-        // appearing in the user's signature.
-        //
-        // `sweep_allowance` is a ceiling on the user's WHOLE share balance, not
-        // just what this call produced. The YM authenticates `from`, so the
-        // figure it takes must be one the user signed in advance, which rules
-        // out a measured "gained since we started". Size it to the expected
-        // proceeds rather than passing something arbitrarily large.
+        // Two ceilings, both caller-chosen; the YM takes only what is there.
         token::TokenClient::new(&e, &market.pt).approve(&to, &market.ym, &max_pt, &pt_allow_expiry);
         token::TokenClient::new(&e, &vault).approve(
             &to,
@@ -1051,13 +1169,17 @@ impl RouterInterface for RouterContract {
             &sweep_expiry,
         );
 
-        // One call, one redemption, covering the PT face value and every loose
-        // share together. Redeeming those separately is what pushed this past
-        // the transaction budget whenever an LP position was involved.
-        let asset_out = YieldManagerClient::new(&e, &market.ym)
-            .exit_expired_to_asset(&to, &max_pt, &sweep_allowance, &min_asset_out);
+        // One redemption for the PT face value and the loose shares together;
+        // two would exceed the transaction budget when an LP position is involved.
+        let asset_out = YieldManagerClient::new(&e, &market.ym).exit_expired_to_asset(
+            &to,
+            &max_pt,
+            &sweep_allowance,
+            &min_asset_out,
+        );
 
         ExitedExpiredToAsset {
+            asset,
             vault,
             to,
             maturity,

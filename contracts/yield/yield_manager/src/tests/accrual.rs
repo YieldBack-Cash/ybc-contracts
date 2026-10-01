@@ -1,3 +1,5 @@
+// YT holders accrue the vault's growth and `claim_yield` pays it in vault shares.
+
 use soroban_sdk::{IntoVal, Symbol};
 
 use super::fixture::YieldManagerTest;
@@ -57,7 +59,6 @@ fn test_yield_distribution_proportional() {
         (&test.user2,).into_val(&test.env),
     );
 
-    // Equal deposits → equal yield (within 1% tolerance)
-    let diff = if claimed1 > claimed2 { claimed1 - claimed2 } else { claimed2 - claimed1 };
-    assert!(diff < claimed1 / 100);
+    // Equal deposits at equal rates: identical claims, no rounding to hide behind.
+    assert_eq!(claimed1, claimed2);
 }

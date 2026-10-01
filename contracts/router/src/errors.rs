@@ -2,12 +2,11 @@ use soroban_sdk::contracterror;
 
 /// Every way a router call can fail on its own checks.
 ///
-/// The release profile builds with `panic = "abort"` and strips panic messages,
-/// so a bare `assert!` reaches a client as `UnreachableCodeReached` no matter
-/// which check tripped — a caller could not tell a slippage bound from an
-/// unfunded swap leg (issue #19). Returned through `Result`, these surface as
-/// `Error(Contract, #n)` and appear in the contract spec. Failures inside the
-/// AMM, vault or yield manager still carry those contracts' own errors.
+/// Typed so a client can tell a slippage bound from an unfunded swap leg:
+/// returned through `Result`, these surface as `Error(Contract, #n)` and appear
+/// in the contract spec (the release profile strips panic messages, so a bare
+/// `assert!` would reach a client as an opaque trap). Failures inside the AMM,
+/// vault or yield manager still carry those contracts' own errors.
 ///
 /// Codes are part of the client-facing API: append new variants, never
 /// renumber existing ones.
@@ -18,6 +17,8 @@ pub enum RouterError {
     /// The factory has no market for this (vault, maturity).
     MarketNotFound = 1,
     /// An amount argument is zero or negative where that is not allowed.
+    /// Minimum-out bounds must be positive: a zero minimum is no protection,
+    /// and the pool rejects it anyway.
     InvalidAmount = 2,
     /// An expired-market exit was called before maturity.
     MarketNotExpired = 3,

@@ -24,7 +24,7 @@ const FEE_APY: i128 = 100_000; // 1%
 const RESERVE_FEE_RATE: i128 = 2_000_000; // 20% of the fee
 const ONE_YEAR_SECS: u64 = 365 * 24 * 3600;
 
-/// Total of each token minted per holder (admin and user).
+/// Total of each token minted per actor.
 pub const HOLDER_FUNDS: i128 = 100_000_000_0000000; // 100M units at 1e7
 /// Initial balanced liquidity seeded by the admin.
 pub const POOL_SEED: i128 = 1_000_000_0000000; // 1M units at 1e7
@@ -43,12 +43,31 @@ pub const NUM_ACTORS: usize = 3;
 /// contract, not sanitized here.
 #[derive(Clone, Copy, Debug)]
 pub enum Step {
-    Deposit { actor: u8, pt: i128, v: i128 },
-    Withdraw { actor: u8, shares: i128 },
-    SwapVForPt { actor: u8, pt_out: i128, v_in_max: i128 },
-    SwapPtForV { actor: u8, pt_in: i128, min_v_out: i128 },
-    AdvanceTime { secs: u64 },
-    SetVaultRate { rate: i128 },
+    Deposit {
+        actor: u8,
+        pt: i128,
+        v: i128,
+    },
+    Withdraw {
+        actor: u8,
+        shares: i128,
+    },
+    SwapVForPt {
+        actor: u8,
+        pt_out: i128,
+        v_in_max: i128,
+    },
+    SwapPtForV {
+        actor: u8,
+        pt_in: i128,
+        min_v_out: i128,
+    },
+    AdvanceTime {
+        secs: u64,
+    },
+    SetVaultRate {
+        rate: i128,
+    },
 }
 
 pub struct Harness<'a> {
@@ -63,18 +82,16 @@ pub struct Harness<'a> {
 }
 
 impl<'a> Harness<'a> {
-    /// Deploys tokens and pool, funds admin/user, and seeds balanced liquidity.
+    /// Deploys tokens and pool, funds every actor, and seeds balanced liquidity.
     /// Setup uses non-`try_` calls: a panic here is a harness bug, not a finding.
     pub fn new(env: &'a Env) -> Self {
         env.mock_all_auths();
         env.cost_estimate().budget().reset_unlimited();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
-        let actors: [Address; NUM_ACTORS] =
-            core::array::from_fn(|_| Address::generate(env));
+        let actors: [Address; NUM_ACTORS] = core::array::from_fn(|_| Address::generate(env));
         let admin = actors[0].clone();
 
-        // PT registered first so pt_addr < vault_addr, matching pool convention.
         let pt_addr = env.register(
             mock_vault::MockVault,
             (
@@ -96,8 +113,6 @@ impl<'a> Harness<'a> {
             ),
         );
         let vault = MockVaultClient::new(env, &vault_addr);
-        assert!(pt_addr < vault_addr, "counter addresses must be sequential");
-
         vault.set_exchange_rate(&10_000_000);
 
         let treasury = Address::generate(env);
@@ -108,13 +123,7 @@ impl<'a> Harness<'a> {
         // the divergence these invariants are supposed to hold across.
         let ym = env.register(
             yield_manager::YieldManager,
-            (
-                admin.clone(),
-                vault_addr.clone(),
-                yield_manager::VaultType::Vault4626,
-                expiry,
-                treasury.clone(),
-            ),
+            (admin.clone(), vault_addr.clone(), expiry, treasury.clone()),
         );
 
         let pool_addr = env.register(
@@ -140,7 +149,14 @@ impl<'a> Harness<'a> {
 
         pool.deposit(&admin, &POOL_SEED, &0, &POOL_SEED, &0);
 
-        Harness { env: env.clone(), pt, vault, pool, actors, treasury }
+        Harness {
+            env: env.clone(),
+            pt,
+            vault,
+            pool,
+            actors,
+            treasury,
+        }
     }
 
     fn actor(&self, idx: u8) -> &Address {
@@ -154,7 +170,11 @@ impl<'a> Harness<'a> {
             Step::Deposit { actor, pt, v } => {
                 let (pre_pt, pre_v) = self.pool.get_reserves();
                 let pre_total = self.pool.get_total_shares();
-                if self.pool.try_deposit(self.actor(actor), &pt, &0, &v, &0).is_ok() {
+                if self
+                    .pool
+                    .try_deposit(self.actor(actor), &pt, &0, &v, &0)
+                    .is_ok()
+                {
                     self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
                 }
             }
@@ -167,22 +187,44 @@ impl<'a> Harness<'a> {
                     // Pro-rata exactly, floor-rounded: the pool may keep the
                     // sub-stroop dust but never short an LP a full unit — and
                     // never pay out more than the shares' proportional claim.
-                    assert_eq!(out_pt, pre_pt * shares / pre_total, "withdraw paid non-pro-rata PT");
-                    assert_eq!(out_v, pre_v * shares / pre_total, "withdraw paid non-pro-rata V");
+                    assert_eq!(
+                        out_pt,
+                        pre_pt * shares / pre_total,
+                        "withdraw paid non-pro-rata PT"
+                    );
+                    assert_eq!(
+                        out_v,
+                        pre_v * shares / pre_total,
+                        "withdraw paid non-pro-rata V"
+                    );
                     self.assert_share_price_not_diluted(pre_pt, pre_v, pre_total);
                 }
             }
-            Step::SwapVForPt { actor, pt_out, v_in_max } => {
-                let _ = self.pool.try_swap_v_for_pt(self.actor(actor), &pt_out, &v_in_max);
+            Step::SwapVForPt {
+                actor,
+                pt_out,
+                v_in_max,
+            } => {
+                let _ = self
+                    .pool
+                    .try_swap_v_for_pt(self.actor(actor), &pt_out, &v_in_max);
             }
-            Step::SwapPtForV { actor, pt_in, min_v_out } => {
-                let _ = self.pool.try_swap_pt_for_v(self.actor(actor), &pt_in, &min_v_out);
+            Step::SwapPtForV {
+                actor,
+                pt_in,
+                min_v_out,
+            } => {
+                let _ = self
+                    .pool
+                    .try_swap_pt_for_v(self.actor(actor), &pt_in, &min_v_out);
             }
             Step::AdvanceTime { secs } => {
                 let secs = secs % (MAX_TIME_STEP + 1);
                 self.env.ledger().with_mut(|l| l.timestamp += secs);
             }
             Step::SetVaultRate { rate } => {
+                // The YM high-water-marks, so a lower rate here never reaches the
+                // curve; only rises change pricing.
                 let rate = rate.clamp(MIN_VAULT_RATE, MAX_VAULT_RATE);
                 self.vault.set_exchange_rate(&rate);
             }
@@ -198,8 +240,11 @@ impl<'a> Harness<'a> {
         let post_total = self.pool.get_total_shares();
         for (pre, post, label) in [(pre_pt, post_pt, "PT"), (pre_v, post_v, "V")] {
             assert!(
-                post.checked_mul(pre_total).expect("share-price check overflow")
-                    >= pre.checked_mul(post_total).expect("share-price check overflow"),
+                post.checked_mul(pre_total)
+                    .expect("share-price check overflow")
+                    >= pre
+                        .checked_mul(post_total)
+                        .expect("share-price check overflow"),
                 "{} per-share reserve diluted by liquidity op",
                 label
             );
@@ -232,8 +277,11 @@ impl<'a> Harness<'a> {
         assert!(reserve_v > 0, "V reserve drained to zero");
 
         // 3. A negative implied rate would brick the pool: compute_rate_anchor
-        //    asserts last_implied_rate >= 0, so every future trade would panic.
-        assert!(self.pool.get_implied_rate() >= 0, "implied rate went negative");
+        //    rejects last_implied_rate < 0, so every future trade would fail.
+        assert!(
+            self.pool.get_implied_rate() >= 0,
+            "implied rate went negative"
+        );
 
         // 4. Token conservation: pool operations only move tokens between the
         //    actors, the pool, and the treasury (reserve-fee remittances);
@@ -243,11 +291,15 @@ impl<'a> Harness<'a> {
             for actor in &self.actors {
                 sum += tok.balance(actor);
             }
-            assert_eq!(sum, NUM_ACTORS as i128 * HOLDER_FUNDS, "{} tokens not conserved", label);
+            assert_eq!(
+                sum,
+                NUM_ACTORS as i128 * HOLDER_FUNDS,
+                "{} tokens not conserved",
+                label
+            );
         }
 
-        // 5. The treasury only ever receives V (fees are charged in V), and
-        //    its balance must never decrease — the pool cannot claw fees back.
+        // 5. The treasury only ever receives V (fees are charged in V).
         assert_eq!(pt_token.balance(&self.treasury), 0, "treasury received PT");
     }
 }
@@ -256,7 +308,9 @@ impl<'a> Harness<'a> {
 /// fresh environment, seeded pool, then apply steps checking invariants.
 pub fn run_steps(steps: &[Step]) {
     // No snapshot JSON per run: fuzz/proptest runs create thousands of envs.
-    let env = Env::new_with_config(EnvTestConfig { capture_snapshot_at_drop: false });
+    let env = Env::new_with_config(EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    });
     let harness = Harness::new(&env);
     harness.assert_invariants();
     for step in steps {

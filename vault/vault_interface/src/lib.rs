@@ -2,22 +2,18 @@
 
 use soroban_sdk::{contractclient, Address, Env};
 
-/// Trait defining the interface for the Vault contract.
-/// This trait is used to generate the VaultContractClient for type-safe cross-contract calls.
+/// The slice of SEP-56 (`TokenizedVault`) the protocol calls on a vault.
 ///
-/// Every method below is drawn from SEP-56 (`TokenizedVault`), and the protocol
-/// calls nothing else on a vault. That is deliberate: any compliant vault can
+/// The protocol calls nothing else on a vault, so any compliant vault can
 /// back a market without a per-vault adapter. SEP-56 declares
 /// `TokenizedVault: TokenInterface`, so the share token is itself SEP-41 —
 /// which is how the yield manager custodies shares and how the AMM holds them
 /// as a reserve.
 ///
-/// This is a strict subset, and deliberately an EXACT one: every method here is
-/// called somewhere, and nothing that is called is missing. Declaring a method
-/// the protocol never invokes is not free — it reads as a requirement, and a
-/// vault that omits it looks incompatible when it is not. (`convert_to_shares`
-/// was declared here once for symmetry with `convert_to_assets`; nothing called
-/// it, and blend-vault-v2 does not implement it.)
+/// This is a strict subset, and deliberately an exact one: every method here
+/// is called somewhere, and nothing that is called is missing. Declaring a
+/// method the protocol never invokes reads as a requirement, and a vault that
+/// omits it looks incompatible when it is not.
 ///
 /// SEP-56 also declares `mint`, `withdraw`, `convert_to_shares`, `total_supply`,
 /// `total_assets`, the four `max_*` and the four `preview_*` functions. Beyond
@@ -33,30 +29,32 @@ use soroban_sdk::{contractclient, Address, Env};
 ///     right now: the reference implementations just convert the owner's
 ///     balance and say nothing about availability.
 ///
-/// Two properties the protocol depends on that SEP-56 does NOT guarantee —
+/// Two properties the protocol depends on that SEP-56 does *not* guarantee —
 /// see docs/SECURITY.md:
 ///   * share value may fall (the yield manager assumes a non-decreasing rate),
 ///   * fees are out of scope, so `convert_to_assets` may overstate what
 ///     `redeem` actually pays out.
 #[contractclient(name = "VaultContractClient")]
 pub trait VaultTrait {
-    fn __constructor(e: Env, asset: Address, decimals_offset: u32, strategy: Address);
-
     /// Address of the underlying asset the vault holds.
     ///
     /// Read live on every call rather than snapshotted into the factory's
     /// market record: there is nothing to migrate and nothing that can go
-    /// stale. Callers must resolve it ONCE per invocation and reuse the result,
+    /// stale. Callers must resolve it once per invocation and reuse the result,
     /// so a vault cannot name one asset on the way in and another on the way
     /// out of the same transaction.
     fn query_asset(e: &Env) -> Address;
 
-    /// Assets per share. Read ONLY by the yield manager, which high-water-marks
+    /// Assets per share. Read only by the yield manager, which high-water-marks
     /// it into the exchange rate the rest of the protocol prices and settles
     /// against — the AMM reads that rate from the yield manager rather than
     /// calling this itself.
     fn convert_to_assets(e: &Env, shares: i128) -> i128;
 
+    /// Asset-denominated entry. Shares go to `receiver`; the router passes the
+    /// user for `receiver`, `from` and `operator` alike so it takes no custody,
+    /// and the yield manager names itself as `receiver` so shares land in its
+    /// custody directly.
     fn deposit(e: &Env, assets: i128, receiver: Address, from: Address, operator: Address) -> i128;
 
     /// Share-denominated exit. Preferred over SEP-56's asset-denominated

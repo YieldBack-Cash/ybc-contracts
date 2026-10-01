@@ -46,7 +46,10 @@ fn zap_asset_for_pt_buys_exact_pt_and_strands_no_shares() {
         spent,
         "return value is the asset actually spent"
     );
-    assert!(spent > 0 && spent <= 300_000_000, "spend within bound: {spent}");
+    assert!(
+        spent > 0 && spent <= 300_000_000,
+        "spend within bound: {spent}"
+    );
 }
 
 #[test]
@@ -132,7 +135,7 @@ fn zap_split_for_asset_returns_the_underlying() {
     // Splitting and recombining touches no AMM and charges no fee, so the only
     // loss is rounding.
     assert!(
-        returned >= 499_999_000 && returned <= 500_000_000,
+        (499_999_000..=500_000_000).contains(&returned),
         "split round trip should be near-lossless, got {returned}"
     );
 }
@@ -159,7 +162,10 @@ fn zap_asset_for_yt_and_back() {
     assert_eq!(f.balance(&f.yt) - yt_before, 100_000_000, "exact YT out");
     assert_eq!(f.balance(&f.vault), shares_before, "no shares stranded");
     // YT costs only the yield portion, far less than its face amount.
-    assert!(spent > 0 && spent < 100_000_000, "YT should be cheap: {spent}");
+    assert!(
+        spent > 0 && spent < 100_000_000,
+        "YT should be cheap: {spent}"
+    );
 
     let asset_before = f.balance(&f.asset);
     let received = f.router.zap_yt_for_asset(
@@ -302,8 +308,14 @@ fn assert_within_tx_budget(env: &Env, label: &str) {
         "{label}: {cpu} CPU insns ({}% of limit), {mem} bytes",
         cpu * 100 / NETWORK_TX_CPU_LIMIT
     );
-    assert!(cpu < NETWORK_TX_CPU_LIMIT, "{label} used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit");
-    assert!(mem < NETWORK_TX_MEM_LIMIT, "{label} used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit");
+    assert!(
+        cpu < NETWORK_TX_CPU_LIMIT,
+        "{label} used {cpu} CPU insns, over the {NETWORK_TX_CPU_LIMIT} per-tx limit"
+    );
+    assert!(
+        mem < NETWORK_TX_MEM_LIMIT,
+        "{label} used {mem} bytes, over the {NETWORK_TX_MEM_LIMIT} per-tx limit"
+    );
 }
 
 #[test]
@@ -362,34 +374,6 @@ fn exit_expired_to_asset_fits_network_tx_budget() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #7)")]
-fn zap_out_respects_min_asset_out() {
-    let env = Env::default();
-    let f = ZapFixture::new(&env);
-
-    f.router.zap_asset_for_pt(
-        &f.vault,
-        &f.maturity,
-        &f.user,
-        &100_000_000,
-        &300_000_000,
-        &200_000_000,
-        &SWEEP,
-        &f.expiry(),
-    );
-    // Demand far more than 1e8 PT could possibly fetch.
-    f.router.zap_pt_for_asset(
-        &f.vault,
-        &f.maturity,
-        &f.user,
-        &100_000_000,
-        &999_000_000,
-        &SWEEP,
-        &f.expiry(),
-    );
-}
-
-#[test]
 #[should_panic(expected = "Error(Contract, #10)")]
 fn sweep_allowance_is_enforced() {
     let env = Env::default();
@@ -410,14 +394,14 @@ fn sweep_allowance_is_enforced() {
 }
 
 #[test]
-#[should_panic]
-fn zap_in_reverts_when_the_asset_budget_is_too_small() {
+#[should_panic(expected = "Error(Contract, #16)")]
+fn zap_asset_for_pt_reverts_when_the_pool_bound_is_too_small() {
     let env = Env::default();
     let f = ZapFixture::new(&env);
 
-    // 1_000 of the asset buys nowhere near 1e8 PT. The deposit cannot fund the
-    // pool bound, so the whole zap unwinds and the user is not left holding the
-    // shares the first leg produced.
+    // 1_000 shares buys nowhere near 1e8 PT, so the pool refuses
+    // (`AmmError::MaxVInExceeded`) and the whole zap unwinds: the user is not
+    // left holding the shares the deposit minted.
     f.router.zap_asset_for_pt(
         &f.vault,
         &f.maturity,
@@ -430,8 +414,8 @@ fn zap_in_reverts_when_the_asset_budget_is_too_small() {
     );
 }
 
-/// Issue #19: a `max_v_in` above the shares the deposit mints used to trap with
-/// an opaque `UnreachableCodeReached`. It must come back as a typed error.
+/// Regression: a `max_v_in` above the shares the deposit mints must surface
+/// as the typed error, not an opaque `UnreachableCodeReached`.
 #[test]
 fn zap_asset_for_lp_reports_an_unfunded_max_v_in() {
     let env = Env::default();

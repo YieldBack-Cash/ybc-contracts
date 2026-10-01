@@ -199,7 +199,6 @@ fn test_router_swap_yt_for_v_requires_user_auth() {
 fn test_router_amm_deposit_requires_lp_auth() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
-    f.vault.set_exchange_rate(&1);
     f.vault.mint(&f.admin, &100_000_000);
     f.ym_deposit(&f.admin, 50_000_000);
 
@@ -217,7 +216,16 @@ fn test_router_amm_deposit_requires_lp_auth() {
     f.env.invoke_contract::<()>(
         &f.router,
         &Symbol::new(&f.env, "deposit"),
-        (&f.vault.address, f.maturity, &f.admin, pt_amt, 0i128, v_amt, 0i128).into_val(&f.env),
+        (
+            &f.vault.address,
+            f.maturity,
+            &f.admin,
+            pt_amt,
+            0i128,
+            v_amt,
+            0i128,
+        )
+            .into_val(&f.env),
     );
 
     let auths = f.env.auths();

@@ -8,7 +8,10 @@ use super::fixture::VaultStack;
 /// a bootstrap deposit; neither adapter does now.
 fn market_is_created_on_an_empty_vault(f: &VaultStack) {
     assert_eq!(f.vault_client().total_supply(), 0);
-    assert!(f.ym().get_exchange_rate() > 0, "rate must be readable on an empty vault");
+    assert!(
+        f.ym().get_exchange_rate() > 0,
+        "rate must be readable on an empty vault"
+    );
     assert_eq!(f.ym().get_vault(), f.vault);
     assert_eq!(f.vault_client().query_asset(), f.underlying);
 }
@@ -32,7 +35,11 @@ fn split_vault_shares_into_pt_yt(f: &VaultStack) {
     assert!(pt > 0, "PT should be minted after split");
     assert_eq!(pt, yt, "PT and YT must be minted 1:1");
 
-    assert_eq!(f.vault_shares(&user), 0, "user holds no vault shares after split");
+    assert_eq!(
+        f.vault_shares(&user),
+        0,
+        "user holds no vault shares after split"
+    );
     assert_eq!(
         f.vault_shares(&f.yield_manager),
         shares,
@@ -56,8 +63,14 @@ fn shares_round_trip_through_the_yield_manager(f: &VaultStack) {
 
     let paid = f.vault_client().redeem(&shares, &user, &user, &user);
     assert_eq!(f.underlying_balance(&user), paid);
-    assert!(paid <= deposit, "no free value: paid {paid} > deposited {deposit}");
-    assert!(paid >= deposit - 2, "lost more than rounding: paid {paid} of {deposit}");
+    assert!(
+        paid <= deposit,
+        "no free value: paid {paid} > deposited {deposit}"
+    );
+    assert!(
+        paid >= deposit - 2,
+        "lost more than rounding: paid {paid} of {deposit}"
+    );
     assert_eq!(f.vault_shares(&user), 0);
 }
 

@@ -1,4 +1,5 @@
-#![cfg(test)]
+mod fixture;
+use fixture::register_pt;
 
-mod auth;
 mod amounts;
+mod auth;

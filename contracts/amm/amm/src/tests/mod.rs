@@ -1,12 +1,10 @@
-#![cfg(test)]
-
 mod fixture;
 
 mod auth;
 mod deposit;
 mod fees;
-mod init;
 mod flash;
+mod init;
 mod parity;
 mod pricing;
 mod proptests;

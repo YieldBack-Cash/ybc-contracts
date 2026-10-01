@@ -9,12 +9,13 @@ use soroban_sdk::{
 
 use factory::{Factory, FactoryClient, FeeConfig, WasmHashes};
 use router::RouterContract;
-use yield_manager::VaultType;
 use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
 
 use vault_testkit::protocols::blend::{self as blend_protocol, pool, BlendFixture};
-use vault_testkit::protocols::xoxno::{HubAssetKey, MockController, MockControllerClient, HUB_ID, SPOKE_ID};
+use vault_testkit::protocols::xoxno::{
+    HubAssetKey, MockController, MockControllerClient, HUB_ID, SPOKE_ID,
+};
 /// The SEP-56 client, generated from `vault_common::sep56::Sep56Vault`: the
 /// same declaration the adapters are compile-checked against. Nothing in these
 /// tests may call a function YBC would not.
@@ -94,11 +95,17 @@ impl<'a> VaultStack<'a> {
     pub fn blend(env: &'a Env) -> Self {
         let (admin, user) = Self::prepare(env);
 
-        let blnd = env.register_stellar_asset_contract_v2(admin.clone()).address();
-        let usdc = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let blnd = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let usdc = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let protocol = BlendFixture::deploy(env, &admin, &blnd, &usdc);
 
-        let underlying = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let underlying = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         StellarAssetClient::new(env, &underlying).mint(&admin, &20_000_000_0000000i128);
         let pool = blend_protocol::deploy_pool(env, &protocol, &admin, &underlying);
 
@@ -121,7 +128,9 @@ impl<'a> VaultStack<'a> {
     pub fn xoxno(env: &'a Env) -> Self {
         let (admin, user) = Self::prepare(env);
 
-        let underlying = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let underlying = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let controller = env.register(MockController, (underlying.clone(), HUB_ID));
 
         let vault = env.register(
@@ -136,7 +145,14 @@ impl<'a> VaultStack<'a> {
             ),
         );
 
-        Self::finish(env, admin, user, underlying, vault, Backend::Xoxno { controller })
+        Self::finish(
+            env,
+            admin,
+            user,
+            underlying,
+            vault,
+            Backend::Xoxno { controller },
+        )
     }
 
     fn finish(
@@ -167,7 +183,6 @@ impl<'a> VaultStack<'a> {
         let market = factory.create_market(
             &admin,
             &vault,
-            &VaultType::Vault4626,
             &maturity,
             &CURRENT_APY,
             &APY_MIN,
@@ -239,7 +254,8 @@ impl<'a> VaultStack<'a> {
 
     pub fn vault_approve(&self, owner: &Address, spender: &Address, amount: i128) {
         let expiry = self.env.ledger().sequence() + 1000;
-        self.token(&self.vault).approve(owner, spender, &amount, &expiry);
+        self.token(&self.vault)
+            .approve(owner, spender, &amount, &expiry);
     }
 
     /// Full share path: underlying → vault shares → YM → PT + YT.

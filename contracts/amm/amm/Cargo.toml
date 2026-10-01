@@ -13,11 +13,8 @@ testutils = ["soroban-sdk/testutils", "dep:mock_vault", "dep:yield_manager"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-fixed-point-math = { workspace = true }
 amm-interface = { path = "../amm-interface" }
 ybc_common = { workspace = true }
-num-integer = { version = "0.1.46", default-features = false }
-vault_interface = { path = "../../../vault/vault_interface" }
 yield_manager_interface = { path = "../../yield/yield_manager_interface" }
 mock_vault = { path = "../../mocks/mock_vault", optional = true }
 # Tests and the fuzz harness stand up the REAL yield manager rather than a stub,

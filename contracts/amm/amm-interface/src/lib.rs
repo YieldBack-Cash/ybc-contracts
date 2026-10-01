@@ -5,9 +5,8 @@ use soroban_sdk::{contractclient, contracterror, Address, Env};
 /// Every way a pool call can fail on its own checks.
 ///
 /// Lives in the interface crate, like `YieldManagerError`, so callers holding
-/// only an `AmmClient` can decode it. A bare `assert!` reaches a client as
-/// `UnreachableCodeReached` whichever check tripped (issue #19); these surface
-/// as `Error(Contract, #n)` instead.
+/// only an `AmmClient` can decode it. Typed so clients see `Error(Contract, #n)`
+/// rather than an opaque trap.
 ///
 /// Codes are part of the client-facing API: append new variants, never
 /// renumber existing ones.
@@ -50,7 +49,9 @@ pub enum AmmError {
     ExchangeRateBelowOne = 14,
     /// The trade is too small to price: its V side rounds to zero.
     TradeTooSmall = 15,
-    /// The swap costs more vault shares than `v_in_max` / `max_v_in`.
+    /// The swap costs more vault shares than `v_in_max` (`swap_v_for_pt`).
+    /// `max_v_in` on the flash path is enforced by the receiver, with its own
+    /// error.
     MaxVInExceeded = 16,
     /// The swap pays fewer vault shares than `min_v_out`.
     MinVOutNotMet = 17,
@@ -80,9 +81,16 @@ pub enum AmmError {
 }
 
 #[contractclient(name = "AmmClient")]
+/// The pool's public surface. Leg `a` is PT and leg `b` is vault shares ("V")
+/// throughout; amounts are in each token's own units (7 decimals).
 pub trait AmmInterface {
+    /// Buy exactly `pt_out` PT for at most `v_in_max` vault shares from `to`.
     fn swap_v_for_pt(env: Env, to: Address, pt_out: i128, v_in_max: i128) -> Result<(), AmmError>;
+    /// Sell exactly `pt_in` PT from `to` for at least `min_v_out` vault shares.
     fn swap_pt_for_v(env: Env, to: Address, pt_in: i128, min_v_out: i128) -> Result<(), AmmError>;
+    /// Buy YT: the pool advances vault shares to `receiver` (the yield manager),
+    /// which mints `yt_out` PT+YT, keeps the PT for the pool and gives `user` the
+    /// YT for at most `max_v_in` shares.
     fn flash_swap_pt(
         env: Env,
         receiver: Address,
@@ -90,6 +98,9 @@ pub trait AmmInterface {
         user: Address,
         max_v_in: i128,
     ) -> Result<(), AmmError>;
+    /// Sell YT: the pool lends `pt_to_borrow` PT to `receiver` (the yield
+    /// manager), which burns it with the user's YT and repays the pool in
+    /// shares; `user` receives at least `min_v_out` of the remainder.
     fn flash_swap_v(
         env: Env,
         receiver: Address,
@@ -97,6 +108,9 @@ pub trait AmmInterface {
         user: Address,
         min_v_out: i128,
     ) -> Result<(), AmmError>;
+    /// Add liquidity. The pool takes the two legs in its reserve ratio (any
+    /// ratio on an empty pool) and refunds the rest; each leg must reach its
+    /// `min_*`.
     fn deposit(
         env: Env,
         to: Address,
@@ -105,6 +119,8 @@ pub trait AmmInterface {
         desired_b: i128,
         min_b: i128,
     ) -> Result<(), AmmError>;
+    /// Burn `share_amount` LP shares for a pro-rata slice of both reserves.
+    /// Returns `(pt, vault shares)` paid.
     fn withdraw(
         env: Env,
         to: Address,
@@ -112,34 +128,22 @@ pub trait AmmInterface {
         min_a: i128,
         min_b: i128,
     ) -> Result<(i128, i128), AmmError>;
+    /// `(PT reserve, vault-share reserve)`.
     fn get_reserves(env: Env) -> (i128, i128);
+    /// The pool's implied rate after the last trade, ln-space, 1e7-scaled.
     fn get_implied_rate(env: Env) -> i128;
     fn get_treasury(env: Env) -> Address;
+    /// Share of each trade's fee sent to the treasury, 1e7-scaled.
     fn get_reserve_fee_rate(env: Env) -> i128;
     fn balance_shares(env: Env, user: Address) -> i128;
     fn get_total_shares(env: Env) -> i128;
 }
 
-// `vault_rate` on both callbacks below is the share/asset rate — assets per 1e7
-// shares — that the AMM loaded at the top of the flash swap to price the trade, handed
-// down rather than re-fetched.
-//
-// The NAME is historical. The AMM sources this from `YieldManager::get_exchange_rate`,
-// NOT from the vault: PT settles at the yield manager's rate, and the two diverge the
-// moment a vault loses value. See `amm/src/vault.rs` for the full argument.
-//
-// It exists purely to remove a redundant read. Pre-maturity the YM turns the call into
-// a vault read, and against a lending vault that is expensive (it accrues interest and
-// materialises the pool's whole reserve record); the rate cannot move mid-transaction,
-// so the receiver asking again would spend that cost to recompute a value the caller
-// is already holding.
-//
-// The direction matters. The value flows from the contract that OWNS the number the
-// protocol settles at to the one that merely prices against it, never the reverse. In
-// practice that makes this hint the yield manager's own stored figure round-tripping
-// back to it, so applying it is idempotent and its non-decreasing floor is a no-op —
-// the pool cannot supply any other value. Receivers should still treat it as an input
-// to validate rather than a fact, and only the registered pool can supply one at all.
+// `vault_rate` on both callbacks is the rate the pool priced this trade at:
+// `YieldManager::get_exchange_rate`, assets per 1e7 shares, handed down so the
+// receiver need not re-read it (pre-maturity that read reaches the vault). The
+// name predates sourcing it from the YM. Receivers should validate it, and
+// only the registered pool may call them.
 
 #[contractclient(name = "FlashSwapPtReceiverClient")]
 pub trait FlashSwapPtReceiver {
@@ -148,7 +152,15 @@ pub trait FlashSwapPtReceiver {
     /// receiver must mint `yt_out` (PT + YT) using that V plus the user's top-up, deliver
     /// `yt_out` YT to `user`, and return exactly `yt_out` PT to `amm` before returning.
     /// The user's total V cost must not exceed `max_v_in`.
-    fn on_flash_receive_pt(env: Env, yt_out: i128, v_from_pool: i128, user: Address, max_v_in: i128, vault_rate: i128, amm: Address);
+    fn on_flash_receive_pt(
+        env: Env,
+        yt_out: i128,
+        v_from_pool: i128,
+        user: Address,
+        max_v_in: i128,
+        vault_rate: i128,
+        amm: Address,
+    );
 }
 
 #[contractclient(name = "FlashSwapVReceiverClient")]
@@ -156,5 +168,13 @@ pub trait FlashSwapVReceiver {
     /// Called by the AMM during `flash_swap_v`. The receiver is lent `pt_borrowed` PT and must,
     /// before returning, deliver `v_owed` vault shares back to `amm`. Anything beyond `v_owed`
     /// is the trade's net output.
-    fn on_flash_receive_v(env: Env, pt_borrowed: i128, v_owed: i128, user: Address, min_v_out: i128, vault_rate: i128, amm: Address);
+    fn on_flash_receive_v(
+        env: Env,
+        pt_borrowed: i128,
+        v_owed: i128,
+        user: Address,
+        min_v_out: i128,
+        vault_rate: i128,
+        amm: Address,
+    );
 }

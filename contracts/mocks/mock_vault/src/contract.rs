@@ -1,9 +1,8 @@
-use soroban_sdk::{contract, contractimpl, Address, Env, MuxedAddress, String};
-use stellar_tokens::fungible::{Base, FungibleToken};
-use stellar_tokens::fungible::burnable::FungibleBurnable;
 use crate::storage;
-
-const SCALAR_7: i128 = 1_0000000;
+use soroban_sdk::{contract, contractimpl, Address, Env, MuxedAddress, String};
+use stellar_tokens::fungible::burnable::FungibleBurnable;
+use stellar_tokens::fungible::{Base, FungibleToken};
+use ybc_common::scale::SCALAR_7;
 
 pub trait MockVaultTrait {
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
@@ -21,8 +20,8 @@ pub struct MockVault;
 impl MockVaultTrait for MockVault {
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32) {
         storage::set_admin(&env, &admin);
-        // Initialize exchange rate to 1.0 (scaled by 1e7)
-        storage::set_exchange_rate(&env, 1_000_0000);
+        // Starts at 1.0.
+        storage::set_exchange_rate(&env, SCALAR_7);
 
         Base::set_metadata(&env, decimals, name, symbol);
     }

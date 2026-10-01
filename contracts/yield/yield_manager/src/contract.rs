@@ -1,22 +1,22 @@
-use soroban_sdk::{token, Address, Env};
-use crate::events::{Deposit, DepositAsset, DistributeYield, FlashDeposit, FlashRedeem, PoolSet, RedeemCombined, RedeemPrincipal, RedeemToAsset, SurplusCollected, TokenContractsSet};
+use crate::events::{
+    Deposit, DepositAsset, DistributeYield, FlashDeposit, FlashRedeem, PoolSet, RedeemCombined,
+    RedeemPrincipal, RedeemToAsset, SurplusCollected, TokenContractsSet,
+};
 use crate::storage;
 use amm_interface::{FlashSwapPtReceiver, FlashSwapVReceiver};
-use vault_interface::VaultContractClient;
-use yield_manager_interface::{YieldManagerTrait, VaultType, YieldManagerError};
 use principal_token_interface::PrincipalTokenClient;
+use soroban_sdk::{token, Address, Env};
+use vault_interface::VaultContractClient;
+use yield_manager_interface::{YieldManagerError, YieldManagerTrait};
 use yield_token_interface::YieldTokenClient;
 
-const SCALAR_7: i128 = 1_0000000;
+use ybc_common::scale::SCALAR_7;
 
-#[cfg(feature = "contract")]
 use soroban_sdk::{contract, contractimpl, panic_with_error};
 
-#[cfg(feature = "contract")]
 #[contract]
 pub struct YieldManager;
 
-#[cfg(feature = "contract")]
 impl YieldManager {
     // ── entry-point guards ──────────────────────────────────────────────────
     //
@@ -25,8 +25,6 @@ impl YieldManager {
     // refuse the wrong side of maturity. Written once so the next rule lands
     // in one place.
 
-    /// Keeps the instance alive and refuses to run before the token contracts
-    /// are set. Every entry point calls this first.
     fn open(env: &Env) -> Result<(), YieldManagerError> {
         storage::extend_instance_ttl(env);
         if !storage::is_initialized(env) {
@@ -63,16 +61,10 @@ impl YieldManager {
     // ── rates ───────────────────────────────────────────────────────────────
 
     /// Current vault rate, expressed as assets per SCALAR_7 shares (1e7-scaled).
+    /// Every vault is read the same way, through SEP-56 `convert_to_assets`;
+    /// what differs between lending protocols is the adapter's business.
     fn get_vault_exchange_rate(env: &Env) -> i128 {
-        let vault_addr = storage::get_vault(env);
-        let vault_type = storage::get_vault_type(env);
-
-        match vault_type {
-            VaultType::Vault4626 => {
-                let client = VaultContractClient::new(env, &vault_addr);
-                client.convert_to_assets(&SCALAR_7)
-            }
-        }
+        VaultContractClient::new(env, &storage::get_vault(env)).convert_to_assets(&SCALAR_7)
     }
 
     /// Refreshes the stored rate before maturity (rate can only increase, and locks
@@ -88,52 +80,34 @@ impl YieldManager {
             return storage::get_exchange_rate(env);
         }
 
-        // The locked check stays ahead of the read: once maturity has passed the
-        // vault is never consulted at all. Inlining this as a single delegation
-        // would evaluate the argument first and read it regardless.
+        // Checked before the vault read, so a locked market never touches the vault.
         YieldManager::update_exchange_rate_from(env, YieldManager::get_vault_exchange_rate(env))
     }
 
-    /// As [`YieldManager::update_exchange_rate`], but with the current rate
-    /// supplied by the caller rather than read here.
-    ///
-    /// For callers that have ALREADY loaded it in this same transaction — today
-    /// only the flash-swap callbacks, where the AMM reads the rate to price the
-    /// trade and hands it down. The rate cannot move within a transaction, so
-    /// reading it again returns the same number for the price of a full round
-    /// trip (pre-maturity this reaches through to the underlying lending pool).
-    ///
-    /// Every piece of policy stays here: the non-decreasing floor still applies and
-    /// the maturity lock is still set. The caller supplies only the observation.
-    ///
-    /// The figure the pool passes is now THIS contract's own rate making a round
-    /// trip: the pool obtains it from `get_exchange_rate` to price the trade, which
-    /// has already committed the ratchet, so re-applying it here is idempotent and
-    /// the floor below is a no-op. That is a stronger guarantee than the one this
-    /// function used to rest on, which was that the pool passed a raw vault reading
-    /// and never an already-high-water-marked one — a precondition that could only
-    /// be documented, not enforced, and whose failure direction (a value too HIGH)
-    /// would have ratcheted the stored rate up permanently. The pool can no longer
-    /// supply any value except the one already in storage.
-    ///
-    /// The pairing is guaranteed by construction rather than checked: `create_market`
-    /// threads one `vault` value into both this contract and the pool's share-token
-    /// slot, and `set_pool` is one-shot, so the two cannot be re-pointed afterwards.
-    /// Anything that ever lets them be deployed apart has to re-establish that.
-    fn update_exchange_rate_from(env: &Env, vault_rate: i128) -> i128 {
+    /// As [`YieldManager::update_exchange_rate`], with the rate supplied by the
+    /// caller. Only the flash callbacks use it: the pool obtained this value
+    /// from `get_exchange_rate` to price the trade (which already committed
+    /// the ratchet), so re-applying it here is idempotent and saves a second
+    /// vault round trip. The floor and the maturity lock still apply. Safe
+    /// only because the callbacks are gated to the registered pool and
+    /// `set_pool` is one-shot; `create_market` wires the same `vault` into
+    /// both contracts.
+    fn update_exchange_rate_from(env: &Env, rate_hint: i128) -> i128 {
         if storage::is_rate_locked(env) {
             return storage::get_exchange_rate(env);
         }
-        assert!(vault_rate > 0, "vault rate must be positive");
+        if rate_hint <= 0 {
+            panic_with_error!(env, YieldManagerError::ExchangeRateZero);
+        }
 
         let maturity = storage::get_maturity(env);
         let current_time = env.ledger().timestamp();
 
         let stored_rate = storage::get_exchange_rate(env);
 
-        let current_rate = if vault_rate > stored_rate {
-            storage::set_exchange_rate(env, vault_rate);
-            vault_rate
+        let current_rate = if rate_hint > stored_rate {
+            storage::set_exchange_rate(env, rate_hint);
+            rate_hint
         } else {
             stored_rate
         };
@@ -145,7 +119,9 @@ impl YieldManager {
         current_rate
     }
 
-    /// The current rate after the ratchet, refused if it is somehow zero.
+    /// The current rate after the ratchet. The zero check is defence in depth:
+    /// the constructor refuses a non-positive seed and the ratchet never lowers
+    /// it, so it cannot fire.
     fn current_rate(env: &Env) -> Result<i128, YieldManagerError> {
         let rate = YieldManager::update_exchange_rate(env);
         if rate == 0 {
@@ -168,6 +144,9 @@ impl YieldManager {
     }
 
     // ── the face-value rule ─────────────────────────────────────────────────
+    //
+    // Overflow in this arithmetic is a bug, not a user error; a host panic is
+    // the right outcome, so the `expect`s below are deliberate.
 
     /// Vault shares for `amount` of asset value at `rate`, floored.
     fn shares_for_assets(amount: i128, rate: i128) -> i128 {
@@ -179,10 +158,7 @@ impl YieldManager {
 
     /// Asset value of `shares` at `rate`, floored.
     fn assets_for_shares(shares: i128, rate: i128) -> i128 {
-        shares
-            .checked_mul(rate)
-            .expect("overflow computing assets")
-            / SCALAR_7
+        shares.checked_mul(rate).expect("overflow computing assets") / SCALAR_7
     }
 
     /// Shares a post-maturity redemption of `pt_amount` PT pays out, with the
@@ -227,11 +203,16 @@ impl YieldManager {
         asset_token.balance(to) - before
     }
 
-    /// Mints `amount` of PT and YT to `to` at `exchange_rate`. The YM is the
-    /// direct caller of both mints, satisfying each token's admin auth.
+    /// Mints `amount` PT to `pt_to` and `amount` YT to `yt_to` at
+    /// `exchange_rate`. The YM is the direct caller of both mints, satisfying
+    /// each token's admin auth.
     fn mint_pair(env: &Env, pt_to: &Address, yt_to: &Address, amount: i128, exchange_rate: i128) {
         PrincipalTokenClient::new(env, &storage::get_principal_token(env)).mint(pt_to, &amount);
-        YieldTokenClient::new(env, &storage::get_yield_token(env)).mint(yt_to, &amount, &exchange_rate);
+        YieldTokenClient::new(env, &storage::get_yield_token(env)).mint(
+            yt_to,
+            &amount,
+            &exchange_rate,
+        );
     }
 
     /// Burns `amount` of PT and YT from `from`. The rate hint stops the YT
@@ -240,32 +221,36 @@ impl YieldManager {
     /// so the user's signed burn entries are fixed.
     fn burn_pair(env: &Env, from: &Address, amount: i128, exchange_rate: i128) {
         token::Client::new(env, &storage::get_principal_token(env)).burn(from, &amount);
-        YieldTokenClient::new(env, &storage::get_yield_token(env)).burn_with_rate(from, &amount, &exchange_rate);
+        YieldTokenClient::new(env, &storage::get_yield_token(env)).burn_with_rate(
+            from,
+            &amount,
+            &exchange_rate,
+        );
     }
 }
 
-#[cfg(feature = "contract")]
 #[contractimpl]
 impl YieldManagerTrait for YieldManager {
-    fn __constructor(
-        env: Env,
-        admin: Address,
-        vault: Address,
-        vault_type: VaultType,
-        maturity: u64,
-        treasury: Address,
-    ) {
+    fn __constructor(env: Env, admin: Address, vault: Address, maturity: u64, treasury: Address) {
         storage::set_admin(&env, &admin);
         storage::set_vault(&env, &vault);
-        storage::set_vault_type(&env, vault_type);
         storage::set_maturity(&env, maturity);
         storage::set_treasury(&env, &treasury);
 
+        // The only path by which a rate enters storage unratcheted, so it is the
+        // one place a non-positive rate has to be refused.
         let initial_rate = YieldManager::get_vault_exchange_rate(&env);
+        if initial_rate <= 0 {
+            panic_with_error!(&env, YieldManagerError::ExchangeRateZero);
+        }
         storage::set_exchange_rate(&env, initial_rate);
     }
 
-    fn set_token_contracts(env: Env, pt_addr: Address, yt_addr: Address) -> Result<(), YieldManagerError> {
+    fn set_token_contracts(
+        env: Env,
+        pt_addr: Address,
+        yt_addr: Address,
+    ) -> Result<(), YieldManagerError> {
         let admin = storage::get_admin(&env);
         admin.require_auth();
         storage::extend_instance_ttl(&env);
@@ -277,7 +262,11 @@ impl YieldManagerTrait for YieldManager {
         storage::set_principal_token(&env, &pt_addr);
         storage::set_yield_token(&env, &yt_addr);
 
-        TokenContractsSet { pt: pt_addr, yt: yt_addr }.publish(&env);
+        TokenContractsSet {
+            pt: pt_addr,
+            yt: yt_addr,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -343,11 +332,22 @@ impl YieldManagerTrait for YieldManager {
         // YM is the spender (direct invoker), so transfer_from needs no nested
         // require_auth on the depositor.
         let ym = env.current_contract_address();
-        token::Client::new(&env, &storage::get_vault(&env)).transfer_from(&ym, &from, &ym, &shares_amount);
+        token::Client::new(&env, &storage::get_vault(&env)).transfer_from(
+            &ym,
+            &from,
+            &ym,
+            &shares_amount,
+        );
 
         YieldManager::mint_pair(&env, &from, &from, mint_amount, exchange_rate);
 
-        Deposit { from, shares_amount, mint_amount, exchange_rate }.publish(&env);
+        Deposit {
+            from,
+            shares_amount,
+            mint_amount,
+            exchange_rate,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -362,20 +362,31 @@ impl YieldManagerTrait for YieldManager {
 
         YieldManager::burn_pair(&env, &from, amount, exchange_rate);
 
-        token::Client::new(&env, &storage::get_vault(&env))
-            .transfer(&env.current_contract_address(), &from, &shares_to_return);
+        token::Client::new(&env, &storage::get_vault(&env)).transfer(
+            &env.current_contract_address(),
+            &from,
+            &shares_to_return,
+        );
 
-        RedeemCombined { from, amount, shares_returned: shares_to_return, exchange_rate }.publish(&env);
+        RedeemCombined {
+            from,
+            amount,
+            shares_returned: shares_to_return,
+            exchange_rate,
+        }
+        .publish(&env);
         Ok(())
     }
 
-    /// Asset-in variant of `deposit`. The vault deposit names the YM as
-    /// receiver, so the freshly minted shares land straight in YM custody —
-    /// exactly where `deposit` would have moved them — and the user's signed
-    /// entries (this call, the vault deposit, the nested asset transfer) carry
-    /// only caller-chosen arguments. The share count, which nobody can predict
-    /// at signing time, is measured here under no one's signature.
-    fn deposit_asset(env: Env, from: Address, asset_amount: i128, min_tokens_out: i128) -> Result<i128, YieldManagerError> {
+    /// See the trait doc; the vault deposit names the YM as receiver so the
+    /// shares land in custody directly, and the share count is measured here
+    /// rather than signed.
+    fn deposit_asset(
+        env: Env,
+        from: Address,
+        asset_amount: i128,
+        min_tokens_out: i128,
+    ) -> Result<i128, YieldManagerError> {
         from.require_auth();
         YieldManager::open(&env)?;
         YieldManager::positive(asset_amount)?;
@@ -395,6 +406,7 @@ impl YieldManagerTrait for YieldManager {
         }
 
         let mint_amount = YieldManager::assets_for_shares(shares_in, exchange_rate);
+        // Dust that rounds to zero PT is refused rather than minted for nothing.
         YieldManager::positive(mint_amount)?;
         if mint_amount < min_tokens_out {
             return Err(YieldManagerError::SlippageExceeded);
@@ -402,18 +414,28 @@ impl YieldManagerTrait for YieldManager {
 
         YieldManager::mint_pair(&env, &from, &from, mint_amount, exchange_rate);
 
-        DepositAsset { from, asset_in: asset_amount, shares_in, mint_amount, exchange_rate }.publish(&env);
+        DepositAsset {
+            from,
+            asset_in: asset_amount,
+            shares_in,
+            mint_amount,
+            exchange_rate,
+        }
+        .publish(&env);
         Ok(mint_amount)
     }
 
     /// Asset-out variant of `redeem_combined`: burns the pair, then redeems the
     /// owed shares from YM custody with the vault paying `from` directly.
-    fn redeem_combined_to_asset(env: Env, from: Address, amount: i128, min_asset_out: i128) -> Result<i128, YieldManagerError> {
+    fn redeem_combined_to_asset(
+        env: Env,
+        from: Address,
+        amount: i128,
+        min_asset_out: i128,
+    ) -> Result<i128, YieldManagerError> {
         from.require_auth();
         YieldManager::open(&env)?;
         YieldManager::positive(amount)?;
-        // Post-maturity, PT must go through exit_expired_to_asset instead —
-        // same rule as redeem_combined.
         YieldManager::before_maturity(&env)?;
 
         let exchange_rate = YieldManager::current_rate(&env)?;
@@ -426,15 +448,25 @@ impl YieldManagerTrait for YieldManager {
             return Err(YieldManagerError::SlippageExceeded);
         }
 
-        RedeemToAsset { from, burned: amount, shares_redeemed: shares_to_return, asset_out, exchange_rate }.publish(&env);
+        RedeemToAsset {
+            from,
+            burned: amount,
+            shares_redeemed: shares_to_return,
+            asset_out,
+            exchange_rate,
+        }
+        .publish(&env);
         Ok(asset_out)
     }
 
-    /// PT redemption and loose-share conversion in a SINGLE vault redemption.
-    /// See the interface docs for why that matters; in short, a redemption is a
-    /// lending-pool submission and two of them do not fit in one transaction
-    /// alongside an LP withdrawal.
-    fn exit_expired_to_asset(env: Env, from: Address, max_pt: i128, max_shares: i128, min_asset_out: i128) -> Result<i128, YieldManagerError> {
+    /// One vault redemption for both legs; see the trait doc.
+    fn exit_expired_to_asset(
+        env: Env,
+        from: Address,
+        max_pt: i128,
+        max_shares: i128,
+        min_asset_out: i128,
+    ) -> Result<i128, YieldManagerError> {
         from.require_auth();
         YieldManager::open(&env)?;
         // Either ceiling may be zero: the caller may hold only PT, or only shares.
@@ -447,7 +479,7 @@ impl YieldManagerTrait for YieldManager {
         let ym = env.current_contract_address();
         let vault_token = token::Client::new(&env, &vault_addr);
 
-        let (locked_rate, exchange_rate) = YieldManager::settlement_rates(&env)?;
+        let (locked_rate, live_rate) = YieldManager::settlement_rates(&env)?;
 
         // ── PT leg ───────────────────────────────────────────────────────────
         let pt_token = token::Client::new(&env, &storage::get_principal_token(&env));
@@ -455,7 +487,8 @@ impl YieldManagerTrait for YieldManager {
         let mut shares_total = 0;
 
         if pt_amount > 0 {
-            shares_total += YieldManager::shares_for_principal(&env, pt_amount, locked_rate, exchange_rate);
+            shares_total +=
+                YieldManager::shares_for_principal(&env, pt_amount, locked_rate, live_rate);
             pt_token.burn_from(&ym, &from, &pt_amount);
         }
 
@@ -477,11 +510,22 @@ impl YieldManagerTrait for YieldManager {
             return Err(YieldManagerError::SlippageExceeded);
         }
 
-        RedeemToAsset { from, burned: pt_amount, shares_redeemed: shares_total, asset_out, exchange_rate }.publish(&env);
+        RedeemToAsset {
+            from,
+            burned: pt_amount,
+            shares_redeemed: shares_total,
+            asset_out,
+            exchange_rate: live_rate,
+        }
+        .publish(&env);
         Ok(asset_out)
     }
 
-    fn distribute_yield(env: Env, to: Address, shares_amount: i128) -> Result<i128, YieldManagerError> {
+    fn distribute_yield(
+        env: Env,
+        to: Address,
+        shares_amount: i128,
+    ) -> Result<i128, YieldManagerError> {
         YieldManager::open(&env)?;
 
         // Only the YT contract can call this
@@ -491,18 +535,13 @@ impl YieldManagerTrait for YieldManager {
             return Ok(0);
         }
 
-        let exchange_rate = YieldManager::update_exchange_rate(&env);
+        let exchange_rate = YieldManager::current_rate(&env)?;
 
-        // The YT accrues yield as a share count frozen against rates up to the
-        // locked rate. Positions freeze in ASSET value at maturity, so once the
-        // rate is locked a claim pays the shares that asset value buys at the
-        // live rate — fewer shares when the vault has kept appreciating. The
-        // difference is post-maturity interest and belongs to the protocol.
+        // Locked: pay the frozen share count's locked-rate asset value at the
+        // live rate (fewer shares if the vault kept appreciating); the
+        // difference is protocol surplus. See `collect_surplus`.
         let shares_to_send = if storage::is_rate_locked(&env) {
             let live_rate = YieldManager::get_vault_exchange_rate(&env).max(exchange_rate);
-            if live_rate == 0 {
-                return Err(YieldManagerError::ExchangeRateZero);
-            }
             let paid = shares_amount
                 .checked_mul(exchange_rate)
                 .expect("overflow adjusting yield payout")
@@ -513,10 +552,18 @@ impl YieldManagerTrait for YieldManager {
             shares_amount
         };
 
-        token::Client::new(&env, &storage::get_vault(&env))
-            .transfer(&env.current_contract_address(), &to, &shares_to_send);
+        token::Client::new(&env, &storage::get_vault(&env)).transfer(
+            &env.current_contract_address(),
+            &to,
+            &shares_to_send,
+        );
 
-        DistributeYield { to, shares_amount: shares_to_send, exchange_rate }.publish(&env);
+        DistributeYield {
+            to,
+            shares_amount: shares_to_send,
+            exchange_rate,
+        }
+        .publish(&env);
         Ok(shares_to_send)
     }
 
@@ -526,14 +573,24 @@ impl YieldManagerTrait for YieldManager {
         YieldManager::positive(pt_amount)?;
         YieldManager::after_maturity(&env)?;
 
-        let (locked_rate, exchange_rate) = YieldManager::settlement_rates(&env)?;
-        let shares_to_return = YieldManager::shares_for_principal(&env, pt_amount, locked_rate, exchange_rate);
+        let (locked_rate, live_rate) = YieldManager::settlement_rates(&env)?;
+        let shares_to_return =
+            YieldManager::shares_for_principal(&env, pt_amount, locked_rate, live_rate);
 
         token::Client::new(&env, &storage::get_principal_token(&env)).burn(&from, &pt_amount);
-        token::Client::new(&env, &storage::get_vault(&env))
-            .transfer(&env.current_contract_address(), &from, &shares_to_return);
+        token::Client::new(&env, &storage::get_vault(&env)).transfer(
+            &env.current_contract_address(),
+            &from,
+            &shares_to_return,
+        );
 
-        RedeemPrincipal { from, pt_amount, shares_returned: shares_to_return, exchange_rate }.publish(&env);
+        RedeemPrincipal {
+            from,
+            pt_amount,
+            shares_returned: shares_to_return,
+            exchange_rate: live_rate,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -553,15 +610,27 @@ impl YieldManagerTrait for YieldManager {
             &surplus,
         );
 
-        SurplusCollected { treasury, amount: surplus }.publish(&env);
+        SurplusCollected {
+            treasury,
+            amount: surplus,
+        }
+        .publish(&env);
         Ok(surplus)
     }
 }
 
-#[cfg(feature = "contract")]
+// `V` in these callbacks is the AMM's name for vault shares.
 #[contractimpl]
 impl FlashSwapPtReceiver for YieldManager {
-    fn on_flash_receive_pt(env: Env, yt_out: i128, v_from_pool: i128, user: Address, max_v_in: i128, vault_rate: i128, amm: Address) {
+    fn on_flash_receive_pt(
+        env: Env,
+        yt_out: i128,
+        v_from_pool: i128,
+        user: Address,
+        max_v_in: i128,
+        rate_hint: i128,
+        amm: Address,
+    ) {
         YieldManager::open(&env).unwrap_or_else(|err| panic_with_error!(&env, err));
 
         // Only the registered pool may drive this callback. This succeeds without a
@@ -578,10 +647,9 @@ impl FlashSwapPtReceiver for YieldManager {
         let vault_client = token::Client::new(&env, &vault_addr);
         let pt_client = token::Client::new(&env, &pt_addr);
 
-        // Supplied by the pool, which read it from THIS contract to price this trade —
-        // see `update_exchange_rate_from` for why that is the only safe source.
-        let exchange_rate = YieldManager::update_exchange_rate_from(&env, vault_rate);
-        assert!(exchange_rate > 0, "exchange rate is zero");
+        // The pool read this rate from this contract to price the trade; see
+        // `update_exchange_rate_from`.
+        let exchange_rate = YieldManager::update_exchange_rate_from(&env, rate_hint);
 
         // Vault shares needed to mint yt_out PT+YT (inverse of deposit's mint math).
         let v_to_mint = YieldManager::shares_for_assets(yt_out, exchange_rate);
@@ -589,11 +657,13 @@ impl FlashSwapPtReceiver for YieldManager {
         // The pool advanced `v_from_pool` as its payment for the yt_out PT it is buying;
         // the user tops up the remainder (the YT price). Guard both against underpricing
         // and against exceeding the user's slippage bound.
-        let user_cost = v_to_mint
-            .checked_sub(v_from_pool)
-            .expect("underflow computing user_cost");
-        assert!(user_cost > 0, "non-positive YT cost");
-        assert!(user_cost <= max_v_in, "cost exceeds max_v_in");
+        let user_cost = v_to_mint - v_from_pool;
+        if user_cost <= 0 {
+            panic_with_error!(&env, YieldManagerError::NonPositiveYtCost);
+        }
+        if user_cost > max_v_in {
+            panic_with_error!(&env, YieldManagerError::SlippageExceeded);
+        }
 
         // Pull the slippage bound and refund the excess: max_v_in is the one amount the
         // user can sign without it drifting with pool state. The pull must stay here,
@@ -605,22 +675,46 @@ impl FlashSwapPtReceiver for YieldManager {
             vault_client.transfer(&ym, &user, &refund);
         }
 
+        // Order matters: backing in (above), then mint, then PT out, so the
+        // pair is never unbacked and the delta check below sees only our own
+        // mint. Measured against the balance on entry, never against zero:
+        // anyone can send PT here, and a check against zero would brick every
+        // YT purchase.
+        let pt_before = pt_client.balance(&ym);
+
         // PT to the YM (handed to the pool below), YT to the user.
         YieldManager::mint_pair(&env, &ym, &user, yt_out, exchange_rate);
 
         // Deliver the PT to the pool — repayment for the advanced V.
         pt_client.transfer(&ym, &amm, &yt_out);
 
-        assert_eq!(pt_client.balance(&ym), 0, "YM leaked PT");
+        if pt_client.balance(&ym) != pt_before {
+            panic_with_error!(&env, YieldManagerError::PtNotDelivered);
+        }
 
-        FlashDeposit { user, amm, yt_out, v_to_mint, user_cost, exchange_rate }.publish(&env);
+        FlashDeposit {
+            user,
+            amm,
+            yt_out,
+            v_to_mint,
+            user_cost,
+            exchange_rate,
+        }
+        .publish(&env);
     }
 }
 
-#[cfg(feature = "contract")]
 #[contractimpl]
 impl FlashSwapVReceiver for YieldManager {
-    fn on_flash_receive_v(env: Env, pt_borrowed: i128, v_owed: i128, user: Address, min_v_out: i128, vault_rate: i128, amm: Address) {
+    fn on_flash_receive_v(
+        env: Env,
+        pt_borrowed: i128,
+        v_owed: i128,
+        user: Address,
+        min_v_out: i128,
+        rate_hint: i128,
+        amm: Address,
+    ) {
         YieldManager::open(&env).unwrap_or_else(|err| panic_with_error!(&env, err));
 
         // Only the registered pool may drive this callback — see on_flash_receive_pt.
@@ -629,12 +723,10 @@ impl FlashSwapVReceiver for YieldManager {
         let ym = env.current_contract_address();
         let vault_client = token::Client::new(&env, &storage::get_vault(&env));
 
-        // Supplied by the pool, which read it from THIS contract to price this trade —
-        // see `update_exchange_rate_from` for why that is the only safe source. All
-        // YT calls below take it as a hint too, so the YT contract never calls back
-        // into the YM, which would re-enter while this callback is executing.
-        let exchange_rate = YieldManager::update_exchange_rate_from(&env, vault_rate);
-        assert!(exchange_rate > 0, "exchange rate is zero");
+        // The pool read this rate from this contract to price the trade; see
+        // `update_exchange_rate_from`. The YT burn below takes it as a hint too,
+        // so the YT contract never calls back into the YM mid-callback.
+        let exchange_rate = YieldManager::update_exchange_rate_from(&env, rate_hint);
 
         // No user pull here: the router moved the user's `pt_borrowed` YT in before the
         // flash swap began, keeping the exchange rate out of the user's signed auth entry.
@@ -645,13 +737,25 @@ impl FlashSwapVReceiver for YieldManager {
         // Either leg missing fails the burn — which also stops direct callers.
         YieldManager::burn_pair(&env, &ym, pt_borrowed, exchange_rate);
 
-        assert!(shares_returned >= v_owed, "redeem yielded less V than owed to pool");
+        if shares_returned < v_owed {
+            panic_with_error!(&env, YieldManagerError::RedeemBelowOwed);
+        }
         let v_to_user = shares_returned - v_owed;
-        assert!(v_to_user >= min_v_out, "v out below minimum");
+        if v_to_user < min_v_out {
+            panic_with_error!(&env, YieldManagerError::SlippageExceeded);
+        }
 
         vault_client.transfer(&ym, &amm, &v_owed);
         vault_client.transfer(&ym, &user, &v_to_user);
 
-        FlashRedeem { user, amm, pt_borrowed, v_owed, v_to_user, exchange_rate }.publish(&env);
+        FlashRedeem {
+            user,
+            amm,
+            pt_borrowed,
+            v_owed,
+            v_to_user,
+            exchange_rate,
+        }
+        .publish(&env);
     }
 }

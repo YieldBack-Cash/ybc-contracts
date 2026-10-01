@@ -9,19 +9,42 @@ use soroban_sdk::{
 };
 
 use crate::YieldToken;
+use mock_vault::MockVault;
+use yield_manager::YieldManager;
 
+/// The token with a real yield manager as its admin. `transfer` and `burn`
+/// settle yield before they move a balance, which means asking the admin for
+/// the exchange rate; against a bare address that query is what fails, and the
+/// authorization check these tests are about is never reached.
 fn register_yt(env: &Env) -> (Address, Address) {
-    let admin = Address::generate(env); // stands in for the yield manager address
+    let owner = Address::generate(env);
+    let vault = env.register(
+        MockVault,
+        (
+            &owner,
+            String::from_str(env, "Mock Vault"),
+            String::from_str(env, "MVT"),
+            7u32,
+        ),
+    );
+    let maturity = env.ledger().timestamp() + 1000;
+    let treasury = Address::generate(env);
+    let admin = env.register(YieldManager, (&owner, &vault, maturity, &treasury));
     let yt_addr = env.register(
         YieldToken,
-        (&admin, String::from_str(env, "YT"), String::from_str(env, "YT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "YT"),
+            String::from_str(env, "YT"),
+            7u32,
+        ),
     );
     (admin, yt_addr)
 }
 
 /// Only the admin (yield manager) can mint YT. A stranger's call must panic.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_mint_non_admin_reverts() {
     let env = Env::default();
     let (_admin, yt_addr) = register_yt(&env);
@@ -36,7 +59,7 @@ fn test_mint_non_admin_reverts() {
 
 /// YT.transfer requires the sender to authorize the transfer.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_transfer_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, yt_addr) = register_yt(&env);
@@ -54,7 +77,7 @@ fn test_transfer_without_from_auth_reverts() {
 /// the yield manager's auth: any holder could otherwise pass an inflated rate
 /// to inflate their own accrued_yield.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_burn_with_rate_without_admin_auth_reverts() {
     let env = Env::default();
     let (_admin, yt_addr) = register_yt(&env);
@@ -79,7 +102,7 @@ fn test_burn_with_rate_without_admin_auth_reverts() {
 
 /// YT.burn requires the holder to authorize the burn.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_burn_without_from_auth_reverts() {
     let env = Env::default();
     let (_admin, yt_addr) = register_yt(&env);
@@ -94,7 +117,7 @@ fn test_burn_without_from_auth_reverts() {
 
 /// YT.claim_yield requires the user to authorize their own claim.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_claim_yield_without_user_auth_reverts() {
     let env = Env::default();
     let (_admin, yt_addr) = register_yt(&env);

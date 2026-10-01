@@ -55,7 +55,11 @@ fn test_partial_redeem_combined() {
         (&f.user, redeem_pt).into_val(&f.env),
     );
 
-    assert_eq!(f.pt_balance(&f.user), shares - redeem_pt, "remaining PT intact");
+    assert_eq!(
+        f.pt_balance(&f.user),
+        shares - redeem_pt,
+        "remaining PT intact"
+    );
     assert_eq!(
         f.vault.balance(&f.user) - vault_before,
         redeem_pt,
@@ -65,7 +69,7 @@ fn test_partial_redeem_combined() {
 
 /// redeem_combined must panic after maturity — use redeem_principal instead.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn test_redeem_combined_after_maturity_panics() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);
@@ -114,7 +118,7 @@ fn test_redeem_principal_after_maturity() {
 
 /// redeem_principal must panic before maturity.
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn test_redeem_principal_before_maturity_panics() {
     let env = Env::default();
     let f = IntegrationFixture::new(&env);

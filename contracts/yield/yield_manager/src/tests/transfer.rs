@@ -1,3 +1,6 @@
+// PT and YT transfers with the YM as token admin: guards the fixture's wiring, the
+// token behaviour itself is tested in the token crates.
+
 use soroban_sdk::{IntoVal, Symbol};
 
 use super::fixture::YieldManagerTest;
@@ -19,7 +22,10 @@ fn test_pt_transferable() {
         (&test.user1, &test.user2, transfer_amount).into_val(&test.env),
     );
 
-    assert_eq!(test.get_pt_balance(&test.user1), pt_balance - transfer_amount);
+    assert_eq!(
+        test.get_pt_balance(&test.user1),
+        pt_balance - transfer_amount
+    );
     assert_eq!(test.get_pt_balance(&test.user2), transfer_amount);
 }
 
@@ -40,6 +46,9 @@ fn test_yt_transferable() {
         (&test.user1, &test.user2, transfer_amount).into_val(&test.env),
     );
 
-    assert_eq!(test.get_yt_balance(&test.user1), yt_balance - transfer_amount);
+    assert_eq!(
+        test.get_yt_balance(&test.user1),
+        yt_balance - transfer_amount
+    );
     assert_eq!(test.get_yt_balance(&test.user2), transfer_amount);
 }

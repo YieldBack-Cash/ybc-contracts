@@ -10,6 +10,7 @@ use soroban_sdk::{contractclient, Address, Env, String};
 /// `soroban_sdk::token::Client`.
 #[contractclient(name = "YieldTokenClient")]
 pub trait YieldTokenTrait {
+    /// `admin` is the yield manager; the factory is the only deployer.
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
     /// Admin (yield manager) only. `exchange_rate` is the rate the YM already
@@ -28,6 +29,8 @@ pub trait YieldTokenTrait {
     fn accrued_yield(env: Env, address: Address) -> i128;
 
     /// Settles and pays out `user`'s accrued yield in vault shares. After
-    /// maturity the position is closed: the remaining YT is burned.
+    /// maturity the position is closed: the remaining YT is burned. Returns the
+    /// vault shares actually transferred, which can be fewer than
+    /// `accrued_yield` after the rate is locked.
     fn claim_yield(env: Env, user: Address) -> i128;
 }

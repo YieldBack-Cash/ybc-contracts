@@ -1,5 +1,10 @@
+//! Leg `a` amounts are PT, leg `b` amounts and every `v_*` field are vault
+//! shares; APYs and rates are 1e7-scaled.
+
 use soroban_sdk::{contractevent, Address};
 
+/// The one-off construction record. Map-encoded (the default), unlike the
+/// per-trade events below, which are positional for the indexer's decoder.
 #[contractevent(topics = ["pool_init"])]
 pub struct PoolInit {
     #[topic]
@@ -7,16 +12,16 @@ pub struct PoolInit {
     #[topic]
     pub token_b: Address,
     pub expiry_ts: u64,
-    // Creator-supplied APY inputs (what the market claims about itself)…
+    /// Creator-supplied APY inputs (what the market claims about itself)…
     pub current_apy: i128,
     pub apy_min: i128,
     pub apy_max: i128,
     pub fee_apy: i128,
-    // …and the curve parameters derived from them.
+    /// …and the curve parameters derived from them.
     pub scalar_root: i128,
     pub fee_rate_root: i128,
     pub last_implied_rate: i128,
-    // Protocol fee config snapshotted at creation.
+    /// Protocol fee config snapshotted at creation.
     pub treasury: Address,
     pub reserve_fee_rate: i128,
 }
@@ -94,6 +99,7 @@ pub struct FlashSwapV {
     pub reserve_fee: i128,
 }
 
+/// Liquidity added: `amount_a` PT and `amount_b` shares for `shares_minted` LP shares.
 #[contractevent(topics = ["deposit"], data_format = "vec")]
 pub struct Deposit {
     #[topic]
@@ -105,6 +111,7 @@ pub struct Deposit {
     pub new_reserve_b: i128,
 }
 
+/// Liquidity removed: `share_amount` LP shares for `amount_a` PT and `amount_b` shares.
 #[contractevent(topics = ["withdraw"], data_format = "vec")]
 pub struct Withdraw {
     #[topic]

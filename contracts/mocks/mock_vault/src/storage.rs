@@ -25,5 +25,5 @@ pub fn get_exchange_rate(env: &Env) -> i128 {
     env.storage()
         .instance()
         .get(&DataKey::ExchangeRate)
-        .unwrap_or(1_000_0000) // Default to 1.0
+        .expect("rate not set") // set in the constructor
 }

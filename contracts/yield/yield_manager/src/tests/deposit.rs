@@ -1,3 +1,5 @@
+// `deposit`: shares in, PT and YT out 1:1 at the current rate; pre-maturity only.
+
 use soroban_sdk::{IntoVal, Symbol};
 use yield_manager_interface::YieldManagerError;
 
@@ -37,8 +39,7 @@ fn test_multiple_users_deposit() {
     let pt1 = test.get_pt_balance(&test.user1);
     let pt2 = test.get_pt_balance(&test.user2);
 
-    assert!(pt2 > pt1);
-    assert!(pt2 >= pt1 * 2 - 100); // Allow some rounding
+    assert_eq!(pt2, 2 * pt1); // at rate 1.0 there is no rounding
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use factory_interface::{FeeConfig, Market, WasmHashes};
 use soroban_sdk::{contracttype, Address, Env};
-use ybc_common::ttl::{PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD};
+use ybc_common::ttl::extend_persistent_ttl;
 
 // The owner entry is managed by the stellar-access Ownable module under its
 // own storage key.
@@ -12,9 +12,9 @@ enum DataKey {
     Market(Address, u64),
 }
 
-/// Instance TTL (admin, wasm hashes, salt counter). Call once per entrypoint
-/// -- if this expires, the factory (and with it market resolution for the
-/// router) is bricked until restored.
+/// Instance TTL (owner, wasm hashes, fee config, salt counter). Call once per
+/// entry point: an expired instance bricks the factory, and with it the
+/// router's market resolution, until restored.
 pub use ybc_common::ttl::extend_instance_ttl;
 
 pub fn set_wasm_hashes(env: &Env, hashes: &WasmHashes) {
@@ -53,7 +53,7 @@ pub fn set_salt_counter(env: &Env, counter: u32) {
 }
 
 /// Direct lookup of a market by (vault, maturity). Each market is its own
-/// PERSISTENT ledger entry keyed by the pair, so a vault can host any number of
+/// persistent ledger entry keyed by the pair, so a vault can host any number of
 /// markets at different maturities without them sharing (and eventually
 /// overflowing) a single entry, and none of them bloat the shared contract
 /// instance entry. Redeploying a pool for the same maturity is rejected by
@@ -68,11 +68,7 @@ pub fn get_market(env: &Env, vault: &Address, maturity: u64) -> Option<Market> {
     // through this lookup — renew on read so any activity keeps the market
     // entry alive.
     if market.is_some() {
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_LIFETIME_THRESHOLD,
-            PERSISTENT_BUMP_AMOUNT,
-        );
+        extend_persistent_ttl(env, &key);
     }
     market
 }
@@ -81,9 +77,5 @@ pub fn set_market(env: &Env, vault: &Address, market: Market) {
     let maturity = market.maturity;
     let key = DataKey::Market(vault.clone(), maturity);
     env.storage().persistent().set(&key, &market);
-    env.storage().persistent().extend_ttl(
-        &key,
-        PERSISTENT_LIFETIME_THRESHOLD,
-        PERSISTENT_BUMP_AMOUNT,
-    );
+    extend_persistent_ttl(env, &key);
 }

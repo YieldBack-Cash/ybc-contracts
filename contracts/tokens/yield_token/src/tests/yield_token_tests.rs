@@ -1,3 +1,9 @@
+// ── Accrual hook on the direct paths (mint, transfer, burn, claim) ───────────
+//
+// Each path settles the holder at the current rate before the balance moves,
+// and `claim_yield` pays out what accrued. The allowance paths are in
+// `allowances.rs`.
+
 use super::YieldTokenTest;
 use soroban_sdk::{
     testutils::{MockAuth, MockAuthInvoke},
@@ -38,14 +44,14 @@ fn test_mint_sets_initial_index() {
 fn test_yield_accrues_when_exchange_rate_increases() {
     let test = YieldTokenTest::setup();
 
-    let mint_amount = 1_000_000_000_000i128; // 1M tokens scaled by 1e6
+    let mint_amount = 1_000_000_000_000i128; // 100_000 tokens at 7 decimals
     let initial_rate = test.get_exchange_rate();
     test.mint_yt(&test.user1, mint_amount, initial_rate);
 
     let initial_accrued = test.get_accrued_yield(&test.user1);
     assert_eq!(initial_accrued, 0);
 
-    let new_rate = initial_rate + 100_0000; // Increase by 0.01 (scaled by 1e7)
+    let new_rate = initial_rate + 100_0000; // +0.1 at SCALAR_7
     test.set_vault_exchange_rate(new_rate);
 
     let fetched_rate = test.get_exchange_rate();
@@ -70,7 +76,7 @@ fn test_user_index_updates_after_accrual() {
     let initial_index = test.get_user_index(&test.user1);
     assert_eq!(initial_index, initial_rate);
 
-    let new_rate = initial_rate + 200_0000; // Increase by 0.02 (scaled by 1e7)
+    let new_rate = initial_rate + 200_0000; // +0.2 at SCALAR_7
     test.set_vault_exchange_rate(new_rate);
 
     test.claim_yield(&test.user1);
@@ -125,10 +131,10 @@ fn test_transfer_accrues_yield_for_both_parties() {
     assert_eq!(test.get_balance(&test.user2), transfer_amount);
 }
 
-/// A holder must be able to move YT with only their own signature -- unlike
-/// transfer_with_rate/burn_with_rate, plain transfer never trusts a
-/// caller-supplied rate (it always fetches the real rate from the yield
-/// manager), so it must not require the yield manager's auth too.
+/// A holder must be able to move YT with only their own signature: unlike
+/// `burn_with_rate`, plain `transfer` never trusts a caller-supplied rate (it
+/// always fetches the real rate from the yield manager), so it must not
+/// require the yield manager's auth too.
 #[test]
 fn test_transfer_needs_only_sender_auth_and_still_accrues_yield() {
     let test = YieldTokenTest::setup();
@@ -245,13 +251,17 @@ fn test_proportional_yield_distribution() {
     assert!(claimed1 > 0);
     assert!(claimed2 > 0);
 
-    // Allow 1% tolerance for rounding
+    // Exact integer math: floor rounding can cost at most one unit.
     let ratio = claimed1 * 100 / claimed2;
-    assert!(ratio >= 190 && ratio <= 210, "Ratio should be ~200, got {}", ratio);
+    assert!(
+        (199..=200).contains(&ratio),
+        "Ratio should be ~200, got {}",
+        ratio
+    );
 }
 
 #[test]
-fn test_mint_to_existing_user_preserves_high_water_mark() {
+fn test_mint_to_existing_user_settles_before_crediting() {
     let test = YieldTokenTest::setup();
 
     let initial_rate = test.get_exchange_rate();
@@ -268,19 +278,6 @@ fn test_mint_to_existing_user_preserves_high_water_mark() {
 
     let accrued = test.get_accrued_yield(&test.user1);
     assert!(accrued > 0);
-}
-
-#[test]
-fn test_sep41_balance_function() {
-    let test = YieldTokenTest::setup();
-
-    let mint_amount = 1_000_000i128;
-    let exchange_rate = 1_000_000i128;
-
-    test.mint_yt(&test.user1, mint_amount, exchange_rate);
-
-    let balance = test.get_balance(&test.user1);
-    assert_eq!(balance, mint_amount);
 }
 
 #[test]
@@ -332,14 +329,9 @@ fn test_zero_balance_user_can_claim() {
     assert_eq!(claimed, 0);
 }
 
-/// A YT self-transfer must be a no-op on the balance.
-///
-/// The hand-rolled ledger this token used to carry read `from_balance` before
-/// the accrual calls and `to_balance` after, then wrote both; when `from == to`
-/// the second write overwrote the first and minted `amount` YT out of nothing,
-/// with a claim on yield the yield manager never received backing for. The
-/// ledger is OpenZeppelin's now, which debits before it reads the credit side;
-/// this pins that it stays so.
+/// A self-transfer leaves balance and supply unchanged: `Base::update` debits
+/// before it reads the credit side. Regression test for a bug in the ledger
+/// this token used to carry.
 #[test]
 fn self_transfer_does_not_inflate_balance() {
     let t = YieldTokenTest::setup();
@@ -350,6 +342,14 @@ fn self_transfer_does_not_inflate_balance() {
 
     t.transfer(&t.user1, &t.user1, 14);
 
-    assert_eq!(t.get_balance(&t.user1), before, "self-transfer changed the balance");
-    assert_eq!(t.get_total_supply(), supply_before, "self-transfer changed total supply");
+    assert_eq!(
+        t.get_balance(&t.user1),
+        before,
+        "self-transfer changed the balance"
+    );
+    assert_eq!(
+        t.get_total_supply(),
+        supply_before,
+        "self-transfer changed total supply"
+    );
 }

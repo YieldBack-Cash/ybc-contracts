@@ -1,3 +1,5 @@
+//! Removing liquidity: pro-rata payout, minimums, and share accounting.
+
 use amm_interface::AmmError;
 use soroban_sdk::Env;
 
@@ -74,7 +76,7 @@ fn test_withdraw_returns_proportional_tokens() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #22)")]
 fn test_withdraw_insufficient_shares_panics() {
     let env = Env::default();
     env.mock_all_auths();
@@ -86,7 +88,7 @@ fn test_withdraw_insufficient_shares_panics() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #23)")]
 fn test_withdraw_min_not_satisfied_panics() {
     let env = Env::default();
     env.mock_all_auths();

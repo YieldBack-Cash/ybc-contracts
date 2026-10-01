@@ -22,8 +22,16 @@ const HALF_OF_FEE: i128 = 5_000_000;
 /// so stored reserves still equal actual balances after every operation.
 fn assert_reserves_match_balances(f: &AmmFixture) {
     let (reserve_pt, reserve_v) = f.pool.get_reserves();
-    assert_eq!(reserve_pt, f.pt.balance(&f.pool.address), "PT reserve diverged from balance");
-    assert_eq!(reserve_v, f.vault.balance(&f.pool.address), "V reserve diverged from balance");
+    assert_eq!(
+        reserve_pt,
+        f.pt.balance(&f.pool.address),
+        "PT reserve diverged from balance"
+    );
+    assert_eq!(
+        reserve_v,
+        f.vault.balance(&f.pool.address),
+        "V reserve diverged from balance"
+    );
 }
 
 /// Reads `(fee, reserve_fee)` off the trade event the pool emitted in the last
@@ -33,17 +41,27 @@ fn assert_reserves_match_balances(f: &AmmFixture) {
 /// after the trade, before any other client call (even a balance read).
 fn last_trade_fees(f: &AmmFixture, event_name: &str) -> (i128, i128) {
     let events = f.env.events().all().filter_by_contract(&f.pool.address);
-    let event = events.events().last().expect("pool emitted no events").clone();
+    let event = events
+        .events()
+        .last()
+        .expect("pool emitted no events")
+        .clone();
     let xdr::ContractEventBody::V0(body) = event.body;
 
     let name = Symbol::try_from_val(&f.env, &body.topics[0]).expect("topic 0 is not a symbol");
-    assert_eq!(name, Symbol::new(&f.env, event_name), "last pool event is not the trade");
+    assert_eq!(
+        name,
+        Symbol::new(&f.env, event_name),
+        "last pool event is not the trade"
+    );
 
     let xdr::ScVal::Vec(Some(data)) = body.data else {
         panic!("trade event data is not a vec");
     };
     let as_i128 = |v: &xdr::ScVal| -> i128 {
-        let xdr::ScVal::I128(parts) = v else { panic!("expected an i128 field") };
+        let xdr::ScVal::I128(parts) = v else {
+            panic!("expected an i128 field")
+        };
         ((parts.hi as i128) << 64) | parts.lo as i128
     };
     let n = data.len();
@@ -55,7 +73,11 @@ fn last_trade_fees(f: &AmmFixture, event_name: &str) -> (i128, i128) {
 fn assert_event_fees_match_treasury(f: &AmmFixture, event_name: &str) {
     let (fee, reserve_fee) = last_trade_fees(f, event_name);
     assert!(fee > 0, "{event_name} emitted no fee");
-    assert_eq!(reserve_fee, f.vault.balance(&f.treasury), "reserve_fee differs from treasury gain");
+    assert_eq!(
+        reserve_fee,
+        f.vault.balance(&f.treasury),
+        "reserve_fee differs from treasury gain"
+    );
     assert!(fee >= reserve_fee, "reserve cut exceeds the whole fee");
 }
 
@@ -65,11 +87,21 @@ fn register_pool_with_rate(env: &Env, rate: i128) {
 
     let pt_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "PT"), String::from_str(env, "PT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "PT"),
+            String::from_str(env, "PT"),
+            7u32,
+        ),
     );
     let vault_addr = env.register(
         MockVault,
-        (&admin, String::from_str(env, "Vault"), String::from_str(env, "VLT"), 7u32),
+        (
+            &admin,
+            String::from_str(env, "Vault"),
+            String::from_str(env, "VLT"),
+            7u32,
+        ),
     );
 
     let expiry = env.ledger().timestamp() + ONE_YEAR_SECS;
@@ -77,7 +109,18 @@ fn register_pool_with_rate(env: &Env, rate: i128) {
     let treasury = Address::generate(env);
     env.register(
         LiquidityPool,
-        (&pt_addr, &vault_addr, expiry, CURRENT_APY, APY_MIN, APY_MAX, FEE_APY, &ym, &treasury, rate),
+        (
+            &pt_addr,
+            &vault_addr,
+            expiry,
+            CURRENT_APY,
+            APY_MIN,
+            APY_MAX,
+            FEE_APY,
+            &ym,
+            &treasury,
+            rate,
+        ),
     );
 }
 
@@ -116,7 +159,11 @@ fn test_zero_rate_swaps_pay_treasury_nothing() {
     f.swap_v_for_pt(&f.user, 1_000_000, 2_000_000);
 
     assert_event_fees_match_treasury(&f, "swap_v_for_pt");
-    assert_eq!(f.vault.balance(&f.treasury), 0, "zero-rate market must not pay the treasury");
+    assert_eq!(
+        f.vault.balance(&f.treasury),
+        0,
+        "zero-rate market must not pay the treasury"
+    );
     assert_reserves_match_balances(&f);
 }
 
@@ -187,14 +234,23 @@ fn test_flash_swap_pt_remits_fee_to_treasury() {
     let receiver = env.register_at(
         &f.ym,
         MockFlashPtReceiver,
-        (f.pool.address.clone(), f.pt.address.clone(), f.vault.address.clone(), true),
+        (
+            f.pool.address.clone(),
+            f.pt.address.clone(),
+            f.vault.address.clone(),
+            true,
+        ),
     );
     f.pt.mint(&receiver, &1_000_000_000);
 
-    f.pool.flash_swap_pt(&receiver, &1_000_000, &f.user, &2_000_000);
+    f.pool
+        .flash_swap_pt(&receiver, &1_000_000, &f.user, &2_000_000);
 
     assert_event_fees_match_treasury(&f, "flash_swap_pt");
-    assert!(f.vault.balance(&f.treasury) > 0, "flash PT swap paid no fee");
+    assert!(
+        f.vault.balance(&f.treasury) > 0,
+        "flash PT swap paid no fee"
+    );
     assert_reserves_match_balances(&f);
 }
 
@@ -209,7 +265,12 @@ fn test_flash_swap_v_remits_fee_to_treasury() {
     let receiver = env.register_at(
         &f.ym,
         MockFlashVReceiver,
-        (f.pool.address.clone(), f.vault.address.clone(), f.pt.address.clone(), 0u32),
+        (
+            f.pool.address.clone(),
+            f.vault.address.clone(),
+            f.pt.address.clone(),
+            0u32,
+        ),
     );
     f.vault.mint(&receiver, &1_000_000_000);
 

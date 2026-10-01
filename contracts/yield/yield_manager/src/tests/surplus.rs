@@ -1,17 +1,16 @@
-// ── "You snooze you lose" surplus tests ──────────────────────────────────────
+// ── Post-maturity surplus ────────────────────────────────────────────────────
 //
-// Positions freeze in ASSET value at maturity: PT pays face value, YT yield
-// pays its locked-rate value, whenever redeemed/claimed. Vault interest earned
-// after maturity is freed share-by-share as users exit and is swept to the
-// treasury by collect_surplus.
+// Positions freeze in asset value at maturity: PT pays face value, YT yield
+// pays its locked-rate value, whenever redeemed or claimed. Vault interest
+// earned after maturity is freed share by share as users exit and swept to
+// the treasury by `collect_surplus`.
 
 use soroban_sdk::token::TokenClient;
+use ybc_common::scale::SCALAR_7;
 use yield_manager_interface::YieldManagerClient;
 use yield_token_interface::YieldTokenClient;
 
 use super::fixture::YieldManagerTest;
-
-const SCALAR_7: i128 = 1_0000000;
 
 fn ym_client<'a>(test: &YieldManagerTest) -> YieldManagerClient<'a> {
     YieldManagerClient::new(&test.env, &test.yield_manager)
@@ -78,7 +77,11 @@ fn test_pt_and_yt_exits_free_post_maturity_interest() {
     let user_shares_before = test.vault_balance(&test.user1);
     ym.redeem_principal(&test.user1, &(1000 * SCALAR_7));
     let pt_payout = test.vault_balance(&test.user1) - user_shares_before;
-    assert_eq!(pt_payout, 400 * SCALAR_7, "PT must pay face value at the live rate");
+    assert_eq!(
+        pt_payout,
+        400 * SCALAR_7,
+        "PT must pay face value at the live rate"
+    );
 
     let yt_payout = yt.claim_yield(&test.user1);
     assert_eq!(

@@ -20,12 +20,31 @@ use amm::fuzz_harness::{run_steps, Step};
 /// to far beyond the pool's holdings) mapped into the harness's i128 steps.
 #[derive(Arbitrary, Debug)]
 enum RawStep {
-    Deposit { actor: u8, pt: i64, v: i64 },
-    Withdraw { actor: u8, shares: i64 },
-    SwapVForPt { actor: u8, pt_out: i64, v_in_max: i64 },
-    SwapPtForV { actor: u8, pt_in: i64, min_v_out: i64 },
-    AdvanceTime { secs: u32 },
-    SetVaultRate { rate: i64 },
+    Deposit {
+        actor: u8,
+        pt: i64,
+        v: i64,
+    },
+    Withdraw {
+        actor: u8,
+        shares: i64,
+    },
+    SwapVForPt {
+        actor: u8,
+        pt_out: i64,
+        v_in_max: i64,
+    },
+    SwapPtForV {
+        actor: u8,
+        pt_in: i64,
+        min_v_out: i64,
+    },
+    AdvanceTime {
+        secs: u32,
+    },
+    SetVaultRate {
+        rate: i64,
+    },
 }
 
 impl From<&RawStep> for Step {
@@ -40,12 +59,20 @@ impl From<&RawStep> for Step {
                 actor,
                 shares: shares.into(),
             },
-            RawStep::SwapVForPt { actor, pt_out, v_in_max } => Step::SwapVForPt {
+            RawStep::SwapVForPt {
+                actor,
+                pt_out,
+                v_in_max,
+            } => Step::SwapVForPt {
                 actor,
                 pt_out: pt_out.into(),
                 v_in_max: v_in_max.into(),
             },
-            RawStep::SwapPtForV { actor, pt_in, min_v_out } => Step::SwapPtForV {
+            RawStep::SwapPtForV {
+                actor,
+                pt_in,
+                min_v_out,
+            } => Step::SwapPtForV {
                 actor,
                 pt_in: pt_in.into(),
                 min_v_out: min_v_out.into(),

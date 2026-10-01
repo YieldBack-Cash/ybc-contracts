@@ -1,7 +1,7 @@
 // ── Allowance-driven moves and the accrual hook ──────────────────────────────
 //
-// `transfer_from` and `burn_from` arrived with the OpenZeppelin ledger. They
-// must settle yield exactly as a plain `transfer` and `burn` do: both parties
+// `transfer_from` and `burn_from` must settle yield exactly as a plain
+// `transfer` and `burn` do: both parties
 // accrue at the current rate before the balance moves, a receiver's index
 // catches up to the rate at acquisition, and a self-move mints nothing.
 
@@ -26,7 +26,13 @@ fn allowance(t: &YieldTokenTest, owner: &Address, spender: &Address) -> i128 {
     )
 }
 
-fn transfer_from(t: &YieldTokenTest, spender: &Address, from: &Address, to: &Address, amount: i128) {
+fn transfer_from(
+    t: &YieldTokenTest,
+    spender: &Address,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+) {
     t.env.invoke_contract::<()>(
         &t.yield_token,
         &Symbol::new(&t.env, "transfer_from"),
@@ -111,7 +117,11 @@ fn transfer_from_to_an_emptied_holder_does_not_grant_past_growth() {
     transfer_from(&t, &t.user2, &t.user1, &t.user2, MINT / 2);
 
     assert_eq!(t.get_user_index(&t.user2), r1);
-    assert_eq!(t.get_accrued_yield(&t.user2), 0, "no yield for growth before ownership");
+    assert_eq!(
+        t.get_accrued_yield(&t.user2),
+        0,
+        "no yield for growth before ownership"
+    );
     // and nothing accrues from here until the rate moves again
     assert_eq!(t.claim_yield(&t.user2), 0);
 }
@@ -139,7 +149,11 @@ fn self_transfer_from_is_a_no_op_on_balance_and_yield() {
 
     assert_eq!(t.get_balance(&t.user1), MINT);
     assert_eq!(t.get_total_supply(), MINT);
-    assert_eq!(t.get_accrued_yield(&t.user1), expected, "accrued once, not twice");
+    assert_eq!(
+        t.get_accrued_yield(&t.user1),
+        expected,
+        "accrued once, not twice"
+    );
 }
 
 /// `burn_from` settles the holder's yield first, like `burn`, then retires
@@ -158,7 +172,10 @@ fn burn_from_accrues_before_burning_and_keeps_the_yield_claimable() {
     assert_eq!(t.get_balance(&t.user1), MINT / 2);
     assert_eq!(t.get_total_supply(), MINT / 2);
     assert_eq!(allowance(&t, &t.user1, &t.user2), 0);
-    assert!(t.claim_yield(&t.user1) > 0, "the settled yield is still the holder's");
+    assert!(
+        t.claim_yield(&t.user1) > 0,
+        "the settled yield is still the holder's"
+    );
 }
 
 /// The allowance is the limit: a spender cannot move more than approved.

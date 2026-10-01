@@ -1,15 +1,23 @@
+use amm_interface::AmmError;
 use soroban_sdk::{contracttype, token, Address, Env};
 
 #[derive(Clone)]
 #[contracttype]
 pub struct MarketState {
+    /// The principal token.
     pub token_a: Address,
-    pub token_b: Address, // TODO: vault address is the same as token_b (V token is the vault contract address)
+    /// The vault contract, which is itself the share token (V).
+    pub token_b: Address,
+    /// PT held by the pool, in PT units.
     pub reserve_a: i128,
+    /// Vault shares held by the pool; the curve converts to assets at trade time.
     pub reserve_b: i128,
     pub expiry_ts: u64,
+    /// The implied rate after the last trade, ln-space, 1e7-scaled.
     pub last_implied_rate: i128,
+    /// Time-independent curve scalar; divided by time-to-expiry per trade.
     pub scalar_root: i128,
+    /// Time-independent fee rate; exponentiated with time-to-expiry per trade.
     pub fee_rate_root: i128,
 }
 
@@ -65,40 +73,29 @@ pub fn set_reserve_fee_rate(e: &Env, rate: i128) {
 }
 
 pub fn get_reserve_fee_rate(e: &Env) -> i128 {
-    e.storage().instance().get(&DataKey::ReserveFeeRate).unwrap()
-}
-
-pub fn get_token_a(e: &Env) -> Address {
-    get_market_state(e).token_a
-}
-
-pub fn get_token_b(e: &Env) -> Address {
-    get_market_state(e).token_b
+    e.storage()
+        .instance()
+        .get(&DataKey::ReserveFeeRate)
+        .unwrap()
 }
 
 pub fn get_total_shares(e: &Env) -> i128 {
     e.storage().instance().get(&DataKey::TotalShares).unwrap()
 }
 
-
-pub fn get_balance(e: &Env, contract: Address) -> i128 {
-    token::TokenClient::new(e, &contract).balance(&e.current_contract_address())
-}
-
-pub fn get_balance_a(e: &Env) -> i128 {
-    get_balance(e, get_token_a(e))
-}
-
-pub fn get_balance_b(e: &Env) -> i128 {
-    get_balance(e, get_token_b(e))
+/// The pool's own balance of `token`.
+pub fn get_balance(e: &Env, token: &Address) -> i128 {
+    token::TokenClient::new(e, token).balance(&e.current_contract_address())
 }
 
 pub fn get_shares(e: &Env, user: &Address) -> i128 {
     let key = DataKey::Shares(user.clone());
     if let Some(shares) = e.storage().persistent().get(&key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        e.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
         shares
     } else {
         0
@@ -108,24 +105,26 @@ pub fn get_shares(e: &Env, user: &Address) -> i128 {
 pub fn put_shares(e: &Env, user: &Address, amount: i128) {
     let key = DataKey::Shares(user.clone());
     e.storage().persistent().set(&key, &amount);
-    e.storage()
-        .persistent()
-        .extend_ttl(&key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    e.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
 }
 
 pub fn put_total_shares(e: &Env, amount: i128) {
     e.storage().instance().set(&DataKey::TotalShares, &amount)
 }
 
-
-pub fn burn_shares(e: &Env, from: &Address, amount: i128) {
+pub fn burn_shares(e: &Env, from: &Address, amount: i128) -> Result<(), AmmError> {
     let current_shares = get_shares(e, from);
     if current_shares < amount {
-        panic!("insufficient shares");
+        return Err(AmmError::InsufficientShares);
     }
     let total = get_total_shares(e);
     put_shares(e, from, current_shares - amount);
     put_total_shares(e, total - amount);
+    Ok(())
 }
 
 pub fn mint_shares(e: &Env, to: &Address, amount: i128) {

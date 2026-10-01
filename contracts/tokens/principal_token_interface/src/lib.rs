@@ -10,6 +10,7 @@ use soroban_sdk::{contractclient, Address, Env, String};
 /// standard's own auth, so only the yield manager retires PT.
 #[contractclient(name = "PrincipalTokenClient")]
 pub trait PrincipalTokenTrait {
+    /// `admin` is the yield manager; the factory is the only deployer.
     fn __constructor(env: Env, admin: Address, name: String, symbol: String, decimals: u32);
 
     /// Admin (yield manager) only.

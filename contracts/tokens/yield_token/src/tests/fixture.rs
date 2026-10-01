@@ -1,15 +1,11 @@
 use crate::YieldToken;
 use soroban_sdk::{
-    testutils::Address as _,
-    token::TokenClient,
-    Address, Env, IntoVal, String, Symbol,
+    testutils::Address as _, token::TokenClient, Address, Env, IntoVal, String, Symbol,
 };
 
-// Import contracts from the workspace
 use mock_vault::{MockVault, MockVaultClient};
 use principal_token::PrincipalToken;
 use yield_manager::YieldManager;
-use yield_manager_interface::VaultType;
 
 pub struct YieldTokenTest<'a> {
     pub env: Env,
@@ -46,10 +42,8 @@ impl<'a> YieldTokenTest<'a> {
         let maturity = current_time + 1000;
 
         let treasury = Address::generate(&env);
-        let yield_manager_id = env.register(
-            YieldManager,
-            (&admin, &vault_address, &VaultType::Vault4626, &maturity, &treasury),
-        );
+        let yield_manager_id =
+            env.register(YieldManager, (&admin, &vault_address, &maturity, &treasury));
 
         // Mint vault shares directly to yield manager for distributing yield
         mock_vault_client.mint(&yield_manager_id, &1_000_000_0000000i128);

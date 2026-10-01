@@ -6,10 +6,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["contract"]
-contract = []
-
 [dependencies]
 amm-interface = { path = "../../amm/amm-interface" }
 principal_token_interface = { path = "../../tokens/principal_token_interface" }
