@@ -10,7 +10,7 @@ on:
   pull_request:
 
 env:
-  STELLAR_CLI: "25.2.0"
+  STELLAR_CLI: "27.0.0"
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-30
         with:
-          toolchain: "1.91.1"
+          toolchain: "1.99.0"
           targets: wasm32v1-none
 
       - name: Cache cargo
@@ -65,11 +65,12 @@ jobs:
           fi
           stellar --version
 
-      # `stellar contract build`, not `cargo build`: soroban-sdk 26's spec
-      # shaking needs the CLI wrapper. The test fixtures import these binaries.
+      # The Makefile's build is the release workflow's exact command, so the
+      # binaries here hash the same as the published releases. The test
+      # fixtures import them.
       - name: Build contracts
         working-directory: ybc-contracts
-        run: stellar contract build
+        run: make build
 
       # The tree is kept formatter-clean and free of linter warnings, save the
       # three lints the code disagrees with (argument counts on the router's
@@ -112,7 +113,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-30
         with:
-          toolchain: "1.91.1"
+          toolchain: "1.99.0"
       - name: cargo audit
         run: |
           cargo install --locked cargo-audit

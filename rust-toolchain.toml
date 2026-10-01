@@ -1,6 +1,6 @@
 # One toolchain for every crate, the same one ybc-vaults pins: the auditor
 # rebuilds and compares WASM hashes, and toolchain drift changes the hash.
 [toolchain]
-channel = "1.91.1"
+channel = "1.99.0"
 targets = ["wasm32v1-none"]
 components = ["rustc", "cargo", "rustfmt", "clippy", "rust-src"]
