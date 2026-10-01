@@ -3,11 +3,11 @@ default: build
 # `stellar contract build`, not `cargo build`: soroban-sdk 26's spec shaking
 # needs the CLI wrapper, and a bare cargo build fails in the SDK's build
 # script. The flags are the ones the release workflow uses (`--optimize`, and
-# the source repository stamped into the binary), so a local build hashes the
-# same as the published release. The test fixtures import the binaries this
+# the source repository and home domain stamped into the binary), so a build
+# on Linux hashes the same as the published release. The test fixtures import the binaries this
 # produces, so build before test on a fresh checkout.
 build:
-	stellar contract build --optimize --meta source_repo=github:YieldBack-Cash/ybc-contracts
+	stellar contract build --optimize --meta source_repo=github:YieldBack-Cash/ybc-contracts --meta home_domain=yieldback.cash
 	@ls -l target/wasm32v1-none/release/*.wasm
 
 # What CI runs (.github/workflows/ci.yml). tests/vaults is its own workspace

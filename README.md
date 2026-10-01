@@ -52,15 +52,21 @@ be checked out beside this one.
 make build
 ```
 
-That runs `stellar contract build --optimize --meta source_repo=...`: the
-standard Soroban build, a wrapper around
+That runs `stellar contract build --optimize --meta source_repo=... --meta
+home_domain=...`: the standard Soroban build, a wrapper around
 `cargo build --target wasm32v1-none --release` that also runs the SDK's spec
-tooling, with the two flags the release workflow uses. A bare `cargo build`
-fails in soroban-sdk 26's build script, so use the wrapper. The flags matter
-because the hash is the contract's identity: `--optimize` and the stamped
-source repository both change the bytes, so a build without them does not
-match the published release. The binaries land in
-`target/wasm32v1-none/release/`.
+tooling, with the flags the release workflow uses. A bare `cargo build` fails
+in soroban-sdk 26's build script, so use the wrapper. The flags matter because
+the hash is the contract's identity: `--optimize` and the two stamped
+metadata entries all change the bytes, so a build without them does not match
+the published release. The binaries land in `target/wasm32v1-none/release/`.
+
+The reference build is Linux, which is where the release workflow and the
+Stellar Expert verification run. A Linux build of a tagged commit reproduces
+the published hashes byte for byte. A Windows build reproduces eight of the
+nine; the factory comes out with its functions in a different order, which is
+the same program with a different hash. To check a release from Windows,
+compare against the GitHub Actions build rather than a local one.
 
 ### Test
 

@@ -68,6 +68,10 @@ jobs:
       # The Makefile's build is the release workflow's exact command, so the
       # binaries here hash the same as the published releases. The test
       # fixtures import them.
+      - name: Vendored vault adapters are intact
+        working-directory: ybc-contracts/wasms
+        run: sha256sum -c SHA256SUMS
+
       - name: Build contracts
         working-directory: ybc-contracts
         run: make build
