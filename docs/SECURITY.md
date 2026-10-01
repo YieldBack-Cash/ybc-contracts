@@ -47,7 +47,7 @@ Assumptions that hold protocol-wide:
 | Caller pointing the router at a hostile market | Pass a `(vault, maturity)` naming an attacker-deployed YM or pool, so the router drives a user's funds into it. | Every router entrypoint resolves the market through `Factory::get_market` (`resolve_market`) and panics when there is no record, so only factory-deployed contracts are ever called. The factory keys markets by `(vault, maturity)` and refuses to overwrite an existing record. |
 | Malicious / manipulated vault | Distort `convert_to_assets` to skew mint/redeem or AMM pricing. | Blast radius limited to that market. Only the YM reads the vault; it high-water-marks the rate, and the AMM prices against the YM's figure rather than the vault's, so a rate that *drops* cannot drag pool pricing or already-established payouts down. The rate also locks at maturity. |
 | MEV / sandwich on swaps | Move the pool between quote and execution. | Every user-facing swap takes an explicit slippage bound (`v_in_max`, `min_v_out`, `max_v_in`, `min_shares_out`) and reverts if not met. Router zaps bound slippage in base-asset terms at the endpoint instead, measured from balance deltas — one number covering both the pool price and the vault rate (invariant 17). |
-| Token donation to the pool | Send PT/V directly to the pool to distort pricing or share math. | Reserves are tracked in contract state and updated by *priced* amounts, not by reading balances; flash swaps assert exact balance deltas. Donated tokens never enter pricing. |
+| Token donation to the pool | Send PT/V directly to the pool to distort pricing or share math. | Swaps and flash swaps update the reserves by *priced* amounts, not by reading balances, and flash swaps assert exact balance deltas, so a donation cannot move the trade in progress. `deposit` and `withdraw` do set the reserves from balances, so donated tokens enter pricing at the next liquidity event, as a gift to the LPs (invariant 8; THREAT_MODEL O-17). Share math is protected by the `MINIMUM_LIQUIDITY` burn. |
 | First-depositor / share inflation | Seed a pool with dust to skew share accounting. | `MINIMUM_LIQUIDITY` (100 shares) is minted to a burn address on the first deposit, and the initial deposit must exceed it. |
 | Fat-fingered market params | Absurd maturity or curve band. | Maturity must be in the future and within `MAX_MATURITY_HORIZON` (10y); the AMM constructor bounds the APY band and fee (§5). |
 
@@ -210,8 +210,12 @@ harness).
 
 4. `deposit` mints PT and YT in **equal** amounts; `redeem_combined` burns them in
    equal amounts. PT and YT supply move together outside of maturity redemption.
-5. The YM **holds no PT across a call**: `on_flash_receive_pt` asserts its PT
-   balance returns to zero before returning.
+5. The YM **keeps none of the PT it mints in a flash swap**: `on_flash_receive_pt`
+   reads its PT balance before minting and asserts it is unchanged before
+   returning. The check is against the balance on entry, not against zero:
+   PT is an ordinary token that anyone can send to the YM's address, and a
+   check against zero let one unit of it fail every later YT purchase
+   (THREAT_MODEL F-6). PT sent to the YM stays there; nothing moves it out.
 6. **Positions freeze in asset value at maturity.** PT redeems for exactly face
    value in assets, and a locked YT claim pays exactly its locked-rate asset
    value, no matter how late the exit — vault interest earned after maturity
@@ -228,8 +232,13 @@ harness).
 
 **AMM**
 
-8. Pricing uses **state-tracked reserves**, never raw balances, so donated tokens
-   cannot influence a trade.
+8. **Trades move the reserves by priced amounts**, never by observed balance
+   changes, so tokens sent to the pool cannot influence the trade that is
+   executing. Liquidity events are different: `deposit` and `withdraw` read
+   the pool's token balances and store them as the reserves, so tokens sent
+   to the pool enter the reserves, and from then on pricing, at the next
+   liquidity event. The sender gives them to the LPs; the pool's proportion
+   moves while the stored implied rate does not (THREAT_MODEL O-17).
 9. Reserves must remain **strictly positive** after any swap or flash swap.
 10. Flash swaps assert **exact balance deltas**: the pool ends `flash_swap_pt` with
     exactly `yt_out` more PT and `v_paid` less V, and `flash_swap_v` fully repaid.

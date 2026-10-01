@@ -138,7 +138,7 @@ contract-level fix forces (§4.10).
 
 ### 4.1 Creating a market
 
-`Factory::create_market(creator, vault, vault_type, maturity, current_apy, apy_min, apy_max, fee_apy)`
+`Factory::create_market(creator, vault, maturity, current_apy, apy_min, apy_max, fee_apy)`
 
 Permissionless: any address may create a market by authorizing as `creator`.
 Markets are keyed on `(vault, maturity)`, while the
@@ -626,10 +626,10 @@ Where each topic in this document lives in the source.
 | YT flash swaps (callbacks) | §4.5 | `contracts/router/src/contract.rs` (`swap_v_for_yt`, `swap_yt_for_v`); `contracts/yield/yield_manager/src/contract.rs` (`on_flash_receive_pt`, `on_flash_receive_v`); flash traits in `amm-interface` |
 | Liquidity provision | §4.6 | `contracts/amm/amm/src/contract.rs` (`deposit`, `withdraw`) |
 | Maturity redemption & exit | §4.7 | `contracts/yield/yield_manager/src/contract.rs` (`redeem_principal`); `contracts/router/src/contract.rs` (`exit_expired`); `contracts/tokens/yield_token/src/contract.rs` (`claim_yield`) |
-| Base-asset zaps | §4.8 | `contracts/router/src/contract.rs` (`zap_*`, `exit_expired_to_asset`, and the `deposit_assets` / `redeem_shares` helpers); SEP-56 surface in `vault/vault_interface`; tested against OpenZeppelin's vault via `contracts/mocks/standard_vault` in `tests/integration/src/tests/zaps.rs`; frontend-facing parameter guidance in `docs/FRONTEND_ZAPS.md` |
+| Base-asset zaps | §4.8 | `contracts/router/src/contract.rs` (`zap_*`, `exit_expired_to_asset`, and the `deposit_assets` / `sweep_gained_shares` helpers); SEP-56 surface in `vault/vault_interface`; tested against OpenZeppelin's vault via `contracts/mocks/standard_vault` in `tests/integration/src/tests/zaps.rs`; frontend-facing parameter guidance in `docs/FRONTEND_ZAPS.md` |
 | Rate threading & sourcing | §4.5, §4.8 | `contracts/amm/amm/src/vault.rs` (`VaultRate` — loaded from the YM, once per invocation); `amm-interface` (`vault_rate` on both flash callbacks); `yield_manager/src/contract.rs` (`update_exchange_rate_from` — the vault read split from the policy); `tests/integration/src/tests/rate_divergence.rs` (why the pool must not price off the vault) |
 | Protocol fees & treasury | §5 | `contracts/treasury/src/contract.rs`; `contracts/amm/amm/src/contract.rs` (`reserve_fee_in_shares`, `remit_reserve_fee`); `contracts/yield/yield_manager/src/contract.rs` (`collect_surplus`, and the surplus booking in `redeem_principal` / `distribute_yield`); `contracts/factory/src/contract.rs` (`FeeConfig`, `set_fee_config`) |
 | Transaction budget | §4.8, §4.10 | `docs/YT_ZAP_BUDGET.md` — per-leg cost model, measured instruction counts per entrypoint, and why the binding limit is memory rather than CPU |
 | Market immutability | §4.10 | `contracts/factory/src/contract.rs` (`create_market` stamps hashes at creation); `deployments/deployments.testnet.json` (per-market hashes) |
 | Exchange rate | §1, §6 | `contracts/yield/yield_manager/src/contract.rs` (`update_exchange_rate`, `get_vault_exchange_rate`) |
-| Events (off-chain integration) | — | each contract's `events.rs` |
+| Events (off-chain integration) | — | each contract's `events.rs`; the router publishes one event per user-facing action, named after the entrypoint (`contracts/router/src/events.rs`), pinned by `tests/integration/src/tests/router_events.rs` |
