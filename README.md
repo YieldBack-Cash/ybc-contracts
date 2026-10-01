@@ -60,10 +60,8 @@ indexer pin their TypeScript ports to them.
 
 ## Deployments
 
-| Network | Addresses |
-|---|---|
-| Testnet | Redeploy from `v0.1.2` pending; `deployments/deployments.testnet.json` will hold the addresses. |
-| Mainnet | Not deployed. |
+Testnet: see [`deployments/deployments.testnet.json`](deployments/deployments.testnet.json)
+(deployed from `v0.1.3`; adapters from `ybc-vaults` `v0.1.2`). Mainnet: not deployed.
 
 ## Security
 

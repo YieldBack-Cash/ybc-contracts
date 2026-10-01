@@ -503,9 +503,10 @@ Three consequences that have each caused real problems:
    `deployments.testnet.json` records what was *installed*, not what any given
    market *runs*. To check a live market, fetch its contracts and hash them —
    `stellar contract fetch --id <ym> | sha256sum` — rather than trusting the
-   registry. Market entries do record a partial hash for this reason (today only
-   `amm_wasm_hash`), but the recorded set is incomplete, so hashing the live
-   contracts stays the only authoritative check.
+   registry. Since the 2026-10-01 deployment each market entry records all four
+   child hashes (`wasm_hashes.{pt,yt,ym,amm}`), checked against the live
+   contracts when the record was written; hashing the live contracts remains
+   the authoritative check.
 3. **Contracts that change together must ship together.** The AMM and YM share
    the flash-callback ABI. Installing one without the other yields markets whose
    flash swaps fail at the callback. They are versioned as a pair.

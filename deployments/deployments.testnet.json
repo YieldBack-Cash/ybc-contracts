@@ -1,0 +1,252 @@
+{
+  "network": "testnet",
+  "release": {
+    "core": {
+      "repo": "YieldBack-Cash/ybc-contracts",
+      "tag": "v0.1.3",
+      "commit": "d5e55d8"
+    },
+    "vaults": {
+      "repo": "YieldBack-Cash/ybc-vaults",
+      "tag": "v0.1.2",
+      "commit": "305fc05"
+    }
+  },
+  "cli_version": "27.0.0",
+  "start_ledger": 4972920,
+  "started_at": "2026-10-01T20:56:30Z",
+  "completed_at": "2026-10-01T21:07:19Z",
+  "identities": {
+    "deployer": "GCSAJP2USVYXLUZQYHV5RYSIAQASN4VKS36AWAAGLTRJNZFSBVUCRGRB",
+    "factory_owner": "GCJTR3UFYUCDK3KTHHJMMF2EK6ANXTTAFR3NT7T3N2NGYP77LZPUDYHN",
+    "treasury_owner": "GASTDFBTMVZ2CXFEDULRCYEIXBQNP37LHJZJKYXI4PTDXY5JKLAED6TL",
+    "blend_admin": "GBOUBIPLCXFR5CXYZSBMG7MOCQN55ACM67SOFGRV2E3DLPQ7Q6QANSDJ"
+  },
+  "wasms": {
+    "factory": {
+      "wasm_hash": "9c1dabc7b607d06d8ed00112982f3128712220ec1ac24336c2840322822f0027",
+      "file": "factory_v0.1.3.wasm",
+      "upload_tx": "e38d196ae15f01ed7fb24e0d992c1ac5ac34cf9e17b71af4f0a9a489416305d9",
+      "installed_at": "2026-10-01T20:57:07Z"
+    },
+    "router": {
+      "wasm_hash": "9ba9e9cc00fdad9613c179329f71a7a1ba6abeea04aa23d20207e5413c3380a0",
+      "file": "router_v0.1.3.wasm",
+      "upload_tx": "b0e346b827bd9d7af132dcd410801e468fc683e9d05baa8805e7d97fbd218786",
+      "installed_at": "2026-10-01T20:57:13Z"
+    },
+    "yield_manager": {
+      "wasm_hash": "e25793bc154c84fca6992f099a67be4b362fd2eb9ce9c31e45eccc6f53c32eb8",
+      "file": "yield_manager_v0.1.3.wasm",
+      "upload_tx": "d73df3b9080336b73658f14ad88e3ecc2fac5011cae7a555d9343bcd22e1419e",
+      "installed_at": "2026-10-01T20:57:18Z"
+    },
+    "principal_token": {
+      "wasm_hash": "39def82729704b617a36388ecabab8af8895b32ee323d15087eab6f9500836e5",
+      "file": "principal_token_v0.1.3.wasm",
+      "upload_tx": "bcd81d97f2d92203a01d50379e0af1079d878780e88e1e403dbe6e87818e3945",
+      "installed_at": "2026-10-01T20:57:22Z"
+    },
+    "yield_token": {
+      "wasm_hash": "1a4cc04d4f7b0b984192be51572a9f298013db3beea92ecab0732327e8bffaea",
+      "file": "yield_token_v0.1.3.wasm",
+      "upload_tx": "71e2861185c04489dc2d59c157f15aa345133c68481aa6b55a712c08bfb94f7c",
+      "installed_at": "2026-10-01T20:57:27Z"
+    },
+    "amm": {
+      "wasm_hash": "0d17e161e40dd6d9b148b00fcd27d3a2b3afe7d7148b00f9a485ea6a6f605b27",
+      "file": "amm_v0.1.3.wasm",
+      "upload_tx": "e07571c7ff8b2ceda310fc5b3821c265560221b588dc626bce6cfee873750e4f",
+      "installed_at": "2026-10-01T20:57:32Z"
+    },
+    "treasury": {
+      "wasm_hash": "67cf90a5e44d929545e6649ebec3a5b7425ec8760ddf928163d77138c265b966",
+      "file": "treasury_v0.1.3.wasm",
+      "upload_tx": "1fef7be9e9a65267ac4fb1eb3b879831ec9610939e91b149d56278ef408454fa",
+      "installed_at": "2026-10-01T20:57:37Z"
+    },
+    "blend_vault": {
+      "wasm_hash": "fc5ee50c2600f17e41a4c5e088d217ba4fa86b11a9f0998c97fab018f8e8e0dc",
+      "file": "blend-vault_v0.1.2.wasm",
+      "upload_tx": "a3da89037bd1ee79de14e5c75a0c2dfebd0f12d43e9df249d7dda17caf917c7c",
+      "installed_at": "2026-10-01T20:57:42Z"
+    },
+    "xoxno_vault": {
+      "wasm_hash": "4a4c6cad4802d727fe92125b17b9a87a5a421314a1b76d5fe6d58fc8339244e1",
+      "file": "xoxno-vault_v0.1.2.wasm",
+      "upload_tx": "9c570ad72f7f2e452706caf888f69ed4dbefb9a897f532e348a7eb559bb4f34e",
+      "installed_at": "2026-10-01T20:57:49Z"
+    }
+  },
+  "contracts": {
+    "treasury": {
+      "id": "CCZDEXIMS257TPT7S6XFYPEJ4W5K5CCDQ62JCLRZZV67NFNT7YJEYLYO",
+      "wasm_hash": "67cf90a5e44d929545e6649ebec3a5b7425ec8760ddf928163d77138c265b966",
+      "deploy_tx": "8f0d76ba54da99c0b63029dd4512ee0d74aa91414546c50f54720ea6d7735f84",
+      "deployed_at": "2026-10-01T20:57:52Z",
+      "constructor": {
+        "owner": "GASTDFBTMVZ2CXFEDULRCYEIXBQNP37LHJZJKYXI4PTDXY5JKLAED6TL"
+      }
+    },
+    "factory": {
+      "id": "CALPSMDZK4L3YBMRBRYR2ODHVBKKZEWRUADLKLK3VLCY35KGCSPYOYPU",
+      "wasm_hash": "9c1dabc7b607d06d8ed00112982f3128712220ec1ac24336c2840322822f0027",
+      "deploy_tx": "9b1820decc73e2a010d239455bc42943cf04ffc00b95d0d4960c9ce80831c7a0",
+      "deployed_at": "2026-10-01T20:57:58Z",
+      "constructor": {
+        "owner": "GCJTR3UFYUCDK3KTHHJMMF2EK6ANXTTAFR3NT7T3N2NGYP77LZPUDYHN",
+        "wasm_hashes": {
+          "pt": "39def82729704b617a36388ecabab8af8895b32ee323d15087eab6f9500836e5",
+          "yt": "1a4cc04d4f7b0b984192be51572a9f298013db3beea92ecab0732327e8bffaea",
+          "ym": "e25793bc154c84fca6992f099a67be4b362fd2eb9ce9c31e45eccc6f53c32eb8",
+          "amm": "0d17e161e40dd6d9b148b00fcd27d3a2b3afe7d7148b00f9a485ea6a6f605b27"
+        },
+        "fee_config": {
+          "treasury": "CCZDEXIMS257TPT7S6XFYPEJ4W5K5CCDQ62JCLRZZV67NFNT7YJEYLYO",
+          "reserve_fee_rate": 1000000
+        }
+      }
+    },
+    "router": {
+      "id": "CDCUQ36BECEXZTZHPYMS42YEAVGPARETZVVXLYSIUV2Z6LV23ZK3W6AG",
+      "wasm_hash": "9ba9e9cc00fdad9613c179329f71a7a1ba6abeea04aa23d20207e5413c3380a0",
+      "deploy_tx": "58930bb108941535a7f8b47e67d0504472c38d265866e3473af5dc1f59be9dfd",
+      "deployed_at": "2026-10-01T20:58:08Z",
+      "constructor": {
+        "factory": "CALPSMDZK4L3YBMRBRYR2ODHVBKKZEWRUADLKLK3VLCY35KGCSPYOYPU"
+      }
+    },
+    "blend_vault": {
+      "id": "CC4BBJPEN6YZJVMBWEINBAR4M4Y522GAQYY6QV6E5L3XM6RRGTYQ5ESL",
+      "wasm_hash": "fc5ee50c2600f17e41a4c5e088d217ba4fa86b11a9f0998c97fab018f8e8e0dc",
+      "deploy_tx": "c325862b8f4d20675141c964ec2bc5e612b09c5e967c3953733a8b7d9e9777fc",
+      "deployed_at": "2026-10-01T21:00:12Z",
+      "constructor": {
+        "admin": "GBOUBIPLCXFR5CXYZSBMG7MOCQN55ACM67SOFGRV2E3DLPQ7Q6QANSDJ",
+        "pool": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+        "asset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        "blnd_token": "CB22KRA3YZVCNCQI64JQ5WE7UY2VAV7WFLK6A2JN3HEX56T2EDAFO7QF",
+        "name": "Blend XLM Vault",
+        "symbol": "bvXLM"
+      },
+      "asset": {
+        "symbol": "XLM",
+        "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+      },
+      "set_router_tx": "017685d96bfb0cb15a6effdf9b8128af9cbd3179b096c92e684350a615353d45",
+      "soroswap_router": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+      "set_swap_path_tx": "19741698bb5b1e540d1a90e58073df0a9949997a14e930fabcb61956d50ad0f6",
+      "swap_path": [
+        "CB22KRA3YZVCNCQI64JQ5WE7UY2VAV7WFLK6A2JN3HEX56T2EDAFO7QF",
+        "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+      ],
+      "claim_emissions_probe": {
+        "tx": "aef5ffa97ebe7b3f2022af0e51f0b40070d23cb546e1d7e5982c4f8b4519c578",
+        "result": "0",
+        "at": "2026-10-01T21:00:37Z"
+      }
+    },
+    "xoxno_vault": {
+      "id": "CDPAPSBJDNZ6I2U53FAHCI646CPCKZNRJHACUTXE5VP4HTC327WBYQCO",
+      "wasm_hash": "4a4c6cad4802d727fe92125b17b9a87a5a421314a1b76d5fe6d58fc8339244e1",
+      "deploy_tx": "f06b5fd957bc5e448074981cf8b6770b6f9cfc3f1af6a6ee77878107225b8fc3",
+      "deployed_at": "2026-10-01T21:00:44Z",
+      "constructor": {
+        "controller": "CCXRWJ6SIU2WPFEGLFGJVITPL57QAYIMIO6OAM2NBGNDQSSCK2FFV3F3",
+        "asset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        "hub_id": 1,
+        "spoke_id": 1,
+        "name": "XOXNO XLM Vault",
+        "symbol": "xvXLM"
+      },
+      "asset": {
+        "symbol": "XLM",
+        "id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+      }
+    }
+  },
+  "markets": [
+    {
+      "key": "blend_vault:1797984000",
+      "vault": "CC4BBJPEN6YZJVMBWEINBAR4M4Y522GAQYY6QV6E5L3XM6RRGTYQ5ESL",
+      "vault_name": "blend_vault",
+      "asset": "XLM",
+      "maturity": 1797984000,
+      "maturity_date": "2026-12-23T00:00:00Z",
+      "params": {
+        "current_apy": 1000000,
+        "apy_min": 200000,
+        "apy_max": 2000000,
+        "fee_apy": 100000
+      },
+      "creator": "GCSAJP2USVYXLUZQYHV5RYSIAQASN4VKS36AWAAGLTRJNZFSBVUCRGRB",
+      "create_tx": "97c59eb6cd4fb84c1256549e572524fddd8901065716a77d01c238533fbb3e39",
+      "created_at": "2026-10-01T21:00:53Z",
+      "name": "bvXLM-23DEC2026",
+      "ym": "CAMSOCCWQNTZMU5F5FMJXX75K2WGEO25ONBOS7FLRP4627U6N65TV3VS",
+      "pt": "CDGNO5H5IOCJHZLBWHCP56JXBRFLS7RF2OGDFQNHTZXESGTXPVXKVVIS",
+      "yt": "CDGKLGMKTQ6LYUJCLGPP27AS3NQLDQH3FUDWY23TNZPQCVX6CW5FNQ6K",
+      "pool": "CDNCJKNHMVJPFD77N5F7RAVAVISJ4LOQZRA4XY2WPTUGOUG7QUT53FZ7",
+      "wasm_hashes": {
+        "pt": "39def82729704b617a36388ecabab8af8895b32ee323d15087eab6f9500836e5",
+        "yt": "1a4cc04d4f7b0b984192be51572a9f298013db3beea92ecab0732327e8bffaea",
+        "ym": "e25793bc154c84fca6992f099a67be4b362fd2eb9ce9c31e45eccc6f53c32eb8",
+        "amm": "0d17e161e40dd6d9b148b00fcd27d3a2b3afe7d7148b00f9a485ea6a6f605b27"
+      },
+      "seed": {
+        "split_tx": "4a301cbe18a92f77b9568ab8100fb521f88106d775cd8fdc2157504a97176375",
+        "asset_split": 5000000000,
+        "vault_deposit_tx": "4814ec15fab474a5af5db33756e10d96715b3e3329e72b3d44b6ae58983dbc38",
+        "asset_deposited": 5000000000,
+        "lp_tx": "e5ffa30511728f8eb80f72debba84f961cc67987f6119bbb89d5130157ae3c9d",
+        "reserves_after": [
+          "4999999907",
+          "2280995387"
+        ],
+        "lp_shares": "3377125411",
+        "float_deposit_tx": "986dcbf7da05f94bfb0807f7a262b16fa1a097f1af965624ed1c758d435edea3"
+      }
+    },
+    {
+      "key": "xoxno_vault:1797984000",
+      "vault": "CDPAPSBJDNZ6I2U53FAHCI646CPCKZNRJHACUTXE5VP4HTC327WBYQCO",
+      "vault_name": "xoxno_vault",
+      "asset": "XLM",
+      "maturity": 1797984000,
+      "maturity_date": "2026-12-23T00:00:00Z",
+      "params": {
+        "current_apy": 1000000,
+        "apy_min": 200000,
+        "apy_max": 2000000,
+        "fee_apy": 100000
+      },
+      "creator": "GCSAJP2USVYXLUZQYHV5RYSIAQASN4VKS36AWAAGLTRJNZFSBVUCRGRB",
+      "create_tx": "dfd06e1b576a5dc2be11270ef88fc9f51c98eff0ef13edf6110dbb0d794244dc",
+      "created_at": "2026-10-01T21:01:03Z",
+      "name": "xvXLM-23DEC2026",
+      "ym": "CC7KZUBHFI6FBO6CFMZLLSXNZYGXV77IQJ2YMVM3A2PWEVHB3ELBS3X4",
+      "pt": "CC6D4U2X463NQZQXY4MJXSMLHHHYMTGSGA2XY542JGOFTFWVYHPSYSME",
+      "yt": "CBSBR4IXRD3KE2ZMMAVAIKZUF5R647FQGEADZRPRA3VPLUQPAX7GICZB",
+      "pool": "CBGQDXO7Q72HXSTFEM3NN5NK32WT4H4SSVW4L5G7Y6AJ5EKODMZ2JYZU",
+      "wasm_hashes": {
+        "pt": "39def82729704b617a36388ecabab8af8895b32ee323d15087eab6f9500836e5",
+        "yt": "1a4cc04d4f7b0b984192be51572a9f298013db3beea92ecab0732327e8bffaea",
+        "ym": "e25793bc154c84fca6992f099a67be4b362fd2eb9ce9c31e45eccc6f53c32eb8",
+        "amm": "0d17e161e40dd6d9b148b00fcd27d3a2b3afe7d7148b00f9a485ea6a6f605b27"
+      },
+      "seed": {
+        "split_tx": "f14ec4e69e23bba1fafa63fbf624c371fc7b719a96b53b1e3d3e3bed403ed5a6",
+        "asset_split": 5000000000,
+        "vault_deposit_tx": "093fe55b32fd8cf3e7c4444008475c8daecad47813cf4c327e8aa20f6c96243d",
+        "asset_deposited": 5000000000,
+        "lp_tx": "d791c95af667814d394249873bb337ab216d9275f29a189543a7bd258d1dcdbe",
+        "reserves_after": [
+          "4999999861",
+          "4999404414"
+        ],
+        "lp_shares": "4999702028",
+        "float_deposit_tx": "6c257f961c9e8d617bd7351145fdeeffb50afc6b9f6d56978a2dd737642a15d1"
+      }
+    }
+  ]
+}
