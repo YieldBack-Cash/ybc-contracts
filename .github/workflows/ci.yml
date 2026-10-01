@@ -19,44 +19,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out ybc-contracts
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: ybc-contracts
 
       - name: Check out ybc-vaults beside it
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: YieldBack-Cash/ybc-vaults
           path: ybc-vaults
 
       # The toolchain comes from rust-toolchain.toml; this only installs it.
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-30
         with:
           toolchain: "1.91.1"
           targets: wasm32v1-none
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: |
             ybc-contracts
             ybc-contracts/tests/vaults
             ybc-vaults
 
+      # The CLI is installed the way the Stellar docs prescribe. crates.io
+      # versions are immutable and Cargo checks every crate against the
+      # registry's checksums, which the release tarball this replaced never
+      # was. Compiling it takes minutes, so the binary is cached per version
+      # and the install is skipped when the cache already holds it.
+      - name: Cache Stellar CLI ${{ env.STELLAR_CLI }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ env.STELLAR_CLI }}-${{ runner.os }}
+
       - name: Install Stellar CLI ${{ env.STELLAR_CLI }}
         run: |
-          mkdir -p "$HOME/.stellar-cli"
-          curl -sSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI}/stellar-cli-${STELLAR_CLI}-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C "$HOME/.stellar-cli"
-          echo "$HOME/.stellar-cli" >> "$GITHUB_PATH"
-          "$HOME/.stellar-cli/stellar" --version
+          if ! stellar --version 2>/dev/null | grep -q "^stellar ${STELLAR_CLI} "; then
+            cargo install --locked stellar-cli@"${STELLAR_CLI}"
+          fi
+          stellar --version
 
       # `stellar contract build`, not `cargo build`: soroban-sdk 26's spec
       # shaking needs the CLI wrapper. The test fixtures import these binaries.
       - name: Build contracts
         working-directory: ybc-contracts
         run: stellar contract build
+
+      # The tree is kept formatter-clean and free of linter warnings, save the
+      # three lints the code disagrees with (argument counts on the router's
+      # API, and the 1_0000000 stroop notation).
+      - name: Formatting
+        working-directory: ybc-contracts
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path tests/vaults/Cargo.toml -- --check
+
+      - name: Lint
+        working-directory: ybc-contracts
+        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::too-many-arguments -A clippy::inconsistent-digit-grouping -A clippy::zero-prefixed-literal
 
       - name: Test
         working-directory: ybc-contracts
@@ -73,7 +96,7 @@ jobs:
         run: cargo test -p yield_token -p amm parity
 
       - name: Upload contract binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: contract-wasms-${{ github.sha }}
           path: ybc-contracts/target/wasm32v1-none/release/*.wasm
@@ -83,8 +106,8 @@ jobs:
     name: dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-30
         with:
           toolchain: "1.91.1"
       - name: cargo audit

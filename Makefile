@@ -25,4 +25,12 @@ fmt:
 clean:
 	cargo clean
 
-.PHONY: default build test fixtures fmt clean
+.PHONY: default build test fixtures fmt lint clean
+
+# What CI gates: formatting, and the linter with the three lints the code
+# disagrees with allowed (argument counts on the API, the 1_0000000 stroop
+# notation).
+lint:
+	cargo fmt --all -- --check
+	cargo fmt --manifest-path tests/vaults/Cargo.toml -- --check
+	cargo clippy --workspace --all-targets -- -D warnings -A clippy::too-many-arguments -A clippy::inconsistent-digit-grouping -A clippy::zero-prefixed-literal

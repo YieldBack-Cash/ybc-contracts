@@ -28,7 +28,7 @@ jobs:
           - yield_token
           - amm
           - treasury
-    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@main
+    uses: stellar-expert/soroban-build-workflow/.github/workflows/release.yml@88068ec50cba931a96436869727ed08edeb76ade # main, 2026-09-30
     with:
       release_name: ${{ github.ref_name }}-${{ matrix.package }}
       release_description: "YBC ${{ matrix.package }} at ${{ github.ref_name }}; WASM hash attached for on-chain verification"

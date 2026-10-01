@@ -1,0 +1,7 @@
+# One line ending for every checkout. Without this, a Windows clone with
+# core.autocrlf on gets CRLF in the working tree, and the checks that compare
+# files byte for byte (the vendored protocol copy, the generated tables) see
+# differences that are not there.
+* text=auto eol=lf
+
+*.wasm binary

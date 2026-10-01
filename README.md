@@ -27,8 +27,60 @@ Yield tokens allow users to bet on interest rates. Users can increase their expo
 
 ## Development
 
+### Prerequisites
+
+Rust with the Soroban WebAssembly target, and the Stellar CLI:
+
+```
+rustup target add wasm32v1-none
+cargo install --locked stellar-cli@25.2.0
+```
+
+`rust-toolchain.toml` pins the toolchain (1.91.1) and lists the target, so
+`rustup` installs both on first use; the first command is the standard one if
+you manage targets yourself. The CLI version is the one CI and the release
+build use. Any 25.2.0-or-later CLI builds the contracts, but a different
+version can produce different bytes, and the hashes an auditor compares come
+from this one.
+
+For the vault market tests only, the
+[`ybc-vaults`](https://github.com/YieldBack-Cash/ybc-vaults) repository must
+be checked out beside this one.
+
 ### Build
-``cargo build``
+
+```
+stellar contract build
+```
+
+This is the standard Soroban build: a wrapper around
+`cargo build --target wasm32v1-none --release` that also runs the SDK's spec
+tooling. A bare `cargo build` fails in soroban-sdk 26's build script, so use
+the wrapper. The binaries land in `target/wasm32v1-none/release/`.
 
 ### Test
-``cargo test``
+
+```
+make test
+```
+
+That runs `cargo test --workspace` and then the vault market tests in their
+own workspace, `cargo test --manifest-path tests/vaults/Cargo.toml`. Build
+first on a fresh checkout: the factory and integration tests deploy the
+compiled binaries, so they fail until `stellar contract build` has run.
+
+`make fixtures` rewrites the parity fixtures under `protocol/fixtures` after a
+change to the yield token's accrual or the AMM's curve; the frontend and
+indexer pin their TypeScript to them.
+
+### Formatting and lint
+
+```
+make lint
+```
+
+CI runs the same two checks: `cargo fmt --all -- --check` and clippy with
+`-D warnings`, allowing only the three lints the code disagrees with (argument
+counts on the router's API, and the `1_0000000` stroop notation). Run
+`cargo fmt --all` to fix formatting. `.gitattributes` fixes line endings to LF
+on every checkout, whatever `core.autocrlf` says.
