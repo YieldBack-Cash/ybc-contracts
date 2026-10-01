@@ -10,9 +10,11 @@ build:
 	stellar contract build --optimize --meta source_repo=github:YieldBack-Cash/ybc-contracts --meta home_domain=yieldback.cash
 	@ls -l target/wasm32v1-none/release/*.wasm
 
-# What CI runs (.github/workflows/ci.yml). tests/vaults is its own workspace
-# (it needs ybc-vaults checked out beside this repo), so it is run separately.
-test:
+# What CI runs (.github/workflows/ci.yml). The factory and integration tests
+# deploy the compiled binaries, so test depends on build. tests/vaults is its
+# own workspace (it needs ybc-vaults checked out beside this repo), so it is
+# run separately.
+test: build
 	cargo test --workspace
 	cargo test --manifest-path tests/vaults/Cargo.toml
 

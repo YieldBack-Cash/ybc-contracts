@@ -373,5 +373,14 @@ All APY values are 1e7-scaled (e.g. `500_000` = 5%).
 
 ## 7. Reporting
 
-_Add a security contact / disclosure process here before any production
-deployment (contact address, scope, and safe-harbor terms)._
+Report vulnerabilities privately, not in a public issue or channel:
+
+- Email: [ben@yieldback.cash](mailto:ben@yieldback.cash)
+- Discord: a direct message to a maintainer on the
+  [YBC server](https://discord.gg/esukQxvMF)
+
+Include the contract and function, the conditions, and if possible a test or
+transaction that shows it. You will get an acknowledgement within 48 hours.
+Please allow time for a fix before any public disclosure; good-faith research
+against testnet deployments is welcome, and no action will be taken against
+researchers who follow this process.

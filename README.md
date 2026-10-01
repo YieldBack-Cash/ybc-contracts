@@ -1,96 +1,85 @@
-# YieldBack.Cash (YBC)
+# YieldBack.Cash
 
-A Soroban smart contract protocol for trading interest rate derivatives on Stellar.
+Fixed and variable yield on Stellar. YBC splits a yield-bearing vault position
+into two tokens that trade separately.
 
-## What is YBC?
+## Overview
 
-YBC allows users to split yield-bearing assets (4626-style vault shares) into two separate tokens:
+A depositor locks vault shares (SEP-56) into a dated market and receives two
+tokens:
 
-- **Principal Tokens (PT)** - Claim on principal after maturity, earn a fixed interest rate
-- **Yield Tokens (YT)** - Earn all variable yield, speculate and bet on interest rates
+| Token | What it is | Who wants it |
+|---|---|---|
+| **PT** — Principal Token | Redeems 1:1 for the underlying at maturity. Bought at a discount, so the discount is a fixed rate. | Anyone who wants a known return |
+| **YT** — Yield Token | Receives all the yield the position earns until maturity. | Anyone taking a view on rates |
 
-## How It Works
+PT and YT trade against vault shares in a dedicated AMM, so a fixed rate can be
+bought or sold at any time before maturity. After maturity, PT redeems for the
+underlying and YT stops accruing.
 
-1. **Deposit** Vault shares (Yield bearing assets) and **receive** PT and YT representing your collateral
-2. **Trade** or hold these tokens based on your strategy:
-   - Buy/hold PT for predictable, fixed returns
-   - Trade YT to speculate on interest rates
-3. **Redeem** PT tokens after maturity for the underlying asset after maturity
+## Contracts
 
-## Use Cases
+| Contract | Role |
+|---|---|
+| `factory` | Creates markets: deploys and wires a PT, YT, yield manager and pool for a (vault, maturity) pair. Permissionless. |
+| `router` | User entry point. Deposit, split, combine, swap, provide liquidity and exit in one transaction, with every bound set by the caller. |
+| `yield_manager` | Holds the vault shares for a market and keeps the accounting between PT and YT. |
+| `principal_token`, `yield_token` | SEP-41 tokens on the OpenZeppelin base ledger. |
+| `amm` | PT / vault-share pool with a time-decaying curve, so PT converges to face value at maturity. |
+| `treasury` | Collects protocol fees. |
+| `common` | Shared constants and TTL policy. |
 
-### For Fixed Yield Seekers
-Principal tokens mimic zero-coupon bonds. Users can redeem a fixed amount at maturity, and users lock in their interest when they purchase the fixed rate principal tokens.
+Interfaces live beside each contract (`*_interface`). The vault adapters the
+protocol sits on are a separate repository,
+[`ybc-vaults`](https://github.com/YieldBack-Cash/ybc-vaults); their compiled
+binaries are vendored under `wasms/` for the integration tests (see
+`wasms/MANIFEST.md`).
 
-### For Interest Rate Speculators
-Yield tokens allow users to bet on interest rates. Users can increase their exposure to interest rate volatility and bet on future interest rates of the underlying protocols (e.g. Blend).
+## Getting started
 
-## Development
+Requirements: Rust (the toolchain version in `rust-toolchain.toml`) and the Stellar CLI.
 
-### Prerequisites
-
-Rust with the Soroban WebAssembly target, and the Stellar CLI:
-
-```
-rustup target add wasm32v1-none
+```sh
 cargo install --locked stellar-cli@27.0.0
 ```
 
-`rust-toolchain.toml` pins the toolchain (1.99.0) and lists the target, so
-`rustup` installs both on first use; the first command is the standard one if
-you manage targets yourself. The CLI version is the one CI and the release
-build use. A different version can produce different bytes, and the hashes an
-auditor compares come from this one.
-
-For the vault market tests only, the
-[`ybc-vaults`](https://github.com/YieldBack-Cash/ybc-vaults) repository must
-be checked out beside this one.
-
-### Build
-
-```
-make build
+```sh
+make build    # compiles every contract
+make test     # builds, then runs every test suite
+make lint     # formatting and clippy, as CI runs them
 ```
 
-That runs `stellar contract build --optimize --meta source_repo=... --meta
-home_domain=...`: the standard Soroban build, a wrapper around
-`cargo build --target wasm32v1-none --release` that also runs the SDK's spec
-tooling, with the flags the release workflow uses. A bare `cargo build` fails
-in soroban-sdk 26's build script, so use the wrapper. The flags matter because
-the hash is the contract's identity: `--optimize` and the two stamped
-metadata entries all change the bytes, so a build without them does not match
-the published release. The binaries land in `target/wasm32v1-none/release/`.
+The vault market tests under `tests/vaults` need `ybc-vaults` checked out
+beside this repository. `make build` runs the release workflow's exact
+command, so building a tagged commit reproduces the hashes on the Releases
+page.
 
-The reference build is the release workflow's, on Linux, which is also what
-the Stellar Expert verification rebuilds. At `v0.1.2` a local build on Linux
-or Windows reproduces all nine published hashes byte for byte. The layout of
-a binary is sensitive to the compiler's symbol hashes, which the crate
-version feeds, so if a local hash ever differs from a release, compare the
-GitHub Actions build of the same commit before suspecting the source.
+`make fixtures` regenerates the parity fixtures in `protocol/fixtures` after a
+change to the yield token's accrual or the AMM's curve. The frontend and
+indexer pin their TypeScript ports to them.
 
-### Test
+## Deployments
 
-```
-make test
-```
+| Network | Addresses |
+|---|---|
+| Testnet | Redeploy from `v0.1.2` pending; `deployments/deployments.testnet.json` will hold the addresses. |
+| Mainnet | Not deployed. |
 
-That runs `cargo test --workspace` and then the vault market tests in their
-own workspace, `cargo test --manifest-path tests/vaults/Cargo.toml`. Build
-first on a fresh checkout: the factory and integration tests deploy the
-compiled binaries, so they fail until `make build` has run.
+## Security
 
-`make fixtures` rewrites the parity fixtures under `protocol/fixtures` after a
-change to the yield token's accrual or the AMM's curve; the frontend and
-indexer pin their TypeScript to them.
+The security model and trust assumptions are in
+[`docs/SECURITY.md`](docs/SECURITY.md).
 
-### Formatting and lint
+Report vulnerabilities: email
+[ben@yieldback.cash](mailto:ben@yieldback.cash) or message
+[Discord](https://discord.gg/esukQxvMF).
 
-```
-make lint
-```
+## Documentation
 
-CI runs the same two checks: `cargo fmt --all -- --check` and clippy with
-`-D warnings`, allowing only the three lints the code disagrees with (argument
-counts on the router's API, and the `1_0000000` stroop notation). Run
-`cargo fmt --all` to fix formatting. `.gitattributes` fixes line endings to LF
-on every checkout, whatever `core.autocrlf` says.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — contracts, flows and invariants
+- [`docs/SECURITY.md`](docs/SECURITY.md) — security model, trust assumptions and guarantees
+- [`protocol/`](protocol/) — the off-chain contract: fixed-point conventions, the formulas the apps reproduce, and the indexer's wire types, vendored by the frontend and indexer
+
+## Licence
+
+GPL-3.0. See [`LICENSE.md`](LICENSE.md).

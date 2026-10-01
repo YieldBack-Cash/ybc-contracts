@@ -8,5 +8,3 @@ nul
 **/test_snapshots/
 /.claude/
 .idea/
-# operator scripts have their own dependencies
-scripts/node_modules/
