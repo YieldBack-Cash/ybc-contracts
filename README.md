@@ -25,7 +25,7 @@ underlying and YT stops accruing.
 | `router` | User entry point. Deposit, split, combine, swap, provide liquidity and exit in one transaction, with every bound set by the caller. |
 | `yield_manager` | Holds the vault shares for a market and keeps the accounting between PT and YT. |
 | `principal_token`, `yield_token` | SEP-41 tokens on the OpenZeppelin base ledger. |
-| `amm` | PT / vault-share pool with a time-decaying curve, so PT converges to face value at maturity. |
+| `amm` | PT / vault-share pool on a Pendle V2 / Notional-style curve: time-decaying, so PT converges to face value at maturity. |
 | `treasury` | Collects protocol fees. |
 | `common` | Shared constants and TTL policy. |
 

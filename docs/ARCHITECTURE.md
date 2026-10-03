@@ -227,6 +227,13 @@ holder-gated, so that rate never enters the user's signature.
 
 ### 4.4 Trading PT (spot)
 
+**Lineage.** The AMM is a Pendle V2 / Notional-style interest-rate curve:
+the implied rate is derived from the PT share of the pool, flattens as
+maturity approaches, and re-anchors after each trade. It is a from-scratch
+Rust implementation of the published mathematics, not a port of Pendle's
+BUSL-licensed Solidity; `curve.rs` names the Pendle function each step
+mirrors and notes where the two deliberately differ (e.g. F-5).
+
 PT ↔ V trades directly against the AMM's two reserves:
 
 - `Router::swap_v_for_pt` → `AMM::swap_v_for_pt`
