@@ -23,7 +23,8 @@ pub enum AmmError {
     ApyMaxTooHigh = 3,
     /// The APY band is narrower than the protocol minimum.
     BandTooNarrow = 4,
-    /// `fee_apy` is zero, negative or above the cap.
+    /// `fee_apy` is negative or above half the band width (competition
+    /// branch; main caps it at an absolute 2% and rejects zero).
     FeeApyOutOfRange = 5,
     /// `reserve_fee_rate` is negative or above the cap.
     ReserveFeeRateOutOfRange = 6,
@@ -78,6 +79,12 @@ pub enum AmmError {
     MathOverflow = 24,
     /// Pool state violates an invariant the curve relies on.
     InvalidPoolState = 25,
+
+    // ── Construction (competition branch) ────────────────────────────────────
+    /// ln(1 + apy_max) × years to expiry exceeds what the curve's exponential
+    /// prices accurately (`MAX_RATE_TIME`). Shorten the maturity or lower the
+    /// band.
+    RateTimeTooLarge = 26,
 }
 
 #[contractclient(name = "AmmClient")]

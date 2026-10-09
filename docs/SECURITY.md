@@ -243,9 +243,13 @@ harness).
 10. Flash swaps assert **exact balance deltas**: the pool ends `flash_swap_pt` with
     exactly `yt_out` more PT and `v_paid` less V, and `flash_swap_v` fully repaid.
 11. Curve parameters are bounded at construction: `apy_min < current_apy < apy_max`,
-    `apy_max <= MAX_APY` (100%), band width `>= MIN_BAND_WIDTH` (1pp),
-    `0 < fee_apy <= MAX_FEE_APY` (2%), and
-    `0 <= reserve_fee_rate <= MAX_RESERVE_FEE_RATE` (50% of the fee).
+    `apy_max <= MAX_APY` (10,000% on this branch; 100% on main), band width
+    `>= MIN_BAND_WIDTH` (1pp), `0 <= fee_apy <= (apy_max − apy_min) / 2`
+    (this branch; main: `0 < fee_apy <= 2%`),
+    `ln(1 + apy_max) × years_to_expiry <= MAX_RATE_TIME` (7.0; this branch
+    only), and `0 <= reserve_fee_rate <= MAX_RESERVE_FEE_RATE` (50% of the
+    fee). A competition factory sets `reserve_fee_rate` to zero, so the
+    treasury takes nothing from trades.
 12. **The treasury's fee cut never enters LP accounting.** The reserve cut of
     each trade's fee is remitted to the treasury inline and excluded from
     `reserve_b`, so stored reserves keep matching the pool's actual balances
@@ -312,9 +316,10 @@ harness).
 | Constant | Value | Where | Purpose |
 |----------|-------|-------|---------|
 | `MAX_MATURITY_HORIZON` | 10 years (seconds) | factory | Upper bound on maturity; catches millisecond/fat-finger timestamps. |
-| `MAX_APY` | `10_000_000` (100%) | AMM | Above this the fixed-point `exp`/`ln` approximations lose accuracy. |
+| `MAX_APY` | `1_000_000_000` (10,000%); main: `10_000_000` (100%) | AMM | Competition branch. Accuracy is governed by `MAX_RATE_TIME` below, not by the APY alone. |
+| `MAX_RATE_TIME` | `70_000_000` (7.0); not on main | AMM | Upper bound on `ln(1 + apy_max) × years to expiry`, the argument to `exp_fp`. The 20-term series is accurate to 1.5e-5 there and degrades fast beyond it. Admits 10,000% for a week and 100% for ten years, never both. |
 | `MIN_BAND_WIDTH` | `100_000` (1pp) | AMM | Narrower bands make the curve so steep it rejects almost every trade. |
-| `MAX_FEE_APY` | `200_000` (2%) | AMM | Above this trading is pointless. |
+| fee cap | `(apy_max − apy_min) / 2`, zero allowed; main: `MAX_FEE_APY = 200_000` (2%), zero rejected | AMM | The fee is a rate spread times time to expiry, so an absolute cap vanishes in a six-hour market. Relative to the band it stays meaningful at any rate. |
 | `MAX_RESERVE_FEE_RATE` | `5_000_000` (50% **of the fee**, not of the trade) | factory + AMM | Above this the LP cut stops being worth providing liquidity for. Enforced at `set_fee_config` and again by the AMM constructor. |
 | `MINIMUM_LIQUIDITY` | `100` shares | AMM | Burned on first deposit to prevent share-inflation on an empty pool. |
 

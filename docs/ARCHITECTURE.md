@@ -157,6 +157,18 @@ AMM constructor, which retains none of them directly:
 | `apy_min`, `apy_max` | `scalar_root = 2·ln(9) / (apy_max − apy_min)` | Only the band's *width* survives — neither endpoint is retained, and **nothing clamps the traded rate to `[apy_min, apy_max]`**. The width is curve steepness: at the p = 0.9 / 0.1 pins the logit term is ±ln(9), so the quoted APY sits at `current_apy ± (apy_max − apy_min)/2`, invariant in time to first order. |
 | `fee_apy` | `fee_rate_root = ln(1 + fee_apy)` | Gives `fee_factor = e^(fee_rate_root·t) ≥ 1`, so the fee decays to zero at expiry (§5.1). |
 
+**Competition branch.** This branch raises `MAX_APY` to 10,000%, caps the fee
+relative to the band (`fee_apy ≤ (apy_max − apy_min) / 2`, zero allowed), and
+adds `MAX_RATE_TIME`: the constructor rejects any market whose
+`ln(1 + apy_max) × years_to_expiry` exceeds 7.0, the accurate region of
+`exp_fp`. The curve itself is unchanged, so every market legal on main prices
+identically here. One caveat the "to first order" above hides: the curve is
+linear in the exchange rate `E = e^(rate·t)`, so one logit step buys
+`(apy_max − apy_min) / (2E)` of yield, not `/2`. At the rates this branch
+exists for, the band is faithful only while `E` stays near 1, which is the
+short-maturity case (two weeks at 2000% gives `E = 1.12`). A one-year market
+at 2000% has `E = 21` and a band twenty times narrower than its name.
+
 **Deployment.** The factory then deploys, in order:
 
 1. The **YM**, constructed with the factory's current `FeeConfig.treasury` and

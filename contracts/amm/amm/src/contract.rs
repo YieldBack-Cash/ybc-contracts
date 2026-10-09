@@ -20,12 +20,23 @@ const BURN_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 // Bounds on creator-supplied market parameters (all 1e7-scaled APYs). Outside
 // them the market is degenerate: a band narrower than MIN_BAND_WIDTH makes the
-// curve so steep it rejects almost every trade, an APY above MAX_APY is not a
-// rate a yield market can honestly quote, and a fee above MAX_FEE_APY makes
-// trading pointless.
-const MAX_APY: i128 = 10_000_000; // 100%
+// curve so steep it rejects almost every trade.
+//
+// Competition branch. Markets here run for hours or days at rates no lending
+// protocol pays, so the APY ceiling is 10,000% rather than main's 100%. What
+// actually bounds the curve is not the APY but ln(1 + apy) × years to expiry,
+// the argument to `exp_fp`: its 20-term series is accurate to 1.5e-5 at 7.0
+// and degrades fast past that. MAX_RATE_TIME enforces that product directly,
+// so 10,000% is allowed for a week and 100% for ten years, never both.
+//
+// The fee is a rate spread multiplied by time to expiry, so main's absolute
+// 2% cap vanishes in a six-hour market. Here the cap is relative to the band:
+// `fee_apy <= (apy_max - apy_min) / 2`, and zero is allowed, so a heat can be
+// run fee-free on purpose. The treasury's cut is a factory setting, not a
+// constant: a competition factory sets `reserve_fee_rate` to zero.
+const MAX_APY: i128 = 1_000_000_000; // 10,000%
 const MIN_BAND_WIDTH: i128 = 100_000; // 1 percentage point
-const MAX_FEE_APY: i128 = 200_000; // 2%
+const MAX_RATE_TIME: i128 = 70_000_000; // ln(1 + apy_max) × years ≤ 7.0
 
 // The cap on the treasury's share of the trading fee is shared with the
 // factory, which checks it when the fee config is set. calc_trade itself
@@ -84,7 +95,7 @@ impl LiquidityPool {
         if apy_max - apy_min < MIN_BAND_WIDTH {
             panic_with_error!(&e, AmmError::BandTooNarrow);
         }
-        if fee_apy <= 0 || fee_apy > MAX_FEE_APY {
+        if fee_apy < 0 || fee_apy > (apy_max - apy_min) / 2 {
             panic_with_error!(&e, AmmError::FeeApyOutOfRange);
         }
         if !(0..=MAX_RESERVE_FEE_RATE).contains(&reserve_fee_rate) {
@@ -103,6 +114,13 @@ impl LiquidityPool {
         let last_implied_rate = ln_or_panic(current_apy);
         let fee_rate_root = ln_or_panic(fee_apy);
         let scalar_root = crate::math::div_down(2 * LN_9, apy_max - apy_min);
+
+        // The series behind the curve is only accurate while rate × time stays
+        // small, so the APY ceiling is really a ceiling on that product.
+        let years = crate::math::seconds_to_years(expiry_ts - now);
+        if crate::math::mul_down(ln_or_panic(apy_max), years) > MAX_RATE_TIME {
+            panic_with_error!(&e, AmmError::RateTimeTooLarge);
+        }
 
         set_ym(&e, &ym);
         set_treasury(&e, &treasury);
